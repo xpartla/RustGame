@@ -1,0 +1,1 @@
+pub const CAMERA_DECAY: f32 = 0.2; 
