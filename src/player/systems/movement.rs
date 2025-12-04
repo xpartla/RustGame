@@ -26,7 +26,7 @@ pub fn move_player(
     if kb_input.pressed(KeyCode::KeyD) {
         direction.x += 1.;
     }
-    
+
     let move_delta = direction.normalize_or_zero() * PLAYER_SPEED *time.delta_secs();
     player.translation += move_delta.extend(0.);
 }
