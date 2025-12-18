@@ -1,4 +1,3 @@
 mod combat;
-mod movement;
+pub(crate) mod input;
 
-pub use movement::move_player;

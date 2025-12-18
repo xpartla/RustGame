@@ -1,13 +1,19 @@
 use bevy::app::{App, Plugin};
-use bevy::prelude::*;
-use crate::player::systems::move_player;
-use crate::camera::systems::update_camera;
+use crate::camera::CameraPlugin;
+use crate::core::CorePlugin;
+use crate::enemy::EnemyPlugin;
+use crate::player::PlayerPlugin;
 
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Update, (move_player, update_camera).chain());
+            .add_plugins((
+                CorePlugin,
+                PlayerPlugin,
+                EnemyPlugin,
+                CameraPlugin,
+            ));
     }
 }
