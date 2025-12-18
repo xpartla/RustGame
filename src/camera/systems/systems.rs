@@ -1,10 +1,9 @@
 use bevy::color::palettes::css::{RED, WHITE};
 use bevy::core_pipeline::bloom::Bloom;
-use bevy::prelude::{Assets, Camera, Camera2d, Circle, Color, Commands, Gizmos, GlobalTransform, Mesh, Mesh2d, MeshMaterial2d, Rectangle, Res, ResMut, Single, StableInterpolate, Time, Transform, Vec2, Vec2Swizzles, Vec3, With, Without};
+use bevy::prelude::{Assets, Camera, Camera2d, Color, Commands, Gizmos, GlobalTransform, Mesh, Mesh2d, MeshMaterial2d, Rectangle, Res, ResMut, Single, StableInterpolate, Time, Transform, Vec2, Vec2Swizzles, Vec3, With, Without};
 use bevy::sprite::ColorMaterial;
 use bevy::window::Window;
-use crate::player::components::Player;
-use crate::core::components::{GridPosition, Velocity, WorldPosition};
+
 
 pub fn setup_scene(
     mut commands: Commands,
@@ -14,16 +13,6 @@ pub fn setup_scene(
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::new(1000., 700.))),
         MeshMaterial2d(materials.add(Color::srgb(0.2, 0.2, 0.3))),
-    ));
-
-    commands.spawn((
-        Player,
-        WorldPosition(Vec2::ZERO),
-        GridPosition{x:0, y:0},
-        Velocity::default(),
-        Transform::from_xyz(0., 0., 2.),
-        Mesh2d(meshes.add(Circle::new(25.))),
-        MeshMaterial2d(materials.add(Color::srgb(6.25, 9.4, 9.1))),
     ));
 }
 
