@@ -1,11 +1,8 @@
-use bevy::color::Color;
-use bevy::prelude::{Gizmo, Gizmos, Query, Vec2, With};
+use bevy::prelude::{Gizmos, Query, Vec2, With};
 use crate::core::components::{GridPosition, WorldPosition};
 use crate::enemy::components::Enemy;
 use bevy::color::palettes::css::{ORANGE, RED};
-
-
-const TILE_SIZE: f32 = 32.0;
+use crate::constants::TILE_SIZE;
 
 pub fn draw_enemy_grid_positions(
     enemies: Query<&GridPosition, With<Enemy>>,

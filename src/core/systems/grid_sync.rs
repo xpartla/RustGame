@@ -1,7 +1,7 @@
 use bevy::prelude::{Added, Query, Vec2};
+use crate::constants::TILE_SIZE;
 use crate::core::components::{GridPosition, WorldPosition};
 
-const TILE_SIZE: f32 = 32.0;
 
 pub fn world_to_grid(
     mut query: Query<(&WorldPosition, &mut GridPosition)>,
