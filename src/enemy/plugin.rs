@@ -2,7 +2,6 @@ use bevy::app::PostUpdate;
 use bevy::prelude::{App, Plugin, Startup, Timer, TimerMode, Update};
 use crate::enemy::components::EnemySpawner;
 use crate::enemy::systems::{
-    spawner::spawn_enemy,
     debug::draw_enemy_world_positions
 };
 use crate::enemy::systems::spawner::spawn_enemy_over_time;

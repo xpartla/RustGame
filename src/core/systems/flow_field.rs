@@ -21,7 +21,17 @@ pub fn rebuild_flow_field_from_player(
     queue.push_back(player_pos);
     cost_map.insert(player_pos, 0);
 
-    let neighbors = [IVec2::new(1,0), IVec2::new(-1,0), IVec2::new(0,1), IVec2::new(0,-1)];
+    let neighbors = [
+        IVec2::new(1,0),
+        IVec2::new(-1,0),
+        IVec2::new(0,1),
+        IVec2::new(0,-1),
+
+        IVec2::new(1,1),
+        IVec2::new(1,-1),
+        IVec2::new(-1,1),
+        IVec2::new(-1,-1)
+    ];
 
     while let Some(current) = queue.pop_front() {
         let current_cost = cost_map[&current];
@@ -38,10 +48,32 @@ pub fn rebuild_flow_field_from_player(
             if(dx.abs() > FLOW_RADIUS || dy.abs() > FLOW_RADIUS) {
                 continue;
             }
-            // TODO: check obstacles 
 
-            cost_map.insert(neighbor, current_cost + 1);
-            direction_map.insert(neighbor, Vec2::new((current.x - neighbor.x) as f32, (current.y - neighbor.y) as f32));
+            let is_diagonal = offset.x != 0 && offset.y != 0;
+            let step_cost = if is_diagonal { 14 } else { 10 };
+
+            if(is_diagonal) {
+                let side_a = GridPosition {
+                    x: current.x + offset.x,
+                    y: current.y,
+                };
+                let side_b = GridPosition {
+                    x: current.x,
+                    y: current.y + offset.y,
+                };
+
+                // TODO: check obstacles
+                // if(is_blocked(&side_a) && is_blocked(&side_b)) {
+                //     continue;
+                // }
+            }
+
+            cost_map.insert(neighbor, current_cost + step_cost);
+            direction_map.insert(
+                neighbor,
+                Vec2::new(
+                     (current.x - neighbor.x) as f32,
+                     (current.y - neighbor.y) as f32));
             queue.push_back(neighbor);
         }
     }
