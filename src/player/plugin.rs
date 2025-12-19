@@ -6,6 +6,7 @@ use crate::player::systems::input::player_input;
 use crate::enemy::systems::follow_flow_field::enemy_follow_flow_field;
 use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::attack::player_melee_attack;
+use crate::player::systems::update_player_facing::update_player_facing;
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -19,7 +20,8 @@ impl Plugin for PlayerPlugin {
             Update,
             (
                 player_input,
-                player_melee_attack,
+                update_player_facing,
+                player_melee_attack.after(update_player_facing),
                 rebuild_flow_field_from_player.after(player_input),
                 enemy_follow_flow_field.after(rebuild_flow_field_from_player),
             ),

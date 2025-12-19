@@ -3,7 +3,7 @@ use bevy::color::Color;
 use bevy::math::Vec2;
 use bevy::prelude::{Circle, ColorMaterial, Commands, Mesh, Mesh2d, MeshMaterial2d, ResMut, Transform};
 use crate::core::components::{GridPosition, Velocity, WorldPosition};
-use crate::player::components::Player;
+use crate::player::components::{Facing, Player};
 
 pub fn spawn_player(mut commands: Commands,
                     mut meshes: ResMut<Assets<Mesh>>,
@@ -13,6 +13,7 @@ pub fn spawn_player(mut commands: Commands,
         Player,
         WorldPosition(Vec2::ZERO),
         GridPosition{x:0, y:0},
+        Facing(Vec2::default()),
         Velocity::default(),
         Transform::from_xyz(0., 0., 2.),
         Mesh2d(meshes.add(Circle::new(25.))),
