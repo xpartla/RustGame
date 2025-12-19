@@ -3,6 +3,7 @@ use crate::camera::CameraPlugin;
 use crate::core::CorePlugin;
 use crate::enemy::EnemyPlugin;
 use crate::player::PlayerPlugin;
+use crate::projectile::ProjectilePlugin;
 
 pub struct GamePlugin;
 
@@ -13,6 +14,7 @@ impl Plugin for GamePlugin {
                 CorePlugin,
                 PlayerPlugin,
                 EnemyPlugin,
+                ProjectilePlugin,
                 CameraPlugin,
             ));
     }

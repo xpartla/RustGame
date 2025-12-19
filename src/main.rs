@@ -4,6 +4,7 @@ mod player;
 mod game;
 mod core;
 mod enemy;
+mod projectile;
 
 use bevy::DefaultPlugins;
 use bevy::prelude::{App};
