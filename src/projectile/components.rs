@@ -13,14 +13,25 @@ pub struct Lifetime{
     pub timer: Timer,
 }
 
-#[derive(Component)]
-pub struct Hitbox {
-    pub radius: f32,
-}
+// #[derive(Component)]
+// pub struct Hitbox {
+//     pub radius: f32,
+// }
 
 #[derive(Component)]
 pub struct Source {
     pub entity: Entity,
+}
+
+#[derive(Component)]
+pub struct CircleHitbox {
+    pub radius: f32,
+}
+
+#[derive(Component)]
+pub struct ArcHitbox{
+    pub radius: f32,
+    pub half_angle: f32,
 }
 
 #[derive(Bundle)]
@@ -30,7 +41,6 @@ pub struct ProjectileBundle {
     pub vel: Velocity,
     pub damage: Damage,
     pub lifetime: Lifetime,
-    pub hitbox: Hitbox,
     pub source: Source,
 }
 
@@ -39,7 +49,6 @@ impl ProjectileBundle {
         pos:Vec2,
         vel:Vec2,
         damage:u32,
-        radius:f32,
         lifetime:f32,
         source:Entity,
     ) -> Self {
@@ -48,7 +57,6 @@ impl ProjectileBundle {
             world: WorldPosition(pos),
             vel: Velocity(vel),
             damage: Damage(damage),
-            hitbox: Hitbox {radius},
             lifetime: Lifetime {
                 timer: Timer::from_seconds(lifetime, TimerMode::Once),
             },

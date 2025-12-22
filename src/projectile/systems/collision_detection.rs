@@ -1,11 +1,12 @@
 use bevy::prelude::{Commands, Entity, Query, With};
 use crate::core::components::WorldPosition;
 use crate::enemy::components::Enemy;
-use crate::projectile::components::{Hitbox, Projectile, Source};
+use crate::player::components::Facing;
+use crate::projectile::components::{ArcHitbox, CircleHitbox, Projectile, Source};
 
-pub fn projectile_hits_enemies(
+pub fn projectile_circle_hits_enemies(
     mut commands: Commands,
-    projectiles: Query<(Entity, &WorldPosition, &Hitbox, &Source), With<Projectile>>,
+    projectiles: Query<(Entity, &WorldPosition, &CircleHitbox, &Source), With<Projectile>>,
     enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
 ) {
     for(proj_entity, proj_pos, hitbox, source) in &projectiles {
@@ -20,5 +21,38 @@ pub fn projectile_hits_enemies(
                 break;
             }
         }
+    }
+}
+
+pub fn projectile_arc_hit_enemies(
+    mut commands: Commands,
+    projectiles: Query<(Entity, &WorldPosition, &ArcHitbox, &Facing, &Source), With<Projectile>>,
+    enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
+) {
+    for (proj_entity, proj_pos, arc, facing, source) in &projectiles {
+        let forward = facing.0.normalize();
+
+        for (enemy_entity, enemy_pos) in &enemies {
+            if enemy_entity == source.entity {
+                continue;
+            }
+
+            let to_enemy = enemy_pos.0 - proj_pos.0;
+            let dist = to_enemy.length();
+
+            if dist > arc.radius {
+                continue;
+            }
+
+            let dir = to_enemy.normalize();
+            let angle = forward.angle_between(dir);
+
+            if  angle <= arc.half_angle {
+                commands.entity(enemy_entity).despawn();
+                commands.entity(proj_entity).despawn();
+                break;
+            }
+        }
+
     }
 }
