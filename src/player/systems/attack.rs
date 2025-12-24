@@ -3,6 +3,8 @@ use bevy::prelude::{Commands, Entity, KeyCode, Query, Res, Vec2, With};
 use crate::core::components::WorldPosition;
 use crate::player::components::{Facing, Player};
 use crate::projectile::components::{ArcHitbox, CircleHitbox, ProjectileBundle};
+use crate::constants::ARC_BASE_DMG;
+use crate::constants::CIRCLE_BASE_DMG;
 pub fn player_circle_attack(
     mut commands: Commands,
     kb: Res<ButtonInput<KeyCode>>,
@@ -24,7 +26,7 @@ pub fn player_circle_attack(
         ProjectileBundle::new(
             spawn_pos,
             Vec2::ZERO,
-            1,
+            CIRCLE_BASE_DMG,
             0.1,
             player_entity
         ),
@@ -57,7 +59,7 @@ pub fn player_arc_attack(
         ProjectileBundle::new(
             spawn_pos,
             Vec2::ZERO,
-            1,
+            ARC_BASE_DMG,
             0.1,
             player_entity
         ),

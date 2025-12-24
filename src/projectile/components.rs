@@ -6,7 +6,7 @@ use crate::core::components::{Velocity, WorldPosition};
 pub struct Projectile;
 
 #[derive(Component)]
-pub struct Damage(pub u32);
+pub struct Damage(pub f32);
 
 #[derive(Component)]
 pub struct Lifetime{
@@ -48,7 +48,7 @@ impl ProjectileBundle {
     pub fn new(
         pos:Vec2,
         vel:Vec2,
-        damage:u32,
+        damage:f32,
         lifetime:f32,
         source:Entity,
     ) -> Self {

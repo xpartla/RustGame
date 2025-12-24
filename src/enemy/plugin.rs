@@ -5,7 +5,7 @@ use crate::enemy::systems::{
     debug::draw_enemy_world_positions
 };
 use crate::enemy::systems::spawner::spawn_enemy_over_time;
-
+use crate::enemy::systems::death::enemy_death;
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
@@ -16,6 +16,7 @@ impl Plugin for EnemyPlugin {
                 radius: 10,
             })
             .add_systems(Update, spawn_enemy_over_time)
+            .add_systems(Update, enemy_death)
             .add_systems(PostUpdate, draw_enemy_world_positions);
     }
 }

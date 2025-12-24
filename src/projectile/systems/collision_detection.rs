@@ -1,22 +1,22 @@
 use bevy::prelude::{Commands, Entity, Query, With};
 use crate::core::components::WorldPosition;
-use crate::enemy::components::Enemy;
+use crate::enemy::components::{Enemy, Health};
 use crate::player::components::Facing;
-use crate::projectile::components::{ArcHitbox, CircleHitbox, Projectile, Source};
+use crate::projectile::components::{ArcHitbox, CircleHitbox, Damage, Projectile, Source};
 
 pub fn projectile_circle_hits_enemies(
     mut commands: Commands,
-    projectiles: Query<(Entity, &WorldPosition, &CircleHitbox, &Source), With<Projectile>>,
-    enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
+    projectiles: Query<(Entity, &WorldPosition, &CircleHitbox, &Source, &Damage), With<Projectile>>,
+    mut enemies: Query<(Entity, &WorldPosition, &mut Health), With<Enemy>>,
 ) {
-    for(proj_entity, proj_pos, hitbox, source) in &projectiles {
-        for(enemy_entity, enemy_pos) in &enemies {
+    for(proj_entity, proj_pos, hitbox, source, damage) in &projectiles {
+        for(enemy_entity, enemy_pos, mut health) in &mut enemies {
             if enemy_entity == source.entity {
                 continue;
             }
             let dist = proj_pos.0.distance(enemy_pos.0);
             if dist <= hitbox.radius {
-                commands.entity(enemy_entity).despawn();
+                health.current -= damage.0 as f32;
                 commands.entity(proj_entity).despawn();
                 break;
             }
@@ -26,13 +26,13 @@ pub fn projectile_circle_hits_enemies(
 
 pub fn projectile_arc_hit_enemies(
     mut commands: Commands,
-    projectiles: Query<(Entity, &WorldPosition, &ArcHitbox, &Facing, &Source), With<Projectile>>,
-    enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
+    projectiles: Query<(Entity, &WorldPosition, &ArcHitbox, &Facing, &Source, &Damage), With<Projectile>>,
+    mut enemies: Query<(Entity, &WorldPosition, &mut Health), With<Enemy>>,
 ) {
-    for (proj_entity, proj_pos, arc, facing, source) in &projectiles {
+    for (proj_entity, proj_pos, arc, facing, source, damage) in &projectiles {
         let forward = facing.0.normalize();
 
-        for (enemy_entity, enemy_pos) in &enemies {
+        for (enemy_entity, enemy_pos, mut health) in &mut enemies {
             if enemy_entity == source.entity {
                 continue;
             }
@@ -48,7 +48,7 @@ pub fn projectile_arc_hit_enemies(
             let angle = forward.angle_between(dir);
 
             if  angle <= arc.half_angle {
-                commands.entity(enemy_entity).despawn();
+                health.current -= damage.0 as f32;
                 commands.entity(proj_entity).despawn();
                 break;
             }
