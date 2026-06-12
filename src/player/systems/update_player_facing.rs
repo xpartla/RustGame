@@ -8,7 +8,7 @@ pub fn update_player_facing(
     camera_q: Query<(&Camera, &GlobalTransform)>,
     mut player_q: Query<(&WorldPosition, &mut Facing), With<Player>>,
 ) {
-    let window = match windows.get_single() {
+    let window = match windows.single() {
         Ok(w) => w,
         Err(_) => return,
     };
@@ -18,7 +18,7 @@ pub fn update_player_facing(
         None => return,
     };
 
-    let (camera, camera_transform) = match camera_q.get_single() {
+    let (camera, camera_transform) = match camera_q.single() {
         Ok(v) => v,
         Err(_) => return,
     };
@@ -31,7 +31,7 @@ pub fn update_player_facing(
         Err(_) => return,
     };
 
-    let (player_pos, mut facing) = match player_q.get_single_mut() {
+    let (player_pos, mut facing) = match player_q.single_mut() {
         Ok(v) => v,
         Err(_) => return,
     };

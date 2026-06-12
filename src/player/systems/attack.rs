@@ -16,7 +16,7 @@ pub fn player_circle_attack(
         return;
     }
 
-    let(player_entity, pos, facing) = match player.get_single() {
+    let(player_entity, pos, facing) = match player.single() {
         Ok(v) => v,
         Err(_) => return,
     };
@@ -51,7 +51,7 @@ pub fn player_arc_attack(
         return;
     }
 
-    let(player_entity, pos, facing) = match player.get_single() {
+    let(player_entity, pos, facing) = match player.single() {
         Ok(v) => v,
         Err(_) => return,
     };

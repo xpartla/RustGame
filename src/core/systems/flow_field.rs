@@ -9,7 +9,7 @@ pub fn rebuild_flow_field_from_player(
     mut flow_field: ResMut<FlowField>,
     // pass map info
 ) {
-    let player_pos = match player_query.get_single() {
+    let player_pos = match player_query.single() {
         Ok(pos) => *pos,
         Err(_) => return,
     };
