@@ -7,18 +7,6 @@ use crate::constants::ENEMY_HEALTH;
 use crate::core::components::{GridPosition, Velocity, WorldPosition};
 use crate::enemy::components::{Enemy, EnemySpawner, Health};
 
-pub fn spawn_enemy(
-    mut commands: Commands,
-) {
-    commands.spawn((
-        Enemy,
-        GridPosition { x: 5, y: -3 },
-        WorldPosition(Vec2::ZERO),
-        Velocity::default(),
-        Transform::default(),
-    ));
-}
-
 pub fn spawn_enemy_over_time(
     mut commands: Commands,
     time: Res<Time>,

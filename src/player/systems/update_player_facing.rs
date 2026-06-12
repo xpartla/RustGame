@@ -1,12 +1,9 @@
-use bevy::color::palettes::css::GREEN;
-use bevy::prelude::{Camera, Gizmos, GlobalTransform, Query, With};
-use bevy::render::mesh::face_normal;
+use bevy::prelude::{Camera, GlobalTransform, Query, With};
 use bevy::window::Window;
 use crate::core::components::WorldPosition;
 use crate::player::components::{Facing, Player};
 
 pub fn update_player_facing(
-    mut gizmos: Gizmos,
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform)>,
     mut player_q: Query<(&WorldPosition, &mut Facing), With<Player>>,
@@ -43,11 +40,4 @@ pub fn update_player_facing(
     if dir.length_squared() > 0.0001 {
         facing.0 = dir.normalize();
     }
-
-    gizmos.line_2d(
-        player_pos.0,
-        player_pos.0 + facing.0 * 32.0,
-        GREEN,
-    );
-
 }

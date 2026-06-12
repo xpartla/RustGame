@@ -5,3 +5,8 @@ pub const TILE_SIZE: f32 = 32.0;
 pub const ENEMY_HEALTH: f32 = 10.0;
 pub const ARC_BASE_DMG: f32 = 5.0;
 pub const CIRCLE_BASE_DMG: f32 = 2.0;
+
+// Attack tuning
+pub const ATTACK_SPAWN_DISTANCE: f32 = 16.0;
+pub const ATTACK_HITBOX_RADIUS: f32 = 20.0;
+pub const ATTACK_LIFETIME: f32 = 0.1;

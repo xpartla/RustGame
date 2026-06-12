@@ -1,20 +1,13 @@
-use std::collections::HashMap;
 use bevy::prelude::*;
-use crate::core::components::FlowField;
-use crate::core::systems::flow_field::rebuild_flow_field_from_player;
 use crate::player::systems::input::player_input;
-use crate::enemy::systems::follow_flow_field::enemy_follow_flow_field;
 use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::attack::{player_arc_attack, player_circle_attack};
 use crate::player::systems::update_player_facing::update_player_facing;
+use crate::player::systems::debug::draw_player_facing;
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(FlowField {
-            cost: HashMap::new(),
-            direction: HashMap::new(),
-        });
         app.add_systems(Startup, spawn_player);
         app.add_systems(
             Update,
@@ -23,9 +16,8 @@ impl Plugin for PlayerPlugin {
                 update_player_facing,
                 player_circle_attack.after(update_player_facing),
                 player_arc_attack.after(update_player_facing),
-                rebuild_flow_field_from_player.after(player_input),
-                enemy_follow_flow_field.after(rebuild_flow_field_from_player),
             ),
         );
+        app.add_systems(PostUpdate, draw_player_facing);
     }
 }
