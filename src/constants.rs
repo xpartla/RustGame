@@ -13,3 +13,8 @@ pub const CIRCLE_BASE_DMG: f32 = 2.0;
 pub const ATTACK_SPAWN_DISTANCE: f32 = 16.0;
 pub const ATTACK_HITBOX_RADIUS: f32 = 20.0;
 pub const ATTACK_LIFETIME: f32 = 0.1;
+
+// XP / leveling. Per-enemy-type XP rewards live in enemy/archetypes.rs (`xp_value`); the level
+// curve is global: XP to advance from `level` to the next = XP_FIRST_LEVEL + (level-1)*XP_LEVEL_STEP.
+pub const XP_FIRST_LEVEL: u32 = 10;
+pub const XP_LEVEL_STEP: u32 = 5;

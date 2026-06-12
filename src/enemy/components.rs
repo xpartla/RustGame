@@ -21,6 +21,10 @@ pub struct AttackStats {
     pub range: f32,
 }
 
+/// Experience awarded to the killer when this enemy dies. Set from the archetype at spawn.
+#[derive(Component)]
+pub struct XpReward(pub u32);
+
 /// Gates how often an enemy can deal contact damage to the player.
 #[derive(Component)]
 pub struct AttackCooldown {

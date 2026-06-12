@@ -5,4 +5,5 @@ pub(crate) mod attack;
 pub(crate) mod update_player_facing;
 pub(crate) mod death;
 pub(crate) mod debug;
+pub(crate) mod experience;
 

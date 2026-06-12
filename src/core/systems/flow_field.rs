@@ -1,13 +1,14 @@
 use std::collections::{HashMap, VecDeque};
-use bevy::prelude::{IVec2, Query, ResMut, Vec2, With};
+use bevy::prelude::{IVec2, Query, Res, ResMut, Vec2, With};
 use crate::constants::{FLOW_RADIUS};
 use crate::core::components::{FlowField, GridPosition};
 use crate::player::components::Player;
+use crate::world::components::TileMap;
 
 pub fn rebuild_flow_field_from_player(
     player_query: Query<&GridPosition, With<Player>>,
     mut flow_field: ResMut<FlowField>,
-    // pass map info
+    map: Res<TileMap>,
 ) {
     let player_pos = match player_query.single() {
         Ok(pos) => *pos,
@@ -42,17 +43,22 @@ pub fn rebuild_flow_field_from_player(
             if cost_map.contains_key(&neighbor) {
                 continue;
             }
-            
+
+            // Walls (and out-of-bounds tiles) are unreachable — enemies path around them.
+            if map.is_blocked(neighbor) {
+                continue;
+            }
+
             let dx = neighbor.x - player_pos.x;
             let dy = neighbor.y - player_pos.y;
-            if(dx.abs() > FLOW_RADIUS || dy.abs() > FLOW_RADIUS) {
+            if dx.abs() > FLOW_RADIUS || dy.abs() > FLOW_RADIUS {
                 continue;
             }
 
             let is_diagonal = offset.x != 0 && offset.y != 0;
             let step_cost = if is_diagonal { 14 } else { 10 };
 
-            if(is_diagonal) {
+            if is_diagonal {
                 let side_a = GridPosition {
                     x: current.x + offset.x,
                     y: current.y,
@@ -62,10 +68,10 @@ pub fn rebuild_flow_field_from_player(
                     y: current.y + offset.y,
                 };
 
-                // TODO: check obstacles
-                // if(is_blocked(&side_a) && is_blocked(&side_b)) {
-                //     continue;
-                // }
+                // Don't cut through the corner between two walls.
+                if map.is_blocked(side_a) && map.is_blocked(side_b) {
+                    continue;
+                }
             }
 
             cost_map.insert(neighbor, current_cost + step_cost);

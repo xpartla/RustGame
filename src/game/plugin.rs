@@ -5,6 +5,7 @@ use crate::enemy::EnemyPlugin;
 use crate::pickup::PickUpPlugin;
 use crate::player::PlayerPlugin;
 use crate::projectile::ProjectilePlugin;
+use crate::world::WorldPlugin;
 
 pub struct GamePlugin;
 
@@ -13,6 +14,7 @@ impl Plugin for GamePlugin {
         app
             .add_plugins((
                 CorePlugin,
+                WorldPlugin,
                 PlayerPlugin,
                 EnemyPlugin,
                 ProjectilePlugin,

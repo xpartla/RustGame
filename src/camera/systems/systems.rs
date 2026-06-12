@@ -1,20 +1,8 @@
 use bevy::color::palettes::css::{RED, WHITE};
 use bevy::core_pipeline::bloom::Bloom;
-use bevy::prelude::{Assets, Camera, Camera2d, Color, Commands, Gizmos, GlobalTransform, Mesh, Mesh2d, MeshMaterial2d, Rectangle, Res, ResMut, Single, StableInterpolate, Time, Transform, Vec2, Vec2Swizzles, Vec3, With, Without};
-use bevy::sprite::ColorMaterial;
+use bevy::prelude::{Camera, Camera2d, Commands, Gizmos, GlobalTransform, Single, Vec2Swizzles, With};
 use bevy::window::Window;
 
-
-pub fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(1000., 700.))),
-        MeshMaterial2d(materials.add(Color::srgb(0.2, 0.2, 0.3))),
-    ));
-}
 
 pub fn setup_camera(mut commands: Commands) {
     commands.spawn((Camera2d, Bloom::NATURAL));

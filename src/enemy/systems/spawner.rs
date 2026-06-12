@@ -1,16 +1,19 @@
 use bevy::asset::Assets;
 use bevy::math::Vec2;
 use bevy::prelude::{
-    Circle, Commands, Mesh, Mesh2d, MeshMaterial2d, Rectangle, RegularPolygon, Res, ResMut,
+    Circle, Commands, Entity, Mesh, Mesh2d, MeshMaterial2d, Rectangle, RegularPolygon, Res, ResMut,
     Transform,
 };
 use bevy::sprite::ColorMaterial;
 use bevy::time::Time;
 use rand::Rng;
 use crate::constants::TILE_SIZE;
-use crate::core::components::{Facing, GridPosition, Health, Velocity, WorldPosition};
+use crate::core::components::{Facing, GridPosition, Health, LastHitBy, Velocity, WorldPosition};
 use crate::enemy::archetypes::{pick, EnemyShape};
-use crate::enemy::components::{AttackCooldown, AttackStats, Enemy, EnemySpawner, MoveSpeed};
+use crate::enemy::components::{
+    AttackCooldown, AttackStats, Enemy, EnemySpawner, MoveSpeed, XpReward,
+};
+use crate::world::components::TileMap;
 
 pub fn spawn_enemy_over_time(
     mut commands: Commands,
@@ -18,6 +21,7 @@ pub fn spawn_enemy_over_time(
     mut spawner: ResMut<EnemySpawner>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    map: Res<TileMap>,
 ){
     spawner.timer.tick(time.delta());
     if !spawner.timer.finished() {
@@ -30,6 +34,13 @@ pub fn spawn_enemy_over_time(
 
     let x = (angle.cos() * dist) as i32;
     let y = (angle.sin() * dist) as i32;
+
+    // Don't spawn inside a wall — the enemy would be stuck (no flow direction, blocked movement).
+    // Skip this tick; the next one rolls a fresh angle.
+    if map.is_blocked(GridPosition { x, y }) {
+        return;
+    }
+
     let world = Vec2::new(x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
 
     let archetype = pick(&mut rng);
@@ -49,6 +60,9 @@ pub fn spawn_enemy_over_time(
         MoveSpeed(archetype.speed),
         AttackStats { damage: archetype.attack_damage, range: archetype.attack_range },
         AttackCooldown::new(archetype.attack_cooldown),
+        XpReward(archetype.xp_value),
+        // Tracks the killer for XP credit; no one has hit it yet.
+        LastHitBy(Entity::PLACEHOLDER),
         GridPosition { x, y },
         WorldPosition(world),
         Velocity::default(),

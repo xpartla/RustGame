@@ -6,6 +6,7 @@ use crate::player::systems::attack::{player_arc_attack, player_circle_attack};
 use crate::player::systems::update_player_facing::update_player_facing;
 use crate::player::systems::debug::draw_player_facing;
 use crate::player::systems::death::player_death;
+use crate::player::systems::experience::{apply_level_up_reward, gain_experience};
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -19,6 +20,10 @@ impl Plugin for PlayerPlugin {
                 player_circle_attack.after(update_player_facing).in_set(CombatSet::Damage),
                 player_arc_attack.after(update_player_facing).in_set(CombatSet::Damage),
                 player_death.in_set(CombatSet::Death),
+                // XP lands the same frame as a kill: enemy_death emits GainXpEvent in
+                // CombatSet::Death, so consume it after that set runs.
+                gain_experience.after(CombatSet::Death),
+                apply_level_up_reward.after(gain_experience),
             ),
         );
         app.add_systems(PostUpdate, draw_player_facing);

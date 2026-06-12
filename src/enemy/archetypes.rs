@@ -24,6 +24,8 @@ pub struct EnemyArchetype {
     pub shape: EnemyShape,
     /// Relative spawn frequency (weighted random; not a probability).
     pub weight: u32,
+    /// Experience awarded to the player for killing this type.
+    pub xp_value: u32,
 }
 
 /// The currently spawnable enemy types.
@@ -40,6 +42,7 @@ pub fn archetypes() -> [EnemyArchetype; 3] {
             color: Color::srgb(0.85, 0.45, 0.10),
             shape: EnemyShape::Circle,
             weight: 6,
+            xp_value: 3,
         },
         // Runner — fast and fragile, hits often but light. Medium.
         EnemyArchetype {
@@ -52,6 +55,7 @@ pub fn archetypes() -> [EnemyArchetype; 3] {
             color: Color::srgb(0.90, 0.85, 0.20),
             shape: EnemyShape::Triangle,
             weight: 3,
+            xp_value: 2,
         },
         // Brute — slow, tanky, hits hard. Rare.
         EnemyArchetype {
@@ -64,6 +68,7 @@ pub fn archetypes() -> [EnemyArchetype; 3] {
             color: Color::srgb(0.80, 0.15, 0.15),
             shape: EnemyShape::Square,
             weight: 1,
+            xp_value: 8,
         },
     ]
 }
