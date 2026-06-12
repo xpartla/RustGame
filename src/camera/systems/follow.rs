@@ -8,8 +8,12 @@ pub fn follow_player(
     mut camera: Query<&mut Transform, With<Camera2d>>,
     time: Res<Time>,
 ) {
-    let player_pos = player.single().unwrap();
-    let mut camera_transform = camera.single_mut().unwrap();
+    let Ok(player_pos) = player.single() else {
+        return;
+    };
+    let Ok(mut camera_transform) = camera.single_mut() else {
+        return;
+    };
 
     let target = player_pos.0.extend(camera_transform.translation.z);
 

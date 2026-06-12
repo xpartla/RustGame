@@ -4,8 +4,8 @@ use bevy::time::Time;
 use rand::Rng;
 use crate::constants::TILE_SIZE;
 use crate::constants::ENEMY_HEALTH;
-use crate::core::components::{GridPosition, Velocity, WorldPosition};
-use crate::enemy::components::{Enemy, EnemySpawner, Health};
+use crate::core::components::{GridPosition, Health, Velocity, WorldPosition};
+use crate::enemy::components::{Enemy, EnemySpawner};
 
 pub fn spawn_enemy_over_time(
     mut commands: Commands,

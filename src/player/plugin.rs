@@ -4,6 +4,7 @@ use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::attack::{player_arc_attack, player_circle_attack};
 use crate::player::systems::update_player_facing::update_player_facing;
 use crate::player::systems::debug::draw_player_facing;
+use crate::player::systems::death::player_death;
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -16,6 +17,7 @@ impl Plugin for PlayerPlugin {
                 update_player_facing,
                 player_circle_attack.after(update_player_facing),
                 player_arc_attack.after(update_player_facing),
+                player_death,
             ),
         );
         app.add_systems(PostUpdate, draw_player_facing);

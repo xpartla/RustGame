@@ -1,5 +1,6 @@
 use bevy::prelude::{Commands, Entity, Query, With};
-use crate::enemy::components::{Enemy, Health};
+use crate::core::components::Health;
+use crate::enemy::components::Enemy;
 
 pub fn enemy_death(
     mut commands: Commands,

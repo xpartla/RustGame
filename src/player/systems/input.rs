@@ -8,7 +8,9 @@ pub fn player_input(
     kb: Res<ButtonInput<KeyCode>>,
     mut query: Query<&mut Velocity, With<Player>>,
 ) {
-    let mut vel = query.single_mut().unwrap();
+    let Ok(mut vel) = query.single_mut() else {
+        return;
+    };
 
     let mut dir = Vec2::ZERO;
     if kb.pressed(KeyCode::KeyW) { dir.y += 1.0; }
