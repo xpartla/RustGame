@@ -2,6 +2,7 @@ use bevy::app::{App, Plugin};
 use crate::camera::CameraPlugin;
 use crate::core::CorePlugin;
 use crate::enemy::EnemyPlugin;
+use crate::pickup::PickUpPlugin;
 use crate::player::PlayerPlugin;
 use crate::projectile::ProjectilePlugin;
 
@@ -15,6 +16,7 @@ impl Plugin for GamePlugin {
                 PlayerPlugin,
                 EnemyPlugin,
                 ProjectilePlugin,
+                PickUpPlugin,
                 CameraPlugin,
             ));
     }

@@ -10,3 +10,12 @@ pub struct DamageEvent {
     pub amount: f32,
     pub source: Entity,
 }
+
+/// Request to restore `amount` health to `target`. The healing counterpart to `DamageEvent`:
+/// any system (pickups, regen, abilities) emits this; `apply_heal` is the single place that
+/// adds to `Health`, clamping to `Health.max`.
+#[derive(Event)]
+pub struct HealEvent {
+    pub target: Entity,
+    pub amount: f32,
+}
