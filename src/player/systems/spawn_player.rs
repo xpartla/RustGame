@@ -4,7 +4,8 @@ use bevy::math::Vec2;
 use bevy::prelude::{Circle, ColorMaterial, Commands, Mesh, Mesh2d, MeshMaterial2d, ResMut, Transform};
 use crate::constants::PLAYER_HEALTH;
 use crate::core::components::{GridPosition, Health, Velocity, WorldPosition};
-use crate::player::components::{Facing, Player};
+use crate::core::components::Facing;
+use crate::player::components::Player;
 
 pub fn spawn_player(mut commands: Commands,
                     mut meshes: ResMut<Assets<Mesh>>,

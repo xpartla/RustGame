@@ -1,7 +1,7 @@
 use bevy::color::palettes::css::RED;
 use bevy::prelude::{Gizmos, Isometry2d, Query, Rot2, With};
 use crate::core::components::WorldPosition;
-use crate::player::components::Facing;
+use crate::core::components::Facing;
 use crate::projectile::components::{ArcHitbox, CircleHitbox, Projectile};
 
 pub fn draw_circle_attack_gizmos(

@@ -10,6 +10,17 @@ pub struct EnemySpawner {
     pub radius: i32,
 }
 
+/// Per-entity movement speed (world units/sec). Set from the enemy's archetype at spawn.
+#[derive(Component)]
+pub struct MoveSpeed(pub f32);
+
+/// Per-entity contact-attack stats. Set from the enemy's archetype at spawn.
+#[derive(Component)]
+pub struct AttackStats {
+    pub damage: f32,
+    pub range: f32,
+}
+
 /// Gates how often an enemy can deal contact damage to the player.
 #[derive(Component)]
 pub struct AttackCooldown {

@@ -1,7 +1,8 @@
 use bevy::prelude::{Camera, GlobalTransform, Query, With};
 use bevy::window::Window;
 use crate::core::components::WorldPosition;
-use crate::player::components::{Facing, Player};
+use crate::core::components::Facing;
+use crate::player::components::Player;
 
 pub fn update_player_facing(
     windows: Query<&Window>,

@@ -1,34 +1,26 @@
-use bevy::prelude::{Gizmos, Query, Vec2, With};
-use crate::core::components::{GridPosition, WorldPosition};
-use crate::enemy::components::Enemy;
-use bevy::color::palettes::css::{ORANGE, RED};
-use crate::constants::TILE_SIZE;
+use bevy::prelude::{Gizmos, Query, With};
+use crate::core::components::WorldPosition;
+use crate::enemy::components::{AttackCooldown, Enemy};
+use crate::player::components::Player;
+use bevy::color::palettes::css::RED;
+use crate::constants::ENEMY_ATTACK_FLASH_SECS;
 
-pub fn draw_enemy_grid_positions(
-    enemies: Query<&GridPosition, With<Enemy>>,
+/// Flashes a red strike line (enemy → player) plus a ring on the enemy right after it lands a
+/// hit. Stateless: an enemy's `AttackCooldown` only resets to 0 on a successful attack, so a
+/// small elapsed time means "just attacked".
+pub fn draw_enemy_attack_flash(
+    enemies: Query<(&WorldPosition, &AttackCooldown), With<Enemy>>,
+    player: Query<&WorldPosition, With<Player>>,
     mut gizmos: Gizmos,
 ) {
-    for pos in &enemies {
-        let world = Vec2::new(
-            pos.x as f32 * TILE_SIZE,
-            pos.y as f32 * TILE_SIZE,
-        );
+    let Ok(player_pos) = player.single() else {
+        return;
+    };
 
-        gizmos
-            .rect_2d(
-                world,
-                Vec2::splat(TILE_SIZE),
-                RED,
-            )
-
-    }
-}
-
-pub fn draw_enemy_world_positions(
-    enemies: Query<&WorldPosition, With<Enemy>>,
-    mut gizmos: Gizmos,
-) {
-    for pos in &enemies {
-        gizmos.circle_2d(pos.0, 10.0, ORANGE);
+    for (pos, cooldown) in &enemies {
+        if cooldown.timer.elapsed_secs() < ENEMY_ATTACK_FLASH_SECS {
+            gizmos.line_2d(pos.0, player_pos.0, RED);
+            gizmos.circle_2d(pos.0, 12.0, RED);
+        }
     }
 }

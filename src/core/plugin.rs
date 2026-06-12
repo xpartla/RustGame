@@ -3,7 +3,7 @@ use crate::core::events::DamageEvent;
 use crate::core::sets::CombatSet;
 use crate::core::systems::{
     movement::apply_velocity,
-    render_sync::sync_transform,
+    render_sync::{apply_facing_rotation, sync_transform},
     grid_sync::world_to_grid,
     apply_damage::apply_damage,
     debug::draw_health_bars,
@@ -23,6 +23,7 @@ impl Plugin for CorePlugin {
                             apply_velocity,
                             world_to_grid.after(apply_velocity),
                             sync_transform.after(world_to_grid),
+                            apply_facing_rotation.after(world_to_grid),
                             apply_damage.in_set(CombatSet::Apply),
                             ),
         );

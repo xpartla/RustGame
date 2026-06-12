@@ -14,6 +14,12 @@ pub struct WorldPosition(pub Vec2);
 #[derive(Component, Default)]
 pub struct Velocity(pub Vec2);
 
+/// Direction an entity is oriented toward (unit vector). Source of truth for visual
+/// rotation (`apply_facing_rotation`) and, for the player, attack aim. Shared because both
+/// the player (mouse aim) and enemies (movement direction) carry it.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct Facing(pub Vec2);
+
 #[derive(Component)]
 pub struct Health {
     pub current: f32,

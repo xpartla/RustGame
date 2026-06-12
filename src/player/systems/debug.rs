@@ -1,7 +1,8 @@
 use bevy::color::palettes::css::GREEN;
 use bevy::prelude::{Gizmos, Query, With};
 use crate::core::components::WorldPosition;
-use crate::player::components::{Facing, Player};
+use crate::core::components::Facing;
+use crate::player::components::Player;
 
 pub fn draw_player_facing(
     mut gizmos: Gizmos,

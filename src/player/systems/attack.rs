@@ -7,7 +7,8 @@ use crate::constants::{
 use crate::core::components::WorldPosition;
 use crate::core::events::DamageEvent;
 use crate::enemy::components::Enemy;
-use crate::player::components::{Facing, Player};
+use crate::core::components::Facing;
+use crate::player::components::Player;
 use crate::projectile::components::{ArcHitbox, CircleHitbox, Lifetime, Projectile};
 
 /// Point-blank radial swing (Space). Damage is resolved instantly this frame against every
