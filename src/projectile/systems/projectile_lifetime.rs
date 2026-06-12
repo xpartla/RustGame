@@ -8,7 +8,7 @@ pub fn projectile_lifetime(
 ) {
     for (entity, mut lifetime) in &mut query {
         lifetime.timer.tick(time.delta());
-        if(lifetime.timer.finished()){
+        if lifetime.timer.finished() {
             commands.entity(entity).despawn();
         }
     }

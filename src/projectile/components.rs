@@ -1,66 +1,30 @@
-use bevy::prelude::{Bundle, Component, Entity, Vec2};
-use bevy::time::{Timer, TimerMode};
-use crate::core::components::{Velocity, WorldPosition};
+use bevy::prelude::Component;
+use bevy::time::Timer;
 
+// NOTE: provisional module. These are currently transient *attack VFX* entities — a melee
+// swing spawns one purely so the gizmos can draw the hitbox shape for `Lifetime`. The actual
+// damage is resolved instantly in the attack systems (see player/systems/attack.rs), not here.
+// When real travelling projectiles (ranged attacks) are added, this module should grow a
+// proper movement + collision system again (and likely be renamed/split).
+
+/// Marker for a transient attack-VFX entity.
 #[derive(Component)]
 pub struct Projectile;
 
 #[derive(Component)]
-pub struct Damage(pub f32);
-
-#[derive(Component)]
-pub struct Lifetime{
+pub struct Lifetime {
     pub timer: Timer,
 }
 
-// #[derive(Component)]
-// pub struct Hitbox {
-//     pub radius: f32,
-// }
-
-#[derive(Component)]
-pub struct Source {
-    pub entity: Entity,
-}
-
+/// Circle hitbox shape (used both for the instant overlap test and for drawing the swing).
 #[derive(Component)]
 pub struct CircleHitbox {
     pub radius: f32,
 }
 
+/// Cone hitbox shape: everything within `radius` and `half_angle` of the forward direction.
 #[derive(Component)]
-pub struct ArcHitbox{
+pub struct ArcHitbox {
     pub radius: f32,
     pub half_angle: f32,
-}
-
-#[derive(Bundle)]
-pub struct ProjectileBundle {
-    pub projectile: Projectile,
-    pub world: WorldPosition,
-    pub vel: Velocity,
-    pub damage: Damage,
-    pub lifetime: Lifetime,
-    pub source: Source,
-}
-
-impl ProjectileBundle {
-    pub fn new(
-        pos:Vec2,
-        vel:Vec2,
-        damage:f32,
-        lifetime:f32,
-        source:Entity,
-    ) -> Self {
-        Self {
-            projectile: Projectile,
-            world: WorldPosition(pos),
-            vel: Velocity(vel),
-            damage: Damage(damage),
-            lifetime: Lifetime {
-                timer: Timer::from_seconds(lifetime, TimerMode::Once),
-            },
-            source: Source { entity: source},
-        }
-    }
 }

@@ -1,6 +1,7 @@
 use bevy::app::PostUpdate;
 use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Startup, Timer, TimerMode, Update};
 use crate::core::components::FlowField;
+use crate::core::sets::CombatSet;
 use crate::core::systems::flow_field::rebuild_flow_field_from_player;
 use crate::enemy::components::EnemySpawner;
 use crate::enemy::systems::{
@@ -20,7 +21,7 @@ impl Plugin for EnemyPlugin {
                 radius: 10,
             })
             .add_systems(Update, spawn_enemy_over_time)
-            .add_systems(Update, enemy_death)
+            .add_systems(Update, enemy_death.in_set(CombatSet::Death))
             .add_systems(
                 Update,
                 (
