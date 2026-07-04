@@ -1,0 +1,26 @@
+// WORKING NAME: "Bone Shield" (placeholder — needs naming pass)
+// Ability: death_strike
+// Rarity: Epic
+// Uniqueness: Exclusive — only one copy allowed.
+//
+// Effect: Behavior hook "bone_shield_on_kill".
+//
+// When acquired: talent/systems/apply.rs inserts ActiveHook("bone_shield_on_kill") on the player.
+// When removed (merchant): ActiveHook is removed.
+//
+// Hook behavior (implemented in ability/hooks/bone_shield.rs, registered in AbilityPlugin):
+//   Tracks kills from Death Strike in AbilityHookState("bone_shield_kill_count").
+//   When count reaches bone_shield_kill_threshold (from ResolvedParams), resets counter,
+//   grants the player a "bone_shield" component that absorbs the next incoming hit,
+//   then removes itself.
+//
+// This hook is listed in death_strike.ron under hooks: [(Post, "bone_shield_on_kill")].
+// It fires after each Death Strike execution, but only if ActiveHook is present.
+(
+    id: "death_strike_bone_shield_epic",
+    display_name: "Bone Shield",
+    ability_scope: Some("death_strike"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("bone_shield_on_kill"),
+)

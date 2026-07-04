@@ -1,0 +1,22 @@
+// Blaze — Mage fire DoT.
+//
+// Applied by fire abilities (Fireblast, Flamestrike, Flamewrath).
+// Removed by frost damage — any DamageEvent with a Frost tag on a blazing target
+// removes blaze (handled by status/systems/cross_interact.rs reading removed_by_tags).
+//
+// tick_interval: 1.0 second; on_tick fires DamageEvent with Fire tag.
+// The Fire tag on the tick means: if the target also has Frostbite, the tick will
+// trigger frostbite removal (cross_interact reads frostbite's removed_by_tags: [Fire]).
+// This is emergent from the system — no special case needed here.
+(
+    id: "blaze",
+    display_name: "Blaze",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 4.0,
+    tick_interval_secs: Some(1.0),
+    on_apply_hooks: ["blaze_apply"],     // sets enemy visuals
+    on_tick_hooks: ["blaze_tick_damage"],
+    on_remove_hooks: [],
+    removed_by_tags: [Frost],
+    removes_on_apply: [],
+)

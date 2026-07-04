@@ -1,0 +1,23 @@
+// Root — immobilizes the target (sets velocity to zero while active).
+//
+// Applied by: Druid Roots ability, Earth Ent entangling zone.
+// No DoT tick. Purely a movement debuff — the enemy AI system checks for Root and
+// zeroes velocity instead of following the flow field.
+//
+// Several Druid talents interact with root:
+//   - Scratch deals more damage to rooted targets.
+//   - Primal Pounce deals triple damage if target is rooted.
+//   - Ferocious Bite: if target is rooted, leap deals bonus damage.
+// These are checked by the talent hooks reading the target's StatusEffectInstance list.
+(
+    id: "root",
+    display_name: "Root",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 2.5,
+    tick_interval_secs: None,
+    on_apply_hooks: ["root_apply_immobilize"],
+    on_tick_hooks: [],
+    on_remove_hooks: ["root_on_remove"],
+    removed_by_tags: [],
+    removes_on_apply: [],
+)

@@ -41,6 +41,7 @@ pub fn player_circle_attack(
                 target: enemy_entity,
                 amount: CIRCLE_BASE_DMG,
                 source: player_entity,
+                tags: vec![],
             });
         }
     }
@@ -93,6 +94,7 @@ pub fn player_arc_attack(
                 target: enemy_entity,
                 amount: ARC_BASE_DMG,
                 source: player_entity,
+                tags: vec![],
             });
         }
     }

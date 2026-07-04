@@ -1,0 +1,20 @@
+// WORKING NAME: "Improved Leech" (placeholder display name — needs final naming pass)
+// Ability: death_strike
+// Rarity: Common
+// Uniqueness: Stack(3) — can be taken up to 3 times; each copy adds another 20% leech.
+//
+// Effect: adds 20% multiplicative bonus to the leech_percent stat.
+// With 3 copies: leech_percent = base * (1 + 0.20 + 0.20 + 0.20) = base * 1.60
+//
+// No code hook needed — pure StatModifier, handled by resolve_params() in talent/modifier.rs.
+(
+    id: "death_strike_leech_common",
+    display_name: "Improved Leech",
+    ability_scope: Some("death_strike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "leech_percent",
+        op: MultiplyAdd(0.20),
+    )),
+)

@@ -1,0 +1,18 @@
+// ThroneRoom curse: enemies deal double damage.
+// Modifier is applied as extra_modifiers in resolve_params() for all enemy ability stat resolutions.
+// The player sees the curse description before choosing to enter the ThroneRoom.
+//
+// Curse modifiers use the same StatModifier type as talent modifiers.
+// They are passed to resolve_params as `extra_modifiers` during the encounter.
+// At encounter end they are simply not passed anymore — no cleanup needed.
+(
+    id: "enemies_deal_double_damage",
+    display_name: "Bloodlust",
+    description: "Enemies deal double damage for the duration of this encounter.",
+    curse_modifiers: [
+        (
+            stat: "damage",
+            op: MultiplyAdd(1.0),   // +100% = double damage
+        ),
+    ],
+)

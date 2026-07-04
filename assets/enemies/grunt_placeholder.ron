@@ -1,0 +1,30 @@
+// PLACEHOLDER — to be replaced with proper theme-specific enemies in Phase 9.
+// Represents the "Grunt" archetype currently hardcoded in enemy/archetypes.rs.
+// This file shows the target schema; the archetypes.rs function will be deleted
+// once EnemyDef asset loading is implemented in Phase 5.
+//
+// Enemy abilities are TBD — the `abilities` list will be filled in during the
+// enemy content pass (Phase 9). The interface is defined in enemy/assets.rs.
+(
+    id: "grunt_placeholder",
+    display_name: "Grunt",
+    rarity: Common,
+    base_stats: (
+        max_health: 10.0,
+        move_speed: 15.0,
+        size_radius: 12.0,
+    ),
+    ai_behavior: "melee_chaser",
+    abilities: [
+        (
+            behavior: "contact_melee",
+            params: {
+                "damage": 5.0,
+                "range": 28.0,
+            },
+            cooldown_secs: 1.0,
+        ),
+    ],
+    xp_value: 3,
+    drop_table: "common_enemy",
+)

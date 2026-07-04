@@ -1,14 +1,31 @@
 use bevy::prelude::{Entity, Event};
 
+/// Element tags on a `DamageEvent`. Used by the status effect system (Phase 3) to
+/// trigger cross-element cancellations (Fire removes Frostbite, Frost removes Blaze).
+/// Existing callers pass an empty `tags` slice — the field is purely additive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DamageTag {
+    Physical,
+    Fire,
+    Frost,
+    Holy,
+    Shadow,
+    Arcane,
+}
+
 /// Request to deal `amount` damage to `target`. Any system (attacks, projectile
 /// collisions, hazards, DoTs) emits this; `apply_damage` is the single place that
 /// mutates `Health`. `source` records who caused it (for future attribution: reflect,
 /// thorns, kill credit / XP).
+///
+/// `tags` — added in Phase 0. All existing callers pass an empty slice; the field is
+/// read only by status/systems/cross_interact.rs (Phase 3).
 #[derive(Event)]
 pub struct DamageEvent {
     pub target: Entity,
     pub amount: f32,
     pub source: Entity,
+    pub tags: Vec<DamageTag>,
 }
 
 /// Request to restore `amount` health to `target`. The healing counterpart to `DamageEvent`:

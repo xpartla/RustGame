@@ -1,0 +1,25 @@
+// WORKING NAME: "Empowered Reach" (placeholder — needs naming pass)
+// Ability: blood_boil
+// Rarity: Rare
+// Uniqueness: Exclusive
+//
+// Effect: Behavior hook "blood_boil_dnd_range".
+//
+// Hook behavior (registered in AbilityPlugin):
+//   Reads PlayerZonePresence (zone/components.rs).
+//   If presence.is_inside("death_and_decay"):
+//     Doubles the "range" param before the blood_boil behavior executes (Pre hook).
+//   Otherwise: no effect.
+//
+// This demonstrates the zone-presence pattern without modifying D&D or the base
+// blood_boil ability definition. The zone interaction is encoded entirely in this hook.
+//
+// Listed in blood_boil.ron under hooks: [(Pre, "blood_boil_dnd_range")].
+(
+    id: "blood_boil_dnd_range_rare",
+    display_name: "Empowered Reach",
+    ability_scope: Some("blood_boil"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("blood_boil_dnd_range"),
+)

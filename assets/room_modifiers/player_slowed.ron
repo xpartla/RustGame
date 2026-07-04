@@ -1,0 +1,14 @@
+// ThroneRoom curse: player movement speed reduced.
+// -30% multiplicative penalty to the player's move_speed stat.
+// The move_speed stat is resolved through resolve_params for the "global_passive" slot.
+(
+    id: "player_slowed",
+    display_name: "Encumbered",
+    description: "Your movement speed is reduced by 30% during this encounter.",
+    curse_modifiers: [
+        (
+            stat: "move_speed",
+            op: MultiplyAdd(-0.30),
+        ),
+    ],
+)

@@ -1,0 +1,25 @@
+// Frostbite — Mage ice debuff.
+//
+// Passive effect: slows the target (move_speed multiplied by slow_factor) and applies
+// a damage_taken_increase multiplier (read by apply_damage.rs in Phase 3).
+// No tick damage — pure stat debuff.
+//
+// Removed by fire damage (DamageEvent with Fire tag).
+// The removal itself triggers no additional effects from this definition alone —
+// talent hooks can react to frostbite removal (e.g. Frostbite talent "gain frost charge
+// when frostbitten enemy dies" uses on_remove_hooks).
+//
+// Stack: Exclusive by default. The Mage epic talent "Enemies can be affected by frostbite
+// up to 3 times" changes stacking to StackCapped(3) via a hook — not by editing this file.
+(
+    id: "frostbite",
+    display_name: "Frostbite",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 5.0,
+    tick_interval_secs: None,           // no DoT tick — debuff only
+    on_apply_hooks: ["frostbite_apply_slow"],
+    on_tick_hooks: [],
+    on_remove_hooks: ["frostbite_on_remove"],
+    removed_by_tags: [Fire],
+    removes_on_apply: [],               // frostbite does not remove blaze; blaze removes frostbite
+)

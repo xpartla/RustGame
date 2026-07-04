@@ -1,0 +1,39 @@
+// WORKING NAME: "D&D" (Death and Decay)
+// Class: Blood Death Knight
+// Slot: Special (right click)
+// Unlock: Level 1 (always granted)
+//
+// Behavior: dropped_zone — drops a PersistentZone at the player's current position.
+// Zone type: "death_and_decay"
+//
+// Zone effects (read by other abilities via PlayerZonePresence):
+//   - Death Strike deals increased damage to enemies inside.
+//   - Heart Strike hits one additional target per hit inside.
+//   - Player heals X% more per second while inside (regen, implemented as periodic HealEvent).
+//
+// These zone synergies are not encoded here — they are encoded in the consuming abilities
+// and the BDK passive talent hooks. This keeps D&D's definition minimal.
+//
+// AMZ (another ability) blocks projectiles — separate zone type "amz".
+(
+    id: "dnd",
+    display_name: "D&D",
+    unlock_schedule: Level1,
+    behavior: "dropped_zone",
+    hooks: [],
+    base_params: {
+        "zone_radius": 80.0,
+        "zone_duration": 8.0,
+        "cooldown": 15.0,
+        "damage_per_second": 2.0,
+        // Multiplier applied to Death Strike damage inside zone (read by death_strike behavior)
+        "death_strike_damage_multiplier": 1.5,
+        // Additional Heart Strike targets inside zone
+        "heart_strike_extra_targets": 1.0,
+        // Heal percent per second while standing inside
+        "regen_percent_per_second": 0.5,
+    },
+    // zone_type string used as the ZoneTypeId in PlayerZonePresence
+    // zone_type: "death_and_decay",   // TODO: add zone_type as a named param or separate field
+    talent_pool: [],   // TODO(content pass): add D&D talents
+)

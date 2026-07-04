@@ -1,0 +1,18 @@
+// WORKING NAME: "Extended Reach" (placeholder — needs naming pass)
+// Ability: death_strike
+// Rarity: Common
+// Uniqueness: Stack(3)
+//
+// Effect: +20% multiplicative bonus to the range stat.
+// Stacks with other range modifiers.
+(
+    id: "death_strike_range_common",
+    display_name: "Extended Reach",
+    ability_scope: Some("death_strike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: MultiplyAdd(0.20),
+    )),
+)

@@ -1,0 +1,29 @@
+// WORKING NAME: "Companion"
+// Class: Blood Death Knight
+// Slot: Passive (no input binding)
+// Unlock: Level 1 (always granted)
+//
+// Behavior: summon — every N seconds, spawns a companion entity for Y seconds.
+// The companion mimics Death Strike (uses the "melee_cone" behavior with companion's own stats,
+// not the player's talent-modified stats — companion is a separate entity).
+//
+// "mimicked_ability_id" tells the Summon behavior which ability to look up for the
+// companion's attack behavior. The companion does NOT receive the player's talents.
+(
+    id: "companion",
+    display_name: "Companion",
+    unlock_schedule: Level1,
+    behavior: "summon",
+    hooks: [],
+    base_params: {
+        "spawn_interval": 10.0,
+        "companion_duration": 8.0,
+        "mimicked_ability_id": 0.0,   // TODO: summon behavior needs a string param, not f32
+        // companion combat stats (independent of player modifiers)
+        "companion_damage": 6.0,
+        "companion_range": 50.0,
+        "companion_half_angle": 0.785,
+        "companion_cooldown": 1.5,
+    },
+    talent_pool: [],   // TODO(content pass)
+)

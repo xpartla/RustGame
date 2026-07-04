@@ -1,0 +1,44 @@
+// WORKING NAME: "Blood Death Knight" — will be renamed in final content pass.
+// Internal id is stable; display_name can change freely.
+//
+// Stance: none. has_stance = false. Q is unbound.
+// Resource model: HealthBased — some abilities scale with missing health or leech health.
+//
+// Level-up schedule:
+//   Level 1:     death_strike, dnd, companion (always granted)
+//   Level 2 or 3: blood_boil (from band_2_3_pool)
+//   Level 2 or 3: heart_strike (from band_2_3_pool)
+//   Level 4–6:   one of abomination_limb, purgatory, amz (from band_4_6_pool, without replacement)
+//
+// See ability RON files in assets/abilities/ for each ability's behavior and talent pool.
+// See talent RON files in assets/talents/ for each talent's effect.
+(
+    id: "blood_death_knight",
+    display_name: "Blood Death Knight",
+    base_stats: (
+        max_health: 200.0,
+        move_speed: 35.0,
+    ),
+    resource_model: HealthBased,
+    has_stance: false,
+    stance_a: None,
+    stance_b: None,
+    level_1_abilities: ["death_strike", "dnd", "companion"],
+    band_2_3_pool: ["blood_boil", "heart_strike"],
+    band_4_6_pool: ["abomination_limb", "purgatory", "amz"],
+    class_passive_pool: [
+        "bdk_passive_no_heal_cap",
+        "bdk_passive_dnd_damage_boost",
+        "bdk_passive_overkill_leech",
+        "bdk_passive_health_and_healing",
+        "bdk_passive_blood_boil_spawns_dnd",
+    ],
+    stance_slots: [
+        (
+            stance: "default",
+            basic: Some("death_strike"),
+            special: Some("dnd"),
+            movement: None,
+        ),
+    ],
+)

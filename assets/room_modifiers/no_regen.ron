@@ -1,0 +1,15 @@
+// ThroneRoom curse: no health regeneration.
+// Implemented as Override(0.0) on the regen_percent_per_second stat.
+// The player's baseline regen (if any) comes from the "regen_percent_per_second" stat
+// resolved for a "global_passive" ability slot. Overriding it to 0.0 disables regen.
+(
+    id: "no_regen",
+    display_name: "Parched",
+    description: "You cannot regenerate health during this encounter.",
+    curse_modifiers: [
+        (
+            stat: "regen_percent_per_second",
+            op: Override(0.0),
+        ),
+    ],
+)

@@ -1,0 +1,41 @@
+// WORKING NAME: "Death Strike"
+// Class: Blood Death Knight
+// Slot: Basic (left click)
+// Unlock: Level 1 (always granted)
+//
+// Behavior: melee_cone — hits all enemies within range and half_angle of Facing direction.
+//
+// Hooks:
+//   Post "bone_shield_on_kill" — fires only if the player has the bone_shield_epic talent.
+//   Tracks kill count; grants bone shield (blocks next hit) after threshold kills.
+//   Implemented in ability/hooks/bone_shield.rs; registered in AbilityPlugin::build.
+//
+// Key interactions:
+//   - "dnd" zone: D&D talent "bdk_passive_blood_boil_spawns_dnd" and D&D ability
+//     buff Death Strike damage for enemies inside — NOT encoded here; encoded in the
+//     D&D ability's hook which reads PlayerZonePresence.
+//   - leech_percent: on each hit, heal (damage_dealt * leech_percent / 100) via HealEvent.
+//     Implemented in the MeleeCone behavior (Phase 1).
+(
+    id: "death_strike",
+    display_name: "Death Strike",
+    unlock_schedule: Level1,
+    behavior: "melee_cone",
+    hooks: [
+        (Post, "bone_shield_on_kill"),
+    ],
+    base_params: {
+        "damage": 10.0,
+        "range": 60.0,
+        "half_angle": 0.785,    // ~45 degrees
+        "cooldown": 1.2,
+        "leech_percent": 5.0,
+        // bone_shield hook reads this; meaningless if hook not active
+        "bone_shield_kill_threshold": 5.0,
+    },
+    talent_pool: [
+        "death_strike_leech_common",
+        "death_strike_range_common",
+        "death_strike_bone_shield_epic",
+    ],
+)

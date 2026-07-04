@@ -29,6 +29,7 @@ pub fn enemy_attack(
                 target: player_entity,
                 amount: stats.damage,
                 source: enemy_entity,
+                tags: vec![],
             });
             cooldown.timer.reset();
         }
