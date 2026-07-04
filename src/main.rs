@@ -7,6 +7,7 @@ mod enemy;
 mod projectile;
 mod pickup;
 mod world;
+mod run;
 
 use bevy::DefaultPlugins;
 use bevy::prelude::{App};

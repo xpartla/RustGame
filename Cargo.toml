@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 bevy = "0.16.1"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["small_rng"] }

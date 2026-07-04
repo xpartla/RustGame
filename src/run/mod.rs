@@ -17,7 +17,12 @@
 //   systems/
 //     transitions.rs — encounter-complete → next-node selection, act transitions, game-over
 
-pub mod plugin;
+// Phase 0 status: only `rng` (RunRng) is compiled and wired in — it is the prerequisite for
+// seeded map generation. `state`, `plugin`, and `systems` remain scaffold-only and are enabled
+// in Phase 7 (act graph / room work), at which point they also pull in the hero/ability/talent/
+// progression modules they reference.
 pub mod rng;
-pub mod state;
-pub mod systems;
+// TODO(Phase 7): enable once the act graph and run flow are implemented.
+// pub mod plugin;
+// pub mod state;
+// pub mod systems;

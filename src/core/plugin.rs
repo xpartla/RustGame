@@ -1,6 +1,7 @@
-use bevy::prelude::{App, IntoScheduleConfigs, Plugin, PostUpdate, Update};
+use bevy::prelude::{App, IntoScheduleConfigs, Plugin, PostUpdate, Update, in_state};
 use crate::core::events::{DamageEvent, GainXpEvent, HealEvent, LevelUpEvent};
 use crate::core::sets::CombatSet;
+use crate::game::state::GameState;
 use crate::core::systems::{
     movement::apply_velocity,
     render_sync::{apply_facing_rotation, sync_transform},
@@ -30,7 +31,7 @@ impl Plugin for CorePlugin {
                             apply_facing_rotation.after(world_to_grid),
                             apply_damage.in_set(CombatSet::Apply),
                             apply_heal.in_set(CombatSet::Apply),
-                            ),
+                            ).run_if(in_state(GameState::InRun)),
         );
         app.add_systems(PostUpdate, draw_health_bars);
     }

@@ -1,7 +1,8 @@
 use bevy::app::PostUpdate;
-use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Timer, TimerMode, Update};
+use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Timer, TimerMode, Update, in_state};
 use crate::core::components::FlowField;
 use crate::core::sets::CombatSet;
+use crate::game::state::GameState;
 use crate::core::systems::flow_field::rebuild_flow_field_from_player;
 use crate::enemy::components::EnemySpawner;
 use crate::enemy::systems::debug::draw_enemy_attack_flash;
@@ -20,16 +21,16 @@ impl Plugin for EnemyPlugin {
                 timer: Timer::from_seconds(5.0, TimerMode::Repeating),
                 radius: 10,
             })
-            .add_systems(Update, spawn_enemy_over_time)
-            .add_systems(Update, enemy_attack.in_set(CombatSet::Damage))
-            .add_systems(Update, enemy_death.in_set(CombatSet::Death))
+            .add_systems(Update, spawn_enemy_over_time.run_if(in_state(GameState::InRun)))
+            .add_systems(Update, enemy_attack.in_set(CombatSet::Damage).run_if(in_state(GameState::InRun)))
+            .add_systems(Update, enemy_death.in_set(CombatSet::Death).run_if(in_state(GameState::InRun)))
             .add_systems(
                 Update,
                 (
                     rebuild_flow_field_from_player,
                     enemy_follow_flow_field.after(rebuild_flow_field_from_player),
                     update_enemy_facing.after(enemy_follow_flow_field),
-                ),
+                ).run_if(in_state(GameState::InRun)),
             )
             .add_systems(PostUpdate, draw_enemy_attack_flash);
     }

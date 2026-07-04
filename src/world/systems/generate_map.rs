@@ -1,6 +1,7 @@
 use bevy::prelude::ResMut;
 use rand::Rng;
 use crate::core::components::GridPosition;
+use crate::run::rng::RunRng;
 use crate::world::components::TileMap;
 use crate::world::constants::{
     MAP_HALF_TILES, OBSTACLE_BLOB_COUNT, OBSTACLE_BLOB_MAX_TILES, OBSTACLE_BLOB_MIN_TILES,
@@ -15,13 +16,17 @@ const STEPS: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 ///
 /// This is the deliberately simple PoC pass (scattered blobs on a finite grid). Rooms/corridors
 /// and dynamic streaming beyond the fixed bounds are deferred — see PLAN.md / CLAUDE.md.
-pub fn generate_map(mut map: ResMut<TileMap>) {
+///
+/// Draws from `RunRng` (the seeded run stream) rather than `thread_rng`, so the layout is
+/// reproducible from the run seed. Phase 0 seeds `RunRng` from entropy per launch, so behaviour
+/// is unchanged for now; Phase 7 supplies the real per-run seed.
+pub fn generate_map(mut map: ResMut<TileMap>, mut run_rng: ResMut<RunRng>) {
     let h = MAP_HALF_TILES;
     map.half_width = h;
     map.half_height = h;
     map.blocked.clear();
 
-    let mut rng = rand::thread_rng();
+    let rng = run_rng.rng();
 
     // Border ring — rendered as the boundary wall (out-of-bounds is impassable regardless).
     for x in -h..=h {
