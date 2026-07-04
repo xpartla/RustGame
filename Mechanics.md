@@ -1,0 +1,341 @@
+# Controls
+
+* WASD movement  
+* Shift / Space for movement ability, i.e. dash  
+* Left Click for basic ability  
+* Right Click for special ability  
+* Q for stance swap
+
+# Classes & Abilities
+
+# Blood Death Knight
+
+High durability, Leech, Increase damage as health lowers, melee, strong AoE, control
+
+* Blood boil \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
+  * Periodic AoE, circle around character, leech  
+    * (common) Increase damage by X%  
+    * (common) Increase range by X%  
+    * (rare, unique\[3\]) Blood boil deals additional X% of damage to enemies based on their current health for Y seconds  
+    * (epic, unique) If an enemy affected by blood boil DoT dies, the DoT gets transferred to X additional enemies within Y range  
+    * (rare, unique) Blood boil has double range when cast inside D\&D  
+* Death Strike \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
+  * Default attack, frontal melee cone, leech  
+    * (common) Increase leech by X%  
+    * (common) Increase range by X%  
+    * (epic, unique) After Death Strike kills X enemies, gain bone shield that blocks 1 next attack / projectile  
+* Heart Strike \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
+  * Melee, hit X nearest enemies within Y range, dealing Z damage,, the lower your health \- higher the damage  
+    * (common) Hit \+1 more enemies  
+    * (common) Increase range by X  
+    * (epic) Deal additional X% damage if you are under 25% health  
+* Abomination limb \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
+  * Periodically grip enemy from X radius  
+    * (common) Increase grip range by X  
+    * (rare) Grip additional X targets  
+    * (rare, unique) After gripping an enemy gets stunned for X seconds  
+    * (epic, unique) Grip only ranged enemies  
+* D\&D \- Special Attack (X second cooldown) (Unlocked at level 1\)  
+  * Periodically drop an area where enemies take increased Death Strike damage and Heart Strike hits additional target \+ you heal X% more when standing inside  
+* Purgatory (cheat death) \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
+  * Restore to 5% health, immune to damage for 5 seconds, long CD (rare, unique)  
+    * (rare) Increase restored health by X%  
+    * (epic, \[3\]) Increase damage immunity by X seconds  
+    * (rare) lower cooldown by X seconds  
+* Companion \- passive (permanent, no cooldown) (Unlocked at level 1\)  
+  * Each X seconds spawn a companion for Y seconds that is going to mimic death strike  
+* AMZ \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
+  * Periodically drop a zone around character that blocks projectiles (rare) (if enemies emit projectiles from inside the zone it has no effect \- it acts as a barrier)  
+    * (common) Increase the size of the zone by X%  
+    * (rare) Increase your movement speed by X% when inside the zone  
+    * (rare) You regenerate X% health each second you are inside the zone  
+    * (common) Increase the duration of the zone by Y seconds  
+    * (epic, unique) The zone gets attached to you as you move  
+* Passive Talents  
+  * (epic, unique) You can no longer heal above 35% max health, your leech is increased by 50%  
+  * (epic, unique) Your damage is lowered by 60%, your damage inside D\&D is increased by 500%  
+  * (rare, unique) 20% overkill damage is leeched  
+  * (common) Increase health by X% and healing taken by Y%  
+  * (rare, unique) Blood boil automatically spawns D\&D zone
+
+# Druid
+
+Human form \- ranged control, healing  
+Animal form \- high damage, enhanced attacks, movement
+
+* Stance Swap \- Q (X second cooldown) (Unlocked at level 1\)  
+  * Change from human to animal form and cast Scratch  
+  * Change from animal form to human and cast Roots  
+* Bleed (passive) (passive, no cooldown) (Unlocked at level 1\)  
+  * Enemies affected by bleed suffer X damage every second  
+    * (common) Increase bleed damage by X%  
+    * (common) Increase bleed duration by X seconds  
+    * (common) Bleed ticks X% faster  
+    * (rare) Bleed slows enemies by X%  
+    * (epic) Hitting an enemy while bleeding increases the bleed duration by X seconds  
+    * (rare, unique) Bleeding targets take X% increased damage from Human abilities  
+* Scratch (Animal) \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
+  * Hit all enemies in a cone in front of you for X damage  
+  * Enhanced \- Scratch applies a bleed on all enemies hit  
+    * (common) Increase the size by X%  
+    * (common) Increase the damage by X%  
+    * (common) Scratch applies bleed to the closest X targets  
+    * (rare, unique) Scratch deals X% more damage to enemies affected by root  
+    * (rare) Increase bleed duration by X seconds  
+    * (rare, unique) Scratch deals X% more damage to bleeding targets  
+    * (epic, unique) Scratch deals only 50% damage, bleed deals triple damage  
+* Ferocious Bite (Animal) \- Special Attack (X second cooldown) (Unlocked at level 1\)  
+  * Jump to the closest target near your cursor and deal X damage to the enemy. Always critically strikes if the target is bleeding  
+  * Enhanced \- Ferocious bite cleaves in a circle around you, applying X% of the damage as bleed  
+    * (common) Increase damage by X%  
+    * (common) Increase range by X  
+    * (rare, unique) Ferocious bite consumes active bleed on the target, to deal X% increased damage per bleed stack  
+    * (epic, unique) If Ferocious bite kills an enemy, it resets the cooldown of your next stance swap, and grants 1 Enhanced charge  
+    * (rare, unique) If cast while standing inside a Tree Conduit, the cleave applies bleed X times  
+    * (epic, unique) Ferocious bite deals no damage to the primary target, instead it deals all the remaining bleed from the current target instantly to enemies inside the cleave radius  
+* Primal Pounce (Animal) \- Passive (X second cooldown) (Unlocked randomly at level 2/3)  
+  * Every X seconds automatically leap towards the highest-health enemy within a radius, dealing X damage and applying a bleed  
+    * (common, unique \[5\]) If the target was Rooted, gain X% movement speed for Y seconds after leaping  
+    * (rare, unique) Create a Bloom flower at the point you jumped from  
+    * (epic, unique) Primal pounce deals no direct damage, instead the bleed is applied to all targets in your path  
+    * (common) Increase the range by X  
+    * (rare, unique) If the target is rooted, deal triple damage  
+* Roots (Human) \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
+  * Shoot a projectile in front of you that deals X damage  
+    * (rare, unique) Projectile can pass through enemies  
+    * (common, unique) Enemies hit by roots are stunned for X seconds  
+    * (common) Increase damage by X%  
+    * (rare, unique \[3\]) Shoot additional projectile towards the nearest enemy  
+* Heal (Human) \- Special Attack (channeled while moving) (X second cooldown) (Unlocked at level 1\)  
+  * Heals you for X% max health  
+    * (rare, unique) You heal for X% more per bleeding enemy within Y range  
+    * (rare, unique) Your next attack in animal form is enhanced  
+    * (rare, unique) Your heal also heals your Ent  
+    * (common, unique\[3\]) Lower cast time by X%  
+* Tree conduit (human) \- passive (X second cooldown) (Unlocked randomly at level 4/5)  
+  * Spawn a tree for Y seconds, within X range of the tree, your next animal attack is enhanced  
+    * (common) Increase tree radius by X%  
+    * (rare) Reduce spawn range by X%  
+    * (rare) Increase duration by X seconds  
+    * (epic, unique) All animal attacks are enhanced while in tree range  
+* Bloom (Human) \- passive (X second cooldown) (Unlocked randomly at level 4/5)  
+  * Periodically spawn a flower that can be picked up when ran over, upon pickup your next animal form attack is enhanced  
+    * (rare) After picking up you heal for X% health over Y seconds  
+    * (rare, unique) Your next 2 attacks are enhanced  
+    * (common) You gain X% movement speed after pickup  
+* Spawn Ent (Human) \- passive (X second cooldown) (multiple ents can live simultaneously) (Unlocked randomly at level 2/3)  
+  * Periodically spawn an Ent that runs towards the nearest enemy, forcing the enemy to attach the Ent instead of you  
+    * (common) Ent lowers the max health of nearby enemies by X% while alive  
+    * (epic, unique\[Fiery Ent / Earth Ent\]) Fiery Ent \- Ent has 50% reduced health and explodes on death, dealing X damage to enemies around him  
+      * (common) Increase Fiery Ent damage by X%  
+      * (rare, unique) Spawn a mini Fiery Ent for each enemy killed by the explosion, mini Ents are unkillable and live for X seconds, dealing Y damage per second to nearby enemies per Ent \- adding up  
+    * (epic, unique\[Earth Ent/ Fiery Ent\]) Earth Ent \- Ent has 200% increased health and casts entangling zone around himself, rooting the enemies in place   
+      * (rare, unique) After entangled enemy gets hit by roots, they transform into spiky roots, dealing X damage per second to enemies within Y range, multiplying  
+    * (common) Reduce cooldown by X  
+    * (rare, unique) Ents can pick up bloom flowers, healing all summoned ents and granting them X% increased movement speed for Y seconds  
+* Passive Abilities  
+  * (rare, unique) Mega bleed \- enemies can bleed from the same ability up to 3 times, each new application refreshes the old one  
+  * (rare, unique) Unstable form \- your first 3 casts in animal form are always enhanced, you have a 10% chance of turning to human form after casting an enhanced ability  
+  * (epic, unique) Master of the Forest \- You can no longer turn into animal form, Spawn Ent spawns an additional 2 Ents, Blooming flowers explode after getting picked up by Ents, causing the flower to erupt, dealing X damage in a radius around the flower  
+  * (rare, unique) Swapping forms costs X% of your current health, for Y seconds after swapping forms, you deal Y% increased damage and your movement speed is doubled
+
+# Mage
+
+Ice form \- slow, control, damage spikes, combo  
+Fire form \- DoTs, spreading damage, big AoE
+
+* Stance swap \- Q (active, no cooldown) (Unlocked at level 1\)  
+  * Fire \-\> Ice \- gain ice barrier absorbing the next attack / projectile  
+  * Ice \-\> Fire, \- gain boots of fire, increase movement speed by Y% for X sec  
+* Fireblast \- fire basic attack (X second cooldown) (Unlocked at level 1\)  
+  * Shoot a projectile, dealing X damage, setting enemy hit ablaze  
+    * (common, unique) Projectile explodes on impact, dealing X damage to nearby enemies  
+    * (common) Increase damage by X%  
+    * (common) Increase range by X  
+* Blaze \- fire passive (passive, no cooldown) (Unlocked randomly at level 2/3)  
+  * Enemies affected by blaze receive X damage every Y seconds, hitting an enemy affected by blaze with a frost spell removes blaze  
+    * (common) Increase blaze damage by X%  
+    * (rare, unique) Blaze deals double damage, enemies affected by blaze have movement speed increased by 50%  
+    * (rare, unique) Blaze deals 50% reduced damage, after running out, blaze moves to a nearby target (one blaze can jump up to 3 times)  
+* Flamewrath \- fire passive (X second cooldown)  (Unlocked randomly at level 4/5)  
+  * Periodically apply to the nearest target. Nearest ablaze enemy consumes blaze effect and create an explosion around himself, dealing X damage to nearby enemies  
+    * (common) Increase cast radius by X%  
+    * (common) Increase explosion range by X%  
+    * (common) Increase damage by X%  
+    * (common) Reduce cooldown by X %  
+    * (common, unique) Flamewrath deals 50% reduced damage, but does not consume the blaze stack  
+    * (rare) Flamewrath affects an additional target  
+* Flamestrike \- fire special attack (X second cooldown) (Unlocked at level 1\)  
+  * Cast a fiery circle, dealing X damage to enemies within the zone, dealing increased damage per enemy affected by blaze  
+    * (common) Increase cast range by X%  
+    * (common) Increase zone range by X%  
+    * (common) Increase damage by X%  
+    * (epic, unique) Flamestrike deals no damage, and triggers flamewrath on all enemies hit  
+    * (epic, unique) Flamestrike deals 80% reduced damage, and deals the remaining blaze damage on enemies instantly, removing the blaze effects  
+* Frostbolt \- ice basic attack (X second cooldown) (Unlocked at level 1\)  
+  * Shoot a projectile, dealing X damage to the first enemy hit, applying frostbite, if the target is already affected by frostbite, generate a frost charge  
+    * (common) Increase damage by X%  
+    * (common) Increase range by X%  
+    * (rare) Frostbolt pierces through, hitting an additional enemy  
+    * (common) Increase the projectile size by X%  
+    * (epic, unique) if an enemy affected by frostbite gets killed by frostbolt, they explode dealing X damage to nearby enemies  
+* Frost Impale \- frost special attack (long channel while moving) (X second cooldown) (Unlocked at level 1\)  
+  * Consume all frost charges to launch a massive icicle at a target dealing X damage, increased by Y% per frost charge  
+    * (common) Frost impale deals X% increase damage  
+    * (common) Reduce the cooldown of frost impale by X%  
+    * (rare) Frost impale deals X% less damage, reduce the cast time by 50%  
+    * (rare, unique) Bonus damage from frost charges increased by 50%, cast time increased by 50%  
+    * (epic, unique) Frost impale deals X% reduced damage to all enemies hit in its path and applies frostbite  
+    * (common) Increase the range by X%  
+    * (common) Frost impale deals X% more damage to the target per enemy it passes through         
+    * (rare) Increase Frost Impale projectile size by X%  
+* Frostbite \- frost passive (passive, no cooldown) (Unlocked randomly at level 2/3)  
+  * Enemies affected by frostbite have movement speed reduced by 20% and take 10% increased damage, hitting a target affected by frostbite with a fire spell removes frostbite  
+    * (common) Increase damage increase by X%  
+    * (common) Increase slow by X%  
+    * (epic, unique) Enemies can be affected by frostbite up to 3 times  
+    * (rare, unique) Gain a frost charge if an enemy affected by frostbite dies  
+    * (epic) Heal X% of your max health after killing an enemy affected by frostbite  
+* Frost charge \- frost passive (passive, no cooldown) (Unlocked randomly at level 4/5)  
+  * A charge generated by your spells, deal 1% increased damage against frostbitten targets per frost charge  
+    * (rare) Increase the damage multiplier by X  
+    * (epic, unique) Frost charges lower the damage against ablaze by X% per charge, gain 3 frost charges for each ablaze enemy hit by a frost spell  
+    * (rare, unique) Frost charges reduce your movement speed by X% per charge, but all your frost spells deal X% more damage pre charge  
+    * (epic) Heal 0.X% max health per second for each frost charge  
+* Passive cross cutting talents  
+  * (rare) Reduce the damage of your frost spells by X%, increase the damage of your fire spells by Y%  
+    * (rare) Reduce the damage of your fire spells by X%, increase the damage of your frost spells by Y%  
+    * (rare) Frost spells no longer remove baze on enemies, frost spells deal X% reduced damage  
+    * (rare) Fire spells no longer remove frostbite on enemies, fire spells deal X% reduced damage  
+    * (rare) Targets affected by frostbite and blaze receive X% increased damage  
+    * (epic) You can no longer use flamewrath, gain a frost charge for each application of blaze
+
+# Paladin
+
+Melee, healing, area damage zones, strong single target
+
+* Hammer of Justice \- primary attack (X second cooldown) (Unlocked at level 1\)  
+  * Deal a large amount of damage to a single target, and 50% of the damage to all targets in a cone behind the primary target  
+    * (common) Increase the damage by X%  
+    * (common) Increase the cast range by X  
+    * (rare, unique) Hammer of justice bounces up to 3 nearby targets, dealing 50% damage  
+    * (epic, unique) If hammer of justice kills an enemy inside consecrated ground, create an explosion at the impact location dealing X damage to all enemies in a range around the target  
+    * (rare, unique) If hammer of justice strikes a target affected by holy mark, emit a shockwave from your character, dealing X damage and pushing enemies back  
+* Flash of light \- special attack (channeled while moving) (X second cooldown) (Unlocked at level 1\)  
+  * Cast down a holy ray of light upon yourself, healing you for X% max health  
+    * (common, unique) Overhealed health becomes a shield  
+    * (common) Increase healing by X%  
+    * (common) Reduce cooldown by X   
+    * (rare) Deal X% of amount healed to enemies in a radius around you  
+    * (epic, unique) Casting flash of light inside consecrated ground makes you radiate holy energy, exploding in a small radius around you, dealing X damage to nearby enemies  
+    * (rare, unique) Flash of light makes your next hammer of justice deal X% increased damage  
+* Consecrated ground \- passive (passive, no cooldown) (Unlocked randomly at level 2/3/4)  
+  * Drop zones of consecrated ground under your feet as you move, dealing X damage per second to enemies inside  
+    * (rare) Increase the size of the zone by X  
+    * (common) Increase the damage by X%  
+    * (common) Consecrated ground also slows enemies inside by X%  
+    * (rare) Consecrated ground deals X% increased damage per enemy inside  
+* Spinning hammer \- passive (always active, no cooldown) (Unlocked randomly at level 2/3/4)  
+  * Spawn a hammer spinning around your character at all times, dealing X damage, if target is affected by holy mark, deal double damage  
+    * (rare, unique) Spinning hammer also stuns enemies for X seconds  
+    * (epic) Spawn an additional hammer orbiting your character  
+    * (common) increase the damage by X%  
+    * (common) Increase the radius by X  
+* Smite \- passive (X second cooldown) (Unlocked randomly at level 2/3/4)  
+  * Smite the closest enemy dealing X damage, applying a holy mark to the target  
+    * (common) increase the damage by X%  
+    * (common) Increase the range by X  
+    * (rare, unique) After smiting an enemy, create a consecrated ground under him, dealing X damage to every enemy inside every second  
+    * (epic) Holy mark affects all enemies in a radius around the target  
+    * (rare) Smite strikes an additional target
+
+# General Passive talents
+
+* (rare, unique \[5\]) Gain 10% movement speed up to 50% for x seconds after killing an enemy  
+* (common) Gain X% crit strike  
+* (common) Gain X% attack speed  
+* (rare, unique) Deal X% increased damage to enemies within close range, but take Y% increased damage from projectiles  
+* (rare, unique) Killing a rare enemy or a boss heals you for X% of your max health and increases your movement speed by Y% for Z seconds  
+* (epic, unique) Taking damage emits a shockwave, knocking enemies back and destroying all enemy projectiles (cooldown X seconds)  
+* (rare, unique) Gain X% increased experience from all enemies, but bosses have Y% more health and deal Z% more damage  
+* (rare, unique) Deal X% increased damage, but your max health is reduced by Y%  
+* (epic, unique) If you clear a room without taking any damage, permanently increase your damage by X% and raise your max health by Y%
+
+
+  
+
+# Game progression and big picture level design
+
+Big picture:
+
+* Character progression:  
+  * Select a character  
+  * Basic active abilities available from level 1  
+  * Reach level 2 by finishing map 1  
+  * Gain core offensive abilities at random at level 2 and 3  
+  * Gain other core abilities at levels 4-6 at random  
+  * Select 1 of 3 available talents (common, rare, epic) after each level up after getting all core abilities  
+  * Select 1 of 3 rare or epic available talents after special events  
+  * Remove a talent at a merchant  
+  * Trade 3 talents for a new random talent of higher quality  
+  * Gain experience by killing enemies (more difficult enemy, more XP)  
+* Map progression:  
+  * Map layout procedurally generated  
+  * Different map types  
+    * Survive X minutes  
+    * Kill all enemies  
+    * Kill map boss  
+    * Act Boss  
+  * Maps have different themes \- each theme has different type of enemies (Each enemy has different ability, bosses have multiple abilities \- all TBD)  
+    * Sand dune  
+      * Enemy types:  
+        * Scorpions, Vultures, Tusken (Sand people), Flame demon, Oil elemental  
+      * Bosses:  
+        * King Scorpion, Tusken Lord, Flame Cultist, Undead Lord  
+    * Forest  
+      * Enemy types:  
+        * Bear, Wolf, Corrupted Ranger, Hiker,   
+      * Bosses:  
+        * Mad Lumberjack, Dire wolf, Ent lord, Corrupted Druid   
+    * Castle ruins  
+      * Enemy types:  
+        * Animated Armor, Dancing Sword, Gargoyle, Skeleton, Banshee  
+      * Bosses:  
+        * The fallen King, Grand Lich, Gargoyle Lord  
+    * Frozen wasteland  
+      * Enemy types:  
+        * Frostbite Zombie, Ice Elemental, White Bear, Snow Troll, Icy Owl, Sabretooth Cat  
+      * Bosses:  
+        * Yeti Abomination, Frost Giant, Winter Witch  
+    * Alpine lakeside  
+      * Enemy types:  
+        * Stone golems, Lake Siren, Mountain Eagle, Corrupted Fisherman, Mud golem  
+      * Bosses:  
+        * The Lake Phantom, Fallen Townlord, Corrupted Mountaineer, King Crab  
+  * Maps contain swarms of enemies and a map boss  
+  * Enemies have their own scaling, independent of the player  
+  * Player can choose to speedrun to finish the objective, but may end up being underleveled for the map  
+* Act progression  
+  * Three acts in a playthrough  
+  * Each act has 3 different paths, intertwining and branching off (Slay the Spire style)  
+  * Player has to complete 15 encounters in an act, encounters may be:  
+    * Map, Boss Room, Act Boss, Throne Room, Merchant  
+  * Act 1 has a “tutorial” map as the beginning, where the player reaches level 2 \- then branching off  
+  * Other acts start branched off, the player can select his path  
+  * The player can see the encounter type, and the map theme   
+  * After Act 3 boss is a secret level, enabled by completing special feats of strength  
+    * TBD  
+* User Flow (screens)  
+  * Log in  
+  * Main menu  
+    * Start new run  
+      * Character selection  
+        * Character hero cards with sample abilities, talents, CTA button  
+        * Unlocked characters colorful, locked characters grayed out  
+    * Resume run  
+    * Heroes  
+    * Scoreboard  
+    * Settings  
+    * Exit Game  
+* 
+
