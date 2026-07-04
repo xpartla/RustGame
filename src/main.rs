@@ -8,6 +8,7 @@ mod projectile;
 mod pickup;
 mod world;
 mod run;
+mod ability;
 
 use bevy::DefaultPlugins;
 use bevy::prelude::{App};

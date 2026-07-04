@@ -3,7 +3,7 @@ use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
 use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
-use crate::player::systems::attack::{player_arc_attack, player_circle_attack};
+use crate::player::systems::ability_input::player_ability_input;
 use crate::player::systems::update_player_facing::update_player_facing;
 use crate::player::systems::debug::draw_player_facing;
 use crate::player::systems::death::player_death;
@@ -17,9 +17,10 @@ impl Plugin for PlayerPlugin {
             Update,
             (
                 player_input,
-                update_player_facing,
-                player_circle_attack.after(update_player_facing).in_set(CombatSet::Damage),
-                player_arc_attack.after(update_player_facing).in_set(CombatSet::Damage),
+                update_player_facing.before(CombatSet::Damage),
+                // Input → ability trigger. Fires before CombatSet::Damage so the ability
+                // system (also in that set) can act on the event the same frame.
+                player_ability_input.after(update_player_facing).before(CombatSet::Damage),
                 player_death.in_set(CombatSet::Death),
                 // XP lands the same frame as a kill: enemy_death emits GainXpEvent in
                 // CombatSet::Death, so consume it after that set runs.

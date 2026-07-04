@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use crate::ability::AbilityPlugin;
 use crate::camera::CameraPlugin;
 use crate::core::CorePlugin;
 use crate::enemy::EnemyPlugin;
@@ -26,6 +27,7 @@ impl Plugin for GamePlugin {
                 CorePlugin,
                 WorldPlugin,
                 PlayerPlugin,
+                AbilityPlugin,
                 EnemyPlugin,
                 ProjectilePlugin,
                 PickUpPlugin,

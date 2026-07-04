@@ -6,12 +6,9 @@ pub const PLAYER_HEALTH: f32 = 100.0;
 // Per-type enemy stats (health, speed, attack damage/range/cooldown, size, color) live in
 // enemy/archetypes.rs. Only cross-type tuning stays here.
 pub const ENEMY_ATTACK_FLASH_SECS: f32 = 0.15;
-pub const ARC_BASE_DMG: f32 = 5.0;
-pub const CIRCLE_BASE_DMG: f32 = 2.0;
 
-// Attack tuning
-pub const ATTACK_SPAWN_DISTANCE: f32 = 16.0;
-pub const ATTACK_HITBOX_RADIUS: f32 = 20.0;
+// Attack VFX tuning. Damage/range/cooldown now come from ability RON (assets/abilities/).
+// This is only the lifetime of the transient hitbox-flash gizmo entity.
 pub const ATTACK_LIFETIME: f32 = 0.1;
 
 // XP / leveling. Per-enemy-type XP rewards live in enemy/archetypes.rs (`xp_value`); the level

@@ -10,12 +10,18 @@
 use bevy::prelude::*;
 use crate::ability::assets::AbilityId;
 
-/// Marker + identity for a runtime ability entity (child of the player).
-/// The entity has this component plus a CooldownTimer and optionally a StanceGate.
+/// Marker + identity for a runtime ability entity.
+/// The entity has this component plus an AbilityCooldown and optionally a StanceGate.
+///
+/// Phase 1 stores the owner directly rather than using Bevy hierarchy (ChildOf). The plan's
+/// "child of the player" framing is honored logically via `owner`; parent/child wiring can be
+/// added later without changing the execution query.
 #[derive(Component, Debug, Clone)]
 pub struct AbilityInstance {
     /// Links back to the AbilityDef asset for behavior ID, base params, and talent pool.
     pub def_id: AbilityId,
+    /// The entity that owns/casts this ability (the player, for now).
+    pub owner: Entity,
 }
 
 /// Tracks remaining cooldown. The execution system fires when elapsed ≥ cooldown param.
@@ -41,12 +47,14 @@ impl AbilityCooldown {
 
 /// Optional stance gate. If present, this ability only executes when the player's
 /// ActiveStance matches. Absent = executes in all stances (e.g. passive abilities).
+/// Reserved for the stance system (Phase 4).
+#[allow(dead_code)]
 #[derive(Component, Debug, Clone)]
 pub struct StanceGate(pub String); // StanceId
 
 /// Per-ability state storage for behavior hooks that need persistent counters.
-/// Example: bone shield kill counter, frost charge count.
-/// Stored as a flat map; the hook reads and writes its own keys.
+/// Example: bone shield kill counter, frost charge count. Reserved for hooks (Phase 2+).
+#[allow(dead_code)]
 #[derive(Component, Debug, Default)]
 pub struct AbilityHookState(pub std::collections::HashMap<String, f32>);
 
@@ -59,7 +67,9 @@ pub struct TriggerAbilityEvent {
 }
 
 /// Event emitted by progression/systems/level_up.rs when an ability is unlocked.
-/// Ability plugin listens and spawns the AbilityInstance child entity.
+/// Ability plugin will listen and spawn the AbilityInstance entity. Reserved for the
+/// progression flow (Phase 2); Phase 1 grants the starting ability directly.
+#[allow(dead_code)]
 #[derive(Event, Debug)]
 pub struct UnlockAbilityEvent {
     pub ability_id: AbilityId,

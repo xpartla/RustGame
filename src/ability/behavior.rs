@@ -1,63 +1,95 @@
-// BehaviorRegistry and HookRegistry — the two open extension points of the ability system.
+// BehaviorRegistry — the open extension point of the ability system, plus the built-in
+// behavior implementations. (The talent HookRegistry lands with the talent system in Phase 2.)
 //
 // Adding a new ability shape:
 //   1. Implement AbilityBehavior for a unit struct.
-//   2. Call registry.register_behavior("my_behavior", MyBehavior) in a plugin.
+//   2. Call registry.register("my_behavior", MyBehavior) in AbilityPlugin::build.
 //   3. Set `behavior: "my_behavior"` in the ability's RON file.
 //   No other code changes.
 //
-// Adding a behavior-rewriting talent:
-//   1. Implement AbilityHook for a unit struct.
-//   2. Call registry.register_hook("my_hook", MyHook) in a plugin.
-//   3. Set `effect: Behavior("my_hook")` in the talent's RON file.
-//   4. Add (Pre | Post, "my_hook") to the ability's `hooks` list in its RON file.
-//   No other code changes.
+// Execution model (deliberately &mut World-free):
+//   A behavior reads an AbilityContext (owner identity, position, aim, candidate targets) and
+//   pushes AbilityEffects into a buffer. The execute system (systems/execute.rs) is the only
+//   place that touches Commands / EventWriter — it drains the buffer and applies each effect.
+//   This keeps behaviors pure and trivially testable, and matches architecture-plan §3.3.
 //
-// Interactions:
-//   - ability/systems/execute.rs calls BehaviorRegistry and HookRegistry each frame.
-//   - talent/systems/apply.rs inserts/removes ActiveHook components, which gate hook execution.
-//   - AbilityContext is built from the player entity's components by execute.rs.
+// Behaviors still pending (registered in their phase; until then execute_ready_abilities skips
+// any ability whose behavior id is not in the registry):
+//   "projectile"        — travelling projectile (needs projectile movement + collision)
+//   "dropped_zone"      — D&D / Consecrated Ground trail (Phase 6)
+//   "periodic_self_zone" — self-centred pulsing zone (Phase 6)
+//   "orbiting"          — Spinning Hammer (later)
+//   "leap_to_target"    — Ferocious Bite (later)
+//   "channel_while_moving" — Heal / Flash of Light / Frost Impale (later)
+//   "summon"            — Companion (later)
 
 use bevy::prelude::*;
 use std::collections::HashMap;
-use crate::ability::assets::{BehaviorId, HookId, StatId};
+use crate::ability::assets::{BehaviorId, StatId};
+use crate::constants::ATTACK_LIFETIME;
+use crate::core::events::DamageTag;
 
 /// Resolved numeric parameters after the talent modifier stack has been applied.
-/// Produced by resolve_params() in ability/systems/resolve_params.rs.
+/// Produced by resolve_params() in ability/systems/resolve_params.rs. In Phase 1 (no talents
+/// yet) this is just the ability's base params.
 #[derive(Debug, Clone)]
 pub struct ResolvedParams(pub HashMap<StatId, f32>);
 
 impl ResolvedParams {
-    /// Returns the param value, or `default` if the stat is not present.
+    /// Returns the param value, or 0.0 if the stat is not present.
     pub fn get(&self, stat: &str) -> f32 {
         *self.0.get(stat).unwrap_or(&0.0)
     }
 }
 
-/// Context passed to ability behaviors and hooks. Provides what a behavior needs to
-/// act (entity identity, spatial data, event writers) without requiring &mut World.
-///
-/// TODO(Phase 1): Expand with EventWriter<DamageEvent>, EventWriter<SpawnProjectileEvent>,
-/// player WorldPosition, Facing, etc. as the first behaviors are implemented.
-pub struct AbilityContext<'w> {
-    pub owner: Entity,
-    // TODO(Phase 1): add position, facing, event writers
-    _phantom: std::marker::PhantomData<&'w ()>,
+/// A candidate target the execute system gathers up front and hands to the behavior.
+/// Phase 1: every `Enemy`. Later this becomes faction-aware.
+#[derive(Debug, Clone, Copy)]
+pub struct EnemyTarget {
+    pub entity: Entity,
+    pub pos: Vec2,
 }
 
-/// The base execution logic for one ability shape (melee cone, projectile, zone drop, etc.).
+/// A deferred side effect a behavior requests. The execute system applies these after the
+/// behavior returns, so behaviors never touch Commands / EventWriter directly.
+#[derive(Debug)]
+pub enum AbilityEffect {
+    /// Deal damage to `target`. `source` is filled in by the execute system (the owner).
+    Damage {
+        target: Entity,
+        amount: f32,
+        tags: Vec<DamageTag>,
+    },
+    /// Restore health to `target` (used for leech / self-heal abilities).
+    Heal { target: Entity, amount: f32 },
+    /// Spawn a transient cone VFX flash (reuses the projectile hitbox-gizmo entities).
+    ConeVfx {
+        origin: Vec2,
+        radius: f32,
+        half_angle: f32,
+        forward: Vec2,
+        lifetime: f32,
+    },
+}
+
+/// What a behavior/hook is given each time it runs. Read-only view of the caster.
+pub struct AbilityContext<'a> {
+    pub owner: Entity,
+    /// Caster world position.
+    pub origin: Vec2,
+    /// Caster aim direction, normalized.
+    pub facing: Vec2,
+    /// Candidate targets gathered by the execute system.
+    pub enemies: &'a [EnemyTarget],
+}
+
+/// The base execution logic for one ability shape (melee cone, projectile, zone drop, …).
 /// Registered once in AbilityPlugin::build; referenced by BehaviorId string from RON.
 pub trait AbilityBehavior: Send + Sync + 'static {
-    fn execute(&self, ctx: &mut AbilityContext<'_>, params: &ResolvedParams);
+    fn execute(&self, ctx: &AbilityContext, params: &ResolvedParams, effects: &mut Vec<AbilityEffect>);
 }
 
-/// A pre/post execution hook attached to a specific ability by talent acquisition.
-/// Fires only when the player has the corresponding ActiveHook component.
-pub trait AbilityHook: Send + Sync + 'static {
-    fn execute(&self, ctx: &mut AbilityContext<'_>, params: &ResolvedParams);
-}
-
-/// Resource: maps BehaviorId → boxed behavior. Populated at plugin build time; read-only at runtime.
+/// Resource: maps BehaviorId → boxed behavior. Populated at plugin build; read-only at runtime.
 #[derive(Resource, Default)]
 pub struct BehaviorRegistry {
     behaviors: HashMap<BehaviorId, Box<dyn AbilityBehavior>>,
@@ -73,92 +105,136 @@ impl BehaviorRegistry {
     }
 }
 
-/// Resource: maps HookId → boxed hook. Populated at plugin build time; read-only at runtime.
-#[derive(Resource, Default)]
-pub struct HookRegistry {
-    hooks: HashMap<HookId, Box<dyn AbilityHook>>,
-}
+// ── Built-in behaviors ──────────────────────────────────────────────────────────────────
 
-impl HookRegistry {
-    pub fn register(&mut self, id: impl Into<HookId>, hook: impl AbilityHook) {
-        self.hooks.insert(id.into(), Box::new(hook));
-    }
-
-    pub fn get(&self, id: &str) -> Option<&dyn AbilityHook> {
-        self.hooks.get(id).map(|h| h.as_ref())
-    }
-}
-
-// ── Built-in behaviors (stubbed; implement in Phase 1) ─────────────────────────────────────
-
-/// Melee cone: hits all enemies within `range` and within `half_angle` of Facing.
-/// Params: "damage", "range", "half_angle", "cooldown", "leech_percent"
+/// Melee cone (Death Strike). Hits every enemy within `range` and within `half_angle` of the
+/// aim direction, applies `leech_percent` of the damage dealt back as self-heal, and requests
+/// a cone VFX flash. Reproduces the prototype's `player_arc_attack`, now data-driven.
+///
+/// Params: "damage", "range", "half_angle", "cooldown", "leech_percent".
 pub struct MeleeCone;
+
 impl AbilityBehavior for MeleeCone {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: MeleeCone — replaces player_arc_attack")
+    fn execute(&self, ctx: &AbilityContext, params: &ResolvedParams, effects: &mut Vec<AbilityEffect>) {
+        let damage = params.get("damage");
+        let range = params.get("range");
+        let half_angle = params.get("half_angle");
+        let leech_percent = params.get("leech_percent");
+
+        let forward = ctx.facing;
+        let mut leech_total = 0.0;
+
+        for target in ctx.enemies {
+            let to_target = target.pos - ctx.origin;
+            let dist = to_target.length();
+            if dist > range {
+                continue;
+            }
+            // An enemy exactly at the origin has no direction; count it as inside the cone.
+            let in_cone = dist < 1e-6 || forward.angle_to(to_target / dist).abs() <= half_angle;
+            if !in_cone {
+                continue;
+            }
+
+            effects.push(AbilityEffect::Damage {
+                target: target.entity,
+                amount: damage,
+                tags: vec![DamageTag::Physical],
+            });
+            leech_total += damage * leech_percent / 100.0;
+        }
+
+        if leech_total > 0.0 {
+            effects.push(AbilityEffect::Heal {
+                target: ctx.owner,
+                amount: leech_total,
+            });
+        }
+
+        effects.push(AbilityEffect::ConeVfx {
+            origin: ctx.origin,
+            radius: range,
+            half_angle,
+            forward,
+            lifetime: ATTACK_LIFETIME,
+        });
     }
 }
 
-/// Travelling projectile: spawns a Projectile entity moving in Facing direction.
-/// Params: "damage", "speed", "range", "size", "pierce_count", "cooldown"
-pub struct TravellingProjectile;
-impl AbilityBehavior for TravellingProjectile {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: TravellingProjectile")
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Self-centered periodic zone: spawns a PersistentZone at owner position on cooldown.
-/// Params: "damage_per_tick", "radius", "duration", "cooldown", "zone_type"
-pub struct PeriodicSelfZone;
-impl AbilityBehavior for PeriodicSelfZone {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 6: PeriodicSelfZone — used by D&D, Consecrated Ground")
+    fn params(pairs: &[(&str, f32)]) -> ResolvedParams {
+        ResolvedParams(pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect())
     }
-}
 
-/// Zone dropped at current position (like Consecrated Ground trail).
-/// Params: "damage_per_tick", "radius", "duration", "drop_interval", "zone_type"
-pub struct DroppedZone;
-impl AbilityBehavior for DroppedZone {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 6: DroppedZone")
+    #[test]
+    fn melee_cone_hits_only_enemies_in_range_and_arc() {
+        let owner = Entity::from_raw(1);
+        let in_cone = Entity::from_raw(2);   // 30 ahead, dead centre
+        let out_of_range = Entity::from_raw(3); // 100 to the side
+        let outside_arc = Entity::from_raw(4);  // ~53° off the aim, within range
+        let enemies = [
+            EnemyTarget { entity: in_cone, pos: Vec2::new(30.0, 0.0) },
+            EnemyTarget { entity: out_of_range, pos: Vec2::new(0.0, 100.0) },
+            EnemyTarget { entity: outside_arc, pos: Vec2::new(30.0, 40.0) },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, enemies: &enemies };
+        let p = params(&[
+            ("damage", 10.0),
+            ("range", 60.0),
+            ("half_angle", 0.785), // ~45°
+            ("leech_percent", 5.0),
+        ]);
+
+        let mut effects = Vec::new();
+        MeleeCone.execute(&ctx, &p, &mut effects);
+
+        let damaged: Vec<Entity> = effects
+            .iter()
+            .filter_map(|e| match e {
+                AbilityEffect::Damage { target, amount, .. } => {
+                    assert_eq!(*amount, 10.0);
+                    Some(*target)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(damaged, vec![in_cone], "only the in-range, in-arc enemy is hit");
+
+        let heal: f32 = effects
+            .iter()
+            .filter_map(|e| match e {
+                AbilityEffect::Heal { target, amount } => {
+                    assert_eq!(*target, owner);
+                    Some(*amount)
+                }
+                _ => None,
+            })
+            .sum();
+        assert!((heal - 0.5).abs() < 1e-6, "leech = 10 dmg * 5% = 0.5");
+
+        assert!(
+            effects.iter().any(|e| matches!(e, AbilityEffect::ConeVfx { .. })),
+            "spawns a cone VFX flash",
+        );
     }
-}
 
-/// Orbiting effect: spawns entities rotating around the owner.
-/// Params: "damage", "orbit_radius", "orbit_speed", "count"
-pub struct Orbiting;
-impl AbilityBehavior for Orbiting {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: Orbiting — used by Spinning Hammer")
-    }
-}
+    #[test]
+    fn melee_cone_no_leech_no_heal_effect() {
+        let ctx = AbilityContext {
+            owner: Entity::from_raw(1),
+            origin: Vec2::ZERO,
+            facing: Vec2::X,
+            enemies: &[EnemyTarget { entity: Entity::from_raw(2), pos: Vec2::new(10.0, 0.0) }],
+        };
+        let p = params(&[("damage", 10.0), ("range", 60.0), ("half_angle", 0.785), ("leech_percent", 0.0)]);
 
-/// Leap to target: dashes the owner to the nearest enemy within cursor radius.
-/// Params: "damage", "max_range", "cooldown"
-pub struct LeapToTarget;
-impl AbilityBehavior for LeapToTarget {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: LeapToTarget — used by Ferocious Bite")
-    }
-}
+        let mut effects = Vec::new();
+        MeleeCone.execute(&ctx, &p, &mut effects);
 
-/// Channel while moving: fires a multi-tick heal or beam while the player holds the button.
-/// Params: "heal_percent", "channel_duration", "cooldown"
-pub struct ChannelWhileMoving;
-impl AbilityBehavior for ChannelWhileMoving {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: ChannelWhileMoving — used by Heal, Flash of Light, Frost Impale")
-    }
-}
-
-/// Summon: spawns a companion entity that uses one of the player's other abilities.
-/// Params: "spawn_interval", "duration", "mimicked_ability_id"
-pub struct Summon;
-impl AbilityBehavior for Summon {
-    fn execute(&self, _ctx: &mut AbilityContext<'_>, _params: &ResolvedParams) {
-        todo!("Phase 1: Summon — used by Companion (mimics Death Strike)")
+        assert!(!effects.iter().any(|e| matches!(e, AbilityEffect::Heal { .. })));
+        assert_eq!(effects.iter().filter(|e| matches!(e, AbilityEffect::Damage { .. })).count(), 1);
     }
 }
