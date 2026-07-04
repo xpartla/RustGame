@@ -3,7 +3,7 @@
 ---
 
 ## [Unreleased] — Architecture, Scaffold & Phases 0–1
-_2026-07-04 — not yet committed_
+_2026-07-04 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs)_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -104,19 +104,43 @@ casts the Blood DK's Death Strike, loaded from a RON file.
   + leech + hitbox VFX flash, reproducing the old `player_arc_attack` math from RON params.
 - `ability/systems/execute.rs` — `tick_ability_cooldowns` + `execute_ready_abilities`, chained in
   `CombatSet::Damage`. Trigger-driven; resolves the `AbilityDef` via an `AbilityLibrary` (id→handle),
-  and skips gracefully while an asset is still loading or if a behavior id isn't registered.
+  and skips gracefully while an asset is still loading or if a behavior id isn't registered. Its
+  private `apply_effects` helper is the sole write point that drains the effect buffer: `Damage` →
+  `DamageEvent` (tagged `Physical`), `Heal` → the prototype's existing `HealEvent`/`apply_heal` chain
+  (this is how Death Strike's leech heals the caster — no new heal path), and `ConeVfx` → a transient
+  `Projectile` + `ArcHitbox` + `Lifetime` entity, reusing the prototype's hitbox-gizmo path so the
+  existing debug renderer draws the cone. A cast is suppressed until `Facing` is non-zero (no attack
+  before the first mouse-aim), and candidate `EnemyTarget`s are gathered once per frame for all casts.
 - `ability/systems/resolve_params.rs` — Phase-1 identity resolution (base params verbatim). The
   talent modifier stack layers on top in Phase 2.
-- Ability instances: `AbilityInstance { def_id, owner }` + `AbilityCooldown` per unlocked ability.
+- Ability instances: `AbilityInstance { def_id, owner }` + `AbilityCooldown` per unlocked ability
+  (each a separate entity; `AbilityCooldown::new` starts ready so an ability can fire immediately).
   Death Strike is granted at spawn by a Phase-1 stub (`grant_starting_abilities`); Phase 2 moves
-  this to progression-driven `UnlockAbilityEvent`.
+  this to progression-driven `UnlockAbilityEvent`. Cooldown duration is re-read from the resolved
+  `"cooldown"` param on every cast, so future cooldown talents take effect on the next fire.
+- Reserved scaffolding left in place (not deleted; `#[allow(dead_code)]` until its phase):
+  `StanceGate` (Phase 4 stance filter), `AbilityHookState` (per-ability hook counters), and
+  `UnlockAbilityEvent` (Phase 2 progression) in `ability/components.rs`, plus deserialized-but-unread
+  `AbilityDef` fields (`unlock_schedule`, `hooks`, `talent_pool`, `display_name`). The scaffold's
+  separate `AbilityHook` trait and `HookRegistry` were dropped from `behavior.rs` — the read-only
+  context + effect-buffer model above replaces the old `&mut AbilityContext` placeholder, and talent
+  hooks return with Phase 2. (A few module comments still name `HookRegistry`; cleaned up when Phase 2
+  reintroduces it.)
 - Input: LMB → `TriggerAbilityEvent("death_strike")` via a Phase-1 stub in `player`
   (`player_ability_input`). The stance-aware hero indirection (hero module) stays a Phase-4 concern
   — deliberately not wired yet, to avoid pulling the talent module into the build early.
+- Activation: `AbilityPlugin` is now added to `GamePlugin`'s plugin tuple and `mod ability;` to
+  `main.rs`, so the scaffold module (flagged "not yet wired into `main.rs`" above) is live. A Startup
+  `load_ability_defs` loads a fixed id→path list (`death_strike`, `dnd`) into `AbilityLibrary`; `dnd`
+  loads but its `dropped_zone` behavior isn't registered yet, so triggering it just warns and skips —
+  exercising the same graceful-degradation path as an asset that is still mid-load (Phase 6 registers
+  the behavior). Only `melee_cone` is registered in `BehaviorRegistry` this phase.
 - Removed the prototype attacks: deleted `player/systems/attack.rs` (`player_circle_attack` /
-  `player_arc_attack`), their Space/V bindings, and the now-dead attack constants. The radial-burst
-  shape was a prototype placeholder (not part of the BDK kit) and was dropped; the cone attack lives
-  on as Death Strike.
+  `player_arc_attack`), their Space/V bindings, and the now-dead attack constants — `ARC_BASE_DMG`,
+  `CIRCLE_BASE_DMG`, `ATTACK_SPAWN_DISTANCE`, `ATTACK_HITBOX_RADIUS`. Only `ATTACK_LIFETIME` survives
+  in `constants.rs`, repurposed to time the transient VFX flash alone (damage/range/cooldown now live
+  in the ability RON). The radial-burst shape was a prototype placeholder (not part of the BDK kit)
+  and was dropped; the cone attack lives on as Death Strike.
 - Tests (headless, `cargo test`): RON round-trip of `death_strike`/`dnd`, and `MeleeCone`
   range/arc/leech logic — 4 passing. The full in-game loop is still unverified in WSL (GPU backlog).
 
@@ -201,10 +225,9 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phase 0 (foundation) is complete. The following are designed and scaffolded but have zero
-implementation yet:
+Phase 0 (foundation) and Phase 1 (ability system) are complete. The following are designed and
+scaffolded but have zero implementation yet:
 
-- Ability system (data-driven, BehaviorRegistry) — Phase 1
 - Talent system (modifier stack, offer generation) — Phase 2
 - Status effects (bleed, blaze, frostbite, etc.) — Phase 3
 - Hero / stance system (HeroDef asset, Q swap) — Phase 4
