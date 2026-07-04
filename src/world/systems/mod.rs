@@ -1,2 +1,2 @@
-pub(crate) mod generate_map;
-pub(crate) mod render_map;
+pub mod generate_map;
+pub mod render_map;

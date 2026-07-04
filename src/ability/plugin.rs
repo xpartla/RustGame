@@ -37,11 +37,14 @@ impl Plugin for AbilityPlugin {
         app.insert_resource(behaviors);
 
         app.add_systems(Startup, load_ability_defs);
+        // Ungated by GameState: when several level-ups land in one frame and cross from the
+        // AbilityUnlock band into TalentChoices, the UnlockAbilityEvents are written the same
+        // frame the state flips to TalentPicker. A reader gated on InRun would skip that frame
+        // and the events would expire unread — silently losing the band abilities. Same
+        // reasoning as the ungated talent install systems.
         app.add_systems(
             Update,
-            (grant_level_1_abilities, spawn_unlocked_ability)
-                .chain()
-                .run_if(in_state(GameState::InRun)),
+            (grant_level_1_abilities, spawn_unlocked_ability).chain(),
         );
         app.add_systems(
             Update,

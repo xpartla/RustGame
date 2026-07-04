@@ -1,9 +1,8 @@
-mod combat;
-pub(crate) mod input;
-pub(crate) mod spawn_player;
-pub(crate) mod ability_input;
-pub(crate) mod update_player_facing;
-pub(crate) mod death;
-pub(crate) mod debug;
-pub(crate) mod experience;
-
+pub mod input;
+pub mod spawn_player;
+pub mod ability_input;
+pub mod update_player_facing;
+pub mod death;
+pub mod debug;
+pub mod experience;
+pub mod visuals;

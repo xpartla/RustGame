@@ -3,8 +3,24 @@ name = "RustGame"
 version = "0.1.0"
 edition = "2024"
 
+# Split into a library + thin binary so integration tests (tests/) and the headless sim
+# harness (src/sim/) can link against the game code. `cargo run` behavior is unchanged.
+[lib]
+name = "rust_game"
+path = "src/lib.rs"
+
+[[bin]]
+name = "RustGame"
+path = "src/main.rs"
+
 [dependencies]
 bevy = "0.16.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
+
+# Optimize dependencies (bevy, rand, ...) even in dev/test builds while keeping our own
+# code unoptimized for fast incremental compiles — the standard Bevy setup. Also makes the
+# headless golden-campaign tests run at usable speed. One-time full recompile of deps.
+[profile.dev.package."*"]
+opt-level = 2

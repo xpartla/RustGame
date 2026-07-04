@@ -914,4 +914,72 @@ A suggested sequence that keeps the game playable at each step and avoids large-
 
 ---
 
+## 8. Plan Amendments — Gap Analysis (added 2026-07-05, after Phase 2)
+
+A line-by-line comparison of Mechanics.md against §7 found mechanics with **no phase** and
+phases hiding more work than their bullets. Recorded here so scheduling decisions are explicit
+rather than discovered mid-phase.
+
+### 8.1 Mechanics with no home in any phase
+
+1. **Auto-cast for passive abilities** — most of the game's kit (Blood Boil, Heart Strike,
+   Companion, AMZ, Consecrated Ground, Spinning Hammer, Smite, Flamewrath, …) fires on
+   cooldown without input, but the execute pipeline is TriggerAbilityEvent-driven only.
+   Needed as early as the L2/3 unlocks. → Schedule as **Phase 3.5** (or fold into Phase 3).
+2. **Typed/string params in AbilityDef** — `base_params` is `HashMap<String, f32>`; summons
+   need an ability-id ref (companion.ron stores it as a hacky f32), dropped zones need a
+   `zone_type` string (commented out in dnd.ron), abilities need "which status do I apply".
+   → Prerequisite for Phases 3 (status application) and 6 (zones); do with Phase 3.
+3. **Behavior primitives never scheduled** — `projectile` (Phase 1's own leftover debt),
+   `channel_while_moving`, `summon` (Companion is BDK **level-1**), `orbiting`,
+   `leap_to_target`, and the **movement ability / dash** (`InputSlot::Movement` exists,
+   nothing implements it). → Projectile ASAP (Phase 3 uses it for status application tests);
+   the rest before the class that needs them (Phase 4/9).
+4. **Actor stat sheet & CC semantics** — crit %, attack speed, move-speed modifiers, and what
+   root/stun/slow actually do to an enemy's movement/AI. resolve_params only covers ability
+   params. → New phase alongside status effects (Phase 3.75: "actor stats & CC").
+5. **Shields/absorbs** (bone shield, ice barrier, Paladin overheal shield) — no system.
+6. **Forced movement** (Abomination Limb grip, knockback shockwaves) — no system.
+7. **Enemy scaling** — "Enemies have their own scaling, independent of the player"
+   (Mechanics.md) has no data model (EnemyDef stats are flat) and no phase. → Schedule with
+   Phase 5; also the prerequisite for meaningful balance testing.
+8. **Enemy projectiles + AMZ blocking** — Phase 5's ranged_caster presupposes projectile
+   motion/collision; AMZ's projectile-blocking zone is unscheduled.
+9. **UI phase missing entirely** — §2 lists a ui/ module, but no phase builds the HUD
+   (health/cooldowns/XP/stance), menus, character select, act-graph map view, merchant screen,
+   scoreboard, settings, or the game-over/pause flow (GameState variants exist, transitions
+   unwired: player death is still a bare despawn). Phase 2 delivered only the talent-picker
+   overlay. → New phase between 7 and 8.
+10. **Smaller unspecified items** — talent-offer rarity weighting; "special events" beyond
+    ThroneRoom; `EnemyRarity::Elite` spawn logic; score computation for the scoreboard;
+    multi-phase boss design (the plan itself marks the "boss" AI hook TBD — realistically its
+    own phase, not one Phase 9 line); Act-3 secret level (defer); audio/art (explicitly out
+    of scope until further notice).
+
+### 8.2 Phase-specific corrections
+
+- **Phase 3**: needs an `ApplyStatus` variant in `AbilityEffect`, a hook registry for the
+  `on_*_hooks` the status RON files already reference, and the CC semantics from 8.1(4).
+- **Phase 4**: much bigger than its two bullets — a second class transitively needs
+  projectile + channel + status effects end-to-end, class resources (frost charges), and for
+  Druid the enhanced-attack state machine + summons. Choose the second class deliberately
+  (Mage exercises stance/projectiles/status with the least extra machinery).
+- **Phase 7**: `ActGraph` data exists but no generation function does, even as a stub.
+- **Phase 8**: rand 0.8's `SmallRng` does not implement serde — §3.11's "save the RNG state"
+  needs either seed + draw-count replay or a switch to `rand_chacha` (serde feature). The
+  whole RunState object graph also still lacks serde derives.
+- **Phase 9**: split into content pass (classes/enemies per theme) vs. boss design.
+
+### 8.3 Testing infrastructure (inserted, stages 0–2 complete 2026-07-05)
+
+Headless sim harness (`src/sim/`), logic/presentation plugin split, golden scenario suite +
+golden-master campaign baseline, `/compat-check` skill + compat-tester agent. See
+docs/testing.md. **Definition of done for every phase from Phase 3 on: the phase lands with
+golden scenarios for its mechanic, and the golden-master baseline is regenerated only with a
+CHANGELOG entry explaining the behavior change.** Stage 3 (balance arena binary, BotPolicy,
+sweep metrics, balance-analyst agent) is scheduled after Phase 5 (enemy scaling in data) and
+becomes fully useful after Phase 7 (encounters).
+
+---
+
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

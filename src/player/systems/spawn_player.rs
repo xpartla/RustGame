@@ -1,16 +1,14 @@
-use bevy::asset::Assets;
-use bevy::color::Color;
 use bevy::math::Vec2;
-use bevy::prelude::{Circle, ColorMaterial, Commands, Mesh, Mesh2d, MeshMaterial2d, ResMut, Transform};
+use bevy::prelude::Commands;
 use crate::constants::PLAYER_HEALTH;
 use crate::core::components::{GridPosition, Health, Velocity, WorldPosition};
 use crate::core::components::Facing;
 use crate::player::components::{Experience, Player};
 
-pub fn spawn_player(mut commands: Commands,
-                    mut meshes: ResMut<Assets<Mesh>>,
-                    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
+/// Spawns the player with logic components only. Visuals (Transform, Mesh2d, material) are
+/// attached by the presentation layer (player/systems/visuals.rs) so headless simulations
+/// never touch render assets.
+pub fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Player,
         Health::new(PLAYER_HEALTH),
@@ -19,8 +17,5 @@ pub fn spawn_player(mut commands: Commands,
         GridPosition{x:0, y:0},
         Facing(Vec2::default()),
         Velocity::default(),
-        Transform::from_xyz(0., 0., 2.),
-        Mesh2d(meshes.add(Circle::new(25.))),
-        MeshMaterial2d(materials.add(Color::srgb(6.25, 9.4, 9.1))),
     ));
 }

@@ -1,39 +1,21 @@
-use bevy::asset::Assets;
-use bevy::color::Color;
 use bevy::math::Vec2;
-use bevy::prelude::{
-    Circle, Commands, Mesh, Mesh2d, MeshMaterial2d, Query, Res, ResMut, Transform, With,
-};
-use bevy::sprite::ColorMaterial;
+use bevy::prelude::{Commands, Query, Res, ResMut, With};
 use bevy::time::Time;
 use rand::Rng;
 use crate::core::components::WorldPosition;
 use crate::pickup::components::{PickUp, PickUpKind, PickUpSpawner};
 use crate::pickup::constants::{
-    HEAL_PACK_AMOUNT, HEAL_PACK_VISUAL_RADIUS, PICKUP_SPAWN_MAX_DIST, PICKUP_SPAWN_MIN_DIST,
+    HEAL_PACK_AMOUNT, PICKUP_SPAWN_MAX_DIST, PICKUP_SPAWN_MIN_DIST,
 };
 use crate::player::components::Player;
 
-/// Builds a pickup entity at `pos`. Shared by the timed spawner and enemy death-drops so the
-/// mesh is constructed in exactly one place. A healing pack renders as a small green circle at
-/// z=0.5 (below enemies at z=1 and the player at z=2). `sync_transform` keeps its x/y.
-pub fn spawn_pickup(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<ColorMaterial>,
-    pos: Vec2,
-    kind: PickUpKind,
-) {
-    let (mesh_radius, color) = match kind {
-        PickUpKind::Heal(_) => (HEAL_PACK_VISUAL_RADIUS, Color::srgb(0.1, 0.9, 0.2)),
-    };
-
+/// Builds a pickup entity at `pos` (logic components only). Shared by the timed spawner and
+/// enemy death-drops. Visuals are attached by the presentation layer
+/// (pickup/systems/visuals.rs), keyed off the PickUpKind.
+pub fn spawn_pickup(commands: &mut Commands, pos: Vec2, kind: PickUpKind) {
     commands.spawn((
         PickUp { kind },
         WorldPosition(pos),
-        Transform::from_xyz(pos.x, pos.y, 0.5),
-        Mesh2d(meshes.add(Circle::new(mesh_radius))),
-        MeshMaterial2d(materials.add(color)),
     ));
 }
 
@@ -42,8 +24,6 @@ pub fn spawn_pickups_over_time(
     mut commands: Commands,
     time: Res<Time>,
     mut spawner: ResMut<PickUpSpawner>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     player: Query<&WorldPosition, With<Player>>,
 ) {
     spawner.timer.tick(time.delta());
@@ -60,11 +40,5 @@ pub fn spawn_pickups_over_time(
     let dist = rng.gen_range(PICKUP_SPAWN_MIN_DIST..PICKUP_SPAWN_MAX_DIST);
     let offset = Vec2::new(angle.cos(), angle.sin()) * dist;
 
-    spawn_pickup(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        player_pos.0 + offset,
-        PickUpKind::Heal(HEAL_PACK_AMOUNT),
-    );
+    spawn_pickup(&mut commands, player_pos.0 + offset, PickUpKind::Heal(HEAL_PACK_AMOUNT));
 }

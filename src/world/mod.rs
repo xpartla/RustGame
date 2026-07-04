@@ -1,6 +1,6 @@
-pub(crate) mod components;
-pub(crate) mod systems;
-mod constants;
+pub mod components;
+pub mod systems;
+pub mod constants;
 mod plugin;
 
 pub use plugin::WorldPlugin;

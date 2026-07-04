@@ -1,2 +1,2 @@
-pub(crate) mod debug;
-pub(crate) mod projectile_lifetime;
+pub mod debug;
+pub mod projectile_lifetime;

@@ -1,5 +1,5 @@
-pub(crate) mod components;
-pub(crate) mod systems;
+pub mod components;
+pub mod systems;
 mod plugin;
 
 pub use plugin::PlayerPlugin;

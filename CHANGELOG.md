@@ -2,8 +2,8 @@
 
 ---
 
-## [Unreleased] — Architecture, Scaffold & Phases 0–2
-_2026-07-04 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → phase 2 (talent system)_
+## [Unreleased] — Architecture, Scaffold, Phases 0–2 & Testing Infrastructure
+_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2)_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -207,6 +207,81 @@ player choose 1 of 3. Validated on the Blood DK's Death Strike.
   id → `TalentLibrary` → in-memory `Assets<TalentDef>` → modifier path — **20 passing** total.
   Remaining 3 build warnings are the pre-existing Phase 3 scaffolding (`StatusSet`, `DamageTag`).
   The on-screen picker itself is unverified in WSL (GPU backlog) — to be checked on the Windows build.
+
+### Testing Infrastructure — Stages 0–2 (complete)
+The agentic backward-compatibility setup from the testing plan (see docs/testing.md). The
+gameplay simulation now runs headlessly (no window/GPU — works in WSL), a golden scenario
+suite plus a golden-master campaign lock in current behavior, and a `/compat-check` skill +
+`compat-tester` agent run the gate on demand.
+
+**Stage 0 — headless foundation**
+- Crate split into a library (`rust_game`, all game code) + thin windowed binary. Integration
+  tests and the sim harness link against the lib; `cargo run` is unchanged. Domain module
+  visibility flipped `pub(crate)` → `pub` so tests can reach components/events. Removed the
+  empty vestigial `player/systems/combat.rs`. Side effect: the 3 dead-code warnings for
+  Phase 3+ scaffolding (`DamageTag` variants, `tags`, `StatusSet`) are gone — `pub` items in
+  a library count as public API. The build is now warning-free; treat any new warning as a
+  finding.
+- **Logic/presentation split.** `GameLogicPlugin` (the full simulation, no render deps) +
+  `PresentationPlugin` (camera, UI, map rendering, debug gizmos, and new `attach_*_visuals`
+  systems that dress logic entities with Transform/Mesh2d/material on `Added<T>`). Logic
+  spawns carry data instead of meshes — new `EnemyAppearance` component holds the archetype's
+  shape/radius/color. `GamePlugin` = logic + presentation; windowed behavior is unchanged
+  (same z-layers, same schedules/gating for every moved system).
+- `src/sim/` — the headless harness: `SimPlugins` (MinimalPlugins + States + Assets +
+  manually-controlled `ButtonInput`), fixed-timestep clock (`TimeUpdateStrategy::
+  ManualDuration`, 60 fps), caller-provided `RunRng` seed, single-threaded schedules for
+  stable ordering. `Sim` wraps it with scenario helpers: step/press/tap, spawn enemies from
+  archetypes (shared `enemy_bundle` with the timed spawner), trigger abilities, teleport/heal
+  /damage, pause ambient spawners, swap in an empty bordered arena, map signature hashing.
+- **Determinism fixes (behavior-affecting, found during harness work):**
+  - `init_level_flow` now ordered after `generate_map` — both draw from RunRng in Startup and
+    were previously unordered, so the same seed could produce different maps and band-shuffle
+    orders between launches.
+  - Enemy death drops roll on `RunRng` instead of `thread_rng` (drops are gameplay, per the
+    RunRng rule; also makes kill scenarios reproducible). Ambient enemy/pickup spawners stay
+    on `thread_rng` for now — documented in docs/testing.md; scenarios pause them.
+
+**Stage 1 — golden scenario suite + golden master**
+- `tests/` — 20 scenario/integration tests over the sim harness: harness boot smoke tests;
+  movement (WASD speed, wall slide, border blocking); combat (Death Strike cone membership,
+  damage, leech, cooldown gating, inert-behavior skip; grunt contact cadence; player death;
+  kill credit → XP); Phase 2 progression (six-levels-in-one-frame band unlock burst, picker
+  round-trip, decline, uniqueness filtering against the current backlog, damage/leech talent
+  modifiers on real casts, seed-deterministic band draws); world/pickups (map determinism per
+  seed, spawn-clear box, heal clamp, pickup radius).
+- `tests/golden_campaign.rs` — golden master: a deterministic scripted bot plays 30 simulated
+  seconds against scripted waves (chase nearest, cast on cooldown, kite when hurt, auto-pick
+  talents); a per-second trace (hp/level/xp/enemies/abilities/talents/position) must match
+  the committed `tests/golden/campaign_baseline.ron` exactly. `UPDATE_GOLDEN=1` regenerates —
+  only for CHANGELOG-declared changes, committed together with the change (the baseline's git
+  history is the behavior-change audit trail). A second test replays the campaign twice and
+  asserts identical traces — the nondeterminism tripwire.
+- Cargo: `[profile.dev.package."*"] opt-level = 2` (standard Bevy setup) so dependency code is
+  optimized in dev/test — the campaign runs at usable speed; our code stays fast-compiling.
+
+**Stage 2 — the compat agent**
+- `.claude/skills/compat-check/SKILL.md` — `/compat-check` runs the ladder (build + warnings →
+  full test suite → golden master), then classifies each failure as REGRESSION (undeclared),
+  DECLARED CHANGE (explained by this changelog; baselines may be updated, with justification),
+  or NONDETERMINISM (never papered over by regeneration).
+- `.claude/agents/compat-tester.md` — subagent definition so the check can run delegated.
+- `docs/testing.md` — harness design, layer map, baseline/back-tracing procedure, known
+  nondeterminism, and the per-phase definition-of-done (each phase lands with its own golden
+  scenarios).
+
+**Phase 2 fixes (found by verification + the new suite)**
+- **Band abilities could be silently lost.** When several level-ups land in one frame and
+  cross from the AbilityUnlock band into TalentChoices (e.g. a big XP grant), the
+  `UnlockAbilityEvent`s were written the same frame the state flipped to `TalentPicker` — and
+  `spawn_unlocked_ability` was gated on `InRun`, so the events expired unread. The
+  grant/spawn pair now runs ungated (same reasoning as the talent install systems). Caught by
+  the `six_levels_in_one_frame` golden scenario.
+- **Backlog offers could sample stale talent state.** `refill_offer` had no ordering against
+  `install_acquired_talent`, so with several owed choices the next offer could be generated
+  before the previous pick landed in `AcquiredTalents` — letting an Exclusive/capped talent
+  be offered (and taken) twice. Now explicitly ordered after the install system; locked in by
+  the `offers_respect_uniqueness` scenario.
 
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.

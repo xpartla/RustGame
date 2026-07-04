@@ -1,2 +1,3 @@
-pub(crate) mod spawn_pickups;
-pub(crate) mod collect_pickups;
+pub mod spawn_pickups;
+pub mod collect_pickups;
+pub mod visuals;

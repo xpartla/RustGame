@@ -1,6 +1,6 @@
-pub(crate) mod components;
-pub(crate) mod constants;
-pub(crate) mod systems;
+pub mod components;
+pub mod constants;
+pub mod systems;
 mod plugin;
 
 pub use plugin::PickUpPlugin;

@@ -5,9 +5,13 @@ use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::ability_input::player_ability_input;
 use crate::player::systems::update_player_facing::update_player_facing;
-use crate::player::systems::debug::draw_player_facing;
 use crate::player::systems::death::player_death;
 use crate::player::systems::experience::{apply_level_up_reward, gain_experience};
+
+// Presentation note: draw_player_facing and the player's visuals (attach_player_visuals) are
+// registered by game::presentation::PresentationPlugin; spawn_player creates logic
+// components only.
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -28,6 +32,5 @@ impl Plugin for PlayerPlugin {
                 apply_level_up_reward.after(gain_experience),
             ).run_if(in_state(GameState::InRun)),
         );
-        app.add_systems(PostUpdate, draw_player_facing);
     }
 }

@@ -1,7 +1,9 @@
-pub(crate) mod components;
-pub(crate) mod events;
-pub(crate) mod sets;
-pub(crate) mod systems;
+// Visibility note: modules are `pub` (not `pub(crate)`) so integration tests (tests/) can
+// reach components/events through the library crate. Same applies across all domain modules.
+pub mod components;
+pub mod events;
+pub mod sets;
+pub mod systems;
 mod constants;
 mod plugin;
 

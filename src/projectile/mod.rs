@@ -1,5 +1,5 @@
-pub(crate) mod components;
-mod systems;
+pub mod components;
+pub mod systems;
 mod plugin;
 
 pub use plugin::ProjectilePlugin;

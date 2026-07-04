@@ -1,26 +1,46 @@
-use bevy::asset::Assets;
 use bevy::math::Vec2;
-use bevy::prelude::{
-    Circle, Commands, Entity, Mesh, Mesh2d, MeshMaterial2d, Rectangle, RegularPolygon, Res, ResMut,
-    Transform,
-};
-use bevy::sprite::ColorMaterial;
+use bevy::prelude::{Bundle, Commands, Entity, Res, ResMut};
 use bevy::time::Time;
 use rand::Rng;
 use crate::constants::TILE_SIZE;
 use crate::core::components::{Facing, GridPosition, Health, LastHitBy, Velocity, WorldPosition};
-use crate::enemy::archetypes::{pick, EnemyShape};
+use crate::enemy::archetypes::{pick, EnemyArchetype};
 use crate::enemy::components::{
-    AttackCooldown, AttackStats, Enemy, EnemySpawner, MoveSpeed, XpReward,
+    AttackCooldown, AttackStats, Enemy, EnemyAppearance, EnemySpawner, MoveSpeed, XpReward,
 };
 use crate::world::components::TileMap;
+
+/// The full logic component set for an enemy of the given archetype at a grid tile.
+/// Shared by the timed spawner and the sim harness (sim/) so both spawn identical enemies.
+/// Visuals (Transform/Mesh2d/material) are attached separately by the presentation layer,
+/// keyed off the EnemyAppearance data included here.
+pub fn enemy_bundle(archetype: &EnemyArchetype, grid: GridPosition) -> impl Bundle {
+    let world = Vec2::new(grid.x as f32 * TILE_SIZE, grid.y as f32 * TILE_SIZE);
+    (
+        Enemy,
+        Health::new(archetype.max_health),
+        MoveSpeed(archetype.speed),
+        AttackStats { damage: archetype.attack_damage, range: archetype.attack_range },
+        AttackCooldown::new(archetype.attack_cooldown),
+        XpReward(archetype.xp_value),
+        // Tracks the killer for XP credit; no one has hit it yet.
+        LastHitBy(Entity::PLACEHOLDER),
+        grid,
+        WorldPosition(world),
+        Velocity::default(),
+        Facing(Vec2::default()),
+        EnemyAppearance {
+            shape: archetype.shape,
+            radius: archetype.radius,
+            color: archetype.color,
+        },
+    )
+}
 
 pub fn spawn_enemy_over_time(
     mut commands: Commands,
     time: Res<Time>,
     mut spawner: ResMut<EnemySpawner>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     map: Res<TileMap>,
 ){
     spawner.timer.tick(time.delta());
@@ -41,35 +61,6 @@ pub fn spawn_enemy_over_time(
         return;
     }
 
-    let world = Vec2::new(x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-
     let archetype = pick(&mut rng);
-
-    let mesh = match archetype.shape {
-        EnemyShape::Circle => meshes.add(Circle::new(archetype.radius)),
-        EnemyShape::Square => {
-            meshes.add(Rectangle::new(archetype.radius * 2.0, archetype.radius * 2.0))
-        }
-        EnemyShape::Triangle => meshes.add(RegularPolygon::new(archetype.radius, 3)),
-    };
-    let material = materials.add(archetype.color);
-
-    commands.spawn((
-        Enemy,
-        Health::new(archetype.max_health),
-        MoveSpeed(archetype.speed),
-        AttackStats { damage: archetype.attack_damage, range: archetype.attack_range },
-        AttackCooldown::new(archetype.attack_cooldown),
-        XpReward(archetype.xp_value),
-        // Tracks the killer for XP credit; no one has hit it yet.
-        LastHitBy(Entity::PLACEHOLDER),
-        GridPosition { x, y },
-        WorldPosition(world),
-        Velocity::default(),
-        Facing(Vec2::default()),
-        // z=1: above the background (z=0), below the player (z=2). sync_transform keeps x/y.
-        Transform::from_xyz(world.x, world.y, 1.0),
-        Mesh2d(mesh),
-        MeshMaterial2d(material),
-    ));
+    commands.spawn(enemy_bundle(&archetype, GridPosition { x, y }));
 }

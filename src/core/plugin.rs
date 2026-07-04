@@ -1,15 +1,18 @@
-use bevy::prelude::{App, IntoScheduleConfigs, Plugin, PostUpdate, Update, in_state};
+use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Update, in_state};
 use crate::core::events::{DamageEvent, GainXpEvent, HealEvent, LevelUpEvent};
 use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
 use crate::core::systems::{
     movement::apply_velocity,
-    render_sync::{apply_facing_rotation, sync_transform},
     grid_sync::world_to_grid,
     apply_damage::apply_damage,
     apply_heal::apply_heal,
-    debug::draw_health_bars,
 };
+
+// Presentation note: sync_transform / apply_facing_rotation / draw_health_bars are visual
+// consumers of core state and are registered by game::presentation::PresentationPlugin, so
+// the simulation stays headless-safe. Their ordering relative to world_to_grid is preserved
+// there.
 
 pub struct CorePlugin;
 
@@ -27,12 +30,9 @@ impl Plugin for CorePlugin {
                         (
                             apply_velocity,
                             world_to_grid.after(apply_velocity),
-                            sync_transform.after(world_to_grid),
-                            apply_facing_rotation.after(world_to_grid),
                             apply_damage.in_set(CombatSet::Apply),
                             apply_heal.in_set(CombatSet::Apply),
                             ).run_if(in_state(GameState::InRun)),
         );
-        app.add_systems(PostUpdate, draw_health_bars);
     }
 }

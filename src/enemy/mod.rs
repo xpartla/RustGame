@@ -1,6 +1,6 @@
-pub(crate) mod components;
-pub(crate) mod archetypes;
+pub mod components;
+pub mod archetypes;
 mod plugin;
-pub(crate) mod systems;
+pub mod systems;
 
 pub use plugin::EnemyPlugin;

@@ -1,30 +1,13 @@
-mod constants;
-mod camera;
-mod player;
-mod game;
-mod core;
-mod enemy;
-mod projectile;
-mod pickup;
-mod world;
-mod run;
-mod ability;
-mod talent;
-mod progression;
-mod ui;
+// Windowed launcher. All game code lives in the library crate (src/lib.rs); headless
+// simulation and tests use rust_game::sim instead of DefaultPlugins.
 
 use bevy::DefaultPlugins;
-use bevy::prelude::{App};
-// use crate::camera::CameraPlugin;
-use crate::game::GamePlugin;
-// use crate::player::PlayerPlugin;
+use bevy::prelude::App;
+use rust_game::game::GamePlugin;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
-    // app.add_plugins(CameraPlugin);
-    // app.add_plugins(PlayerPlugin);
     app.add_plugins(GamePlugin);
     app.run();
-    // println!("Hello, world!");
 }
