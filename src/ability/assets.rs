@@ -14,7 +14,8 @@
 //   - TalentDef (talent/assets.rs) references AbilityId in ability_scope.
 //   - AbilityInstance (ability/components.rs) stores the AbilityId for runtime lookup.
 //   - BehaviorRegistry (ability/behavior.rs) is keyed by the `behavior` field.
-//   - HookRegistry (ability/behavior.rs) is keyed by HookIds listed in `hooks`.
+//   - HookRegistry (arrives with the talent system in Phase 2) will be keyed by the HookIds
+//     listed in `hooks`.
 //   - AbilityLibrary (below) maps AbilityId → Handle<AbilityDef> so runtime systems can
 //     resolve an AbilityInstance's string id to the loaded asset.
 
@@ -29,7 +30,8 @@ pub type AbilityId = String;
 /// Identifies a behavior implementation registered in BehaviorRegistry.
 pub type BehaviorId = String;
 
-/// Identifies a hook implementation registered in HookRegistry.
+/// Identifies a hook implementation, resolved via the HookRegistry that arrives with the
+/// talent system in Phase 2.
 pub type HookId = String;
 
 /// Identifies a numeric parameter within an ability (e.g. "damage", "range", "cooldown").

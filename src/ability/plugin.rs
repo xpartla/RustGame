@@ -2,7 +2,8 @@
 //
 // Responsibilities:
 //   - Registers AbilityDef as a Bevy asset + its RON loader.
-//   - Registers BehaviorRegistry (with the implemented built-in behaviors) and HookRegistry.
+//   - Registers BehaviorRegistry (with the implemented built-in behaviors). The talent
+//     HookRegistry is added in Phase 2.
 //   - Registers TriggerAbilityEvent.
 //   - Loads the ability RON files into AbilityLibrary at startup.
 //   - Grants the starting ability (Phase 1 stub) and runs cooldown/execution each frame.

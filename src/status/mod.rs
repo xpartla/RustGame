@@ -4,8 +4,8 @@
 //
 // Key invariant: adding a new status effect (or a new element that cancels an existing one)
 // requires only a new RON file in assets/status_effects/. No Rust changes for purely
-// data-driven effects. Behavior hooks (e.g. "on-tick deal damage") use the same HookRegistry
-// as abilities.
+// data-driven effects. Behavior hooks (e.g. "on-tick deal damage") reuse the same hook mechanism
+// the ability system introduces in Phase 2.
 //
 // Module map:
 //   assets.rs    — StatusEffectDef RON asset
