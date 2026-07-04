@@ -1,21 +1,27 @@
-// Installs and removes ActiveHook components when Behavior talents are gained or removed.
+// Maintains AcquiredTalents and ActiveHooks on the player entity.
 //
 // Listen for:
-//   TalentAcquiredEvent  — adds talent to AcquiredTalents; if effect == Behavior(id),
-//                          pushes id into ActiveHooks
-//   TalentRemovedEvent   — removes one copy from AcquiredTalents; if effect == Behavior(id)
-//                          and count drops to 0, pops id from ActiveHooks
+//   TalentAcquiredEvent  — adds the talent to AcquiredTalents; if its effect is Behavior(id),
+//                          pushes id into ActiveHooks.
+//   TalentRemovedEvent   — removes one copy from AcquiredTalents; if the effect is Behavior(id)
+//                          and the count drops to 0, pops id from ActiveHooks.
 //
 // These events are emitted by:
 //   - progression/systems/offer.rs on player choice (TalentAcquiredEvent)
-//   - talent/systems/merchant.rs on remove-talent and trade-up (TalentRemovedEvent)
+//   - talent/systems/merchant.rs on remove-talent and trade-up (TalentRemovedEvent) — Phase 8
 //
-// Modifier talents (TalentEffect::Modifier) do NOT need component installation — they
-// are evaluated on-the-fly by resolve_params() at ability fire time.
+// Modifier talents (TalentEffect::Modifier) need no component installation — they are evaluated
+// on the fly by talent/modifier.rs::resolve_params at ability-fire time. Behavior *execution*
+// (running AbilityDef.hooks during a cast) is deferred until the first real hook lands; Phase 2
+// only maintains the ActiveHooks data so that path is ready.
+//
+// These systems run ungated by GameState: a TalentAcquiredEvent is emitted from the
+// TalentPicker state, so the reader must not be frozen with the InRun world.
 
 use bevy::prelude::*;
-use crate::talent::assets::{TalentDef, TalentEffect, TalentId};
+use crate::talent::assets::{TalentDef, TalentEffect, TalentId, TalentLibrary};
 use crate::talent::components::{AcquiredTalents, ActiveHooks};
+use crate::player::components::Player;
 
 #[derive(Event, Debug)]
 pub struct TalentAcquiredEvent {
@@ -29,21 +35,57 @@ pub struct TalentRemovedEvent {
     pub talent_id: TalentId,
 }
 
-/// TODO(Phase 2): implement.
-/// Query: player with (AcquiredTalents, ActiveHooks); reads TalentDef assets.
-pub fn install_acquired_talent(
-    mut _events: EventReader<TalentAcquiredEvent>,
-    mut _players: Query<(&mut AcquiredTalents, &mut ActiveHooks)>,
-    _talent_defs: Res<Assets<TalentDef>>,
-) {
-    todo!("Phase 2")
+/// Inserts the talent bookkeeping components on a freshly spawned player. Keeps the `player`
+/// module decoupled from `talent` (mirrors how the ability plugin grants starting abilities).
+pub fn attach_talent_components(mut commands: Commands, players: Query<Entity, Added<Player>>) {
+    for entity in &players {
+        commands
+            .entity(entity)
+            .insert((AcquiredTalents::default(), ActiveHooks::default()));
+    }
 }
 
-/// TODO(Phase 2): implement.
-pub fn uninstall_removed_talent(
-    mut _events: EventReader<TalentRemovedEvent>,
-    mut _players: Query<(&mut AcquiredTalents, &mut ActiveHooks)>,
-    _talent_defs: Res<Assets<TalentDef>>,
+/// Applies each TalentAcquiredEvent to the owner's talent state.
+pub fn install_acquired_talent(
+    mut events: EventReader<TalentAcquiredEvent>,
+    mut players: Query<(&mut AcquiredTalents, &mut ActiveHooks)>,
+    talent_defs: Res<Assets<TalentDef>>,
+    library: Res<TalentLibrary>,
 ) {
-    todo!("Phase 2")
+    for ev in events.read() {
+        let Ok((mut acquired, mut hooks)) = players.get_mut(ev.owner) else {
+            continue;
+        };
+        acquired.add(ev.talent_id.clone());
+
+        if let Some(def) = library.get(&ev.talent_id).and_then(|h| talent_defs.get(h)) {
+            if let TalentEffect::Behavior(hook_id) = &def.effect {
+                hooks.add(hook_id.clone());
+            }
+        }
+    }
+}
+
+/// Applies each TalentRemovedEvent (merchant remove / trade-up, Phase 8).
+pub fn uninstall_removed_talent(
+    mut events: EventReader<TalentRemovedEvent>,
+    mut players: Query<(&mut AcquiredTalents, &mut ActiveHooks)>,
+    talent_defs: Res<Assets<TalentDef>>,
+    library: Res<TalentLibrary>,
+) {
+    for ev in events.read() {
+        let Ok((mut acquired, mut hooks)) = players.get_mut(ev.owner) else {
+            continue;
+        };
+        acquired.remove_one(&ev.talent_id);
+
+        // Only drop the hook once the last copy is gone.
+        if acquired.count_of(&ev.talent_id) == 0 {
+            if let Some(def) = library.get(&ev.talent_id).and_then(|h| talent_defs.get(h)) {
+                if let TalentEffect::Behavior(hook_id) = &def.effect {
+                    hooks.remove(hook_id);
+                }
+            }
+        }
+    }
 }

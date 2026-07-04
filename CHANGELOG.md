@@ -2,8 +2,8 @@
 
 ---
 
-## [Unreleased] — Architecture, Scaffold & Phases 0–1
-_2026-07-04 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs)_
+## [Unreleased] — Architecture, Scaffold & Phases 0–2
+_2026-07-04 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → phase 2 (talent system)_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -144,6 +144,70 @@ casts the Blood DK's Death Strike, loaded from a RON file.
 - Tests (headless, `cargo test`): RON round-trip of `death_strike`/`dnd`, and `MeleeCone`
   range/arc/leech logic — 4 passing. The full in-game loop is still unverified in WSL (GPU backlog).
 
+### Phase 2 — Talent System (complete)
+Brings the `talent`, `progression`, and a new `ui` module online (added to `main.rs` and
+`GamePlugin`). Numeric talents now flow through a real modifier stack, level-ups drive a
+two-phase ability-unlock → talent-choice progression, and a minimal on-screen picker lets the
+player choose 1 of 3. Validated on the Blood DK's Death Strike.
+- Content pipeline: `TalentDef` is now a Bevy asset with a `TalentDefLoader` for `*.talent.ron`
+  (a distinct extension mirroring `*.ability.ron`, so the ability/talent loaders never collide on
+  plain `.ron`). Added `serde::Deserialize` to `TalentDef` and its sub-types (`TalentRarity`,
+  `UniquenessConstraint`, `TalentEffect`, `StatModifier`, `ModOp`). The four talent RON files were
+  renamed to `.talent.ron`; a third numeric Death Strike talent (`death_strike_damage_common`,
+  +20% damage, `Stack(3)`) was added and wired into `death_strike.ability.ron`'s `talent_pool` so
+  offers present three working numeric options.
+- `TalentLibrary` (id → `Handle<TalentDef>`) mirrors `AbilityLibrary`; a Startup `load_talent_defs`
+  loads the five talent files. Ids with no loaded `TalentDef` self-filter everywhere, so
+  class-passive / band references without RON files contribute nothing until their content pass.
+- Modifier stack — `talent/modifier.rs::resolve_params`: gathers each acquired `Modifier`-effect
+  talent scoped to the fired ability (or global `None`), stacking `(base + Σadd) * (1 + ΣmultAdd)`
+  with `Override` applied last. A `Stack(N)` talent taken `count` times contributes its modifier
+  per copy. Split into a pure `apply_modifiers` core (no ECS/assets) for direct unit testing.
+  Replaced the Phase-1 identity resolver: `ability/systems/resolve_params.rs` was **deleted** and
+  `execute_ready_abilities` now calls the talent stack with the caster's `AcquiredTalents`
+  (`Option`, empty fallback for non-player casters) plus `Assets<TalentDef>` + `TalentLibrary`.
+  Cooldown is still re-read from resolved params per cast, so cooldown talents would apply live.
+- Talent state on the player: `AcquiredTalents` + `ActiveHooks` are attached on `Added<Player>` by
+  the talent plugin (keeps the `player` module decoupled). `install_acquired_talent` applies a
+  `TalentAcquiredEvent` (adds to `AcquiredTalents`; a `Behavior` effect also pushes its `HookId`
+  into `ActiveHooks`); `uninstall_removed_talent` mirrors it for the merchant path (Phase 8). Both
+  run ungated by state so an event emitted from the `TalentPicker` overlay is not frozen with the
+  `InRun` world.
+- Offer generation — `generate_offer`: samples up to 3 distinct eligible talents (`choose_multiple`)
+  from the caller-built pool using `RunRng` (seed-deterministic). `is_eligible` enforces
+  `Stack(N)` / `Exclusive` / `MutuallyExcludes` and an optional rarity floor (per `OfferContext`).
+- Progression flow — `LevelUpFlowState` is now a `Resource`, inserted at startup with the BDK band
+  pools shuffled by `RunRng` (a Phase-2 stub; Phase 4 sources them from `HeroDef`). Two phases:
+  `AbilityUnlock` (L2–L6 draw one band ability per level, 2/3 pool then 4/6, emitting
+  `UnlockAbilityEvent`) → `TalentChoices` (L7+ owe a talent choice). `handle_level_up` consumes
+  `LevelUpEvent` after `gain_experience`. An `owed_choices` backlog + **lazy** offer generation
+  (`refill_offer`) keep multi-level-in-one-frame and uniqueness correct (each offer reflects the
+  prior acquisition). `handle_talent_choice` reads `1/2/3` (emit `TalentAcquiredEvent`) or `Esc`
+  (decline); `refill_offer` closes the overlay once the backlog drains.
+- Unified ability-grant path: registered `UnlockAbilityEvent`; `spawn_unlocked_ability` spawns one
+  `AbilityInstance` per unlock (idempotent). The Phase-1 `grant_starting_abilities` stub became
+  `grant_level_1_abilities`, emitting `UnlockAbilityEvent` for the hardcoded BDK L1 list. Band
+  abilities (`blood_boil`, `heart_strike`, …) unlock as **inert** instances — no registered
+  behavior, no input binding, no auto-cast yet — until their own phases.
+- `GameState::TalentPicker` is now live (entered from the level-up flow). Because the whole
+  gameplay simulation is already gated on `InRun`, the world freezes behind the overlay for free.
+- New `ui` module (owns no data). `UiPlugin` + `ui/screens/talent_picker.rs`: a `bevy_ui` overlay
+  spawned `OnEnter(TalentPicker)`, its option rows re-rendered on offer change (showing
+  `display_name` + rarity resolved via `TalentLibrary`), torn down `OnExit`. Uses Bevy's built-in
+  default font (no font asset). Input stays in `progression`, per the plan's "ui reads, owns nothing".
+- Debug affordance (dev builds only): `debug_force_level_up` — pressing `L` grants exactly enough
+  XP to reach the next level, so the talent flow is reachable without grinding kills.
+- Scope boundaries held: behavior-hook **execution** during a cast (`AbilityDef.hooks`) is still
+  deferred until the first real hook lands (bone shield); `Behavior` talents install an inert
+  `ActiveHook` for now. Merchant ops (Phase 8) and ThroneRoom rewards (Phase 7) remain unscheduled
+  `todo!()`. Passive ability auto-cast-on-cooldown is out of scope.
+- Tests (headless, `cargo test`): modifier-stack math (additive/multiplicative/override/scope),
+  talent RON round-trips, `is_eligible` per uniqueness constraint + rarity floor, level-flow
+  band→talent transitions, and a `resolve_params` integration test driving the full
+  id → `TalentLibrary` → in-memory `Assets<TalentDef>` → modifier path — **20 passing** total.
+  Remaining 3 build warnings are the pre-existing Phase 3 scaffolding (`StatusSet`, `DamageTag`).
+  The on-screen picker itself is unverified in WSL (GPU backlog) — to be checked on the Windows build.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -225,10 +289,9 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phase 0 (foundation) and Phase 1 (ability system) are complete. The following are designed and
-scaffolded but have zero implementation yet:
+Phases 0–2 (foundation, ability system, talent system) are complete. The following are designed
+and scaffolded but have zero implementation yet:
 
-- Talent system (modifier stack, offer generation) — Phase 2
 - Status effects (bleed, blaze, frostbite, etc.) — Phase 3
 - Hero / stance system (HeroDef asset, Q swap) — Phase 4
 - Enemy ability kits and AI registry — Phase 5

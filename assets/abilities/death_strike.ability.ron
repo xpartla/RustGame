@@ -36,6 +36,7 @@
     talent_pool: [
         "death_strike_leech_common",
         "death_strike_range_common",
+        "death_strike_damage_common",
         "death_strike_bone_shield_epic",
     ],
 )

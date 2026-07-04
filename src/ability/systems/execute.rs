@@ -16,11 +16,13 @@ use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
 use crate::ability::behavior::{AbilityContext, AbilityEffect, BehaviorRegistry, EnemyTarget};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent};
-use crate::ability::systems::resolve_params::resolve_params;
 use crate::core::components::{Facing, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::enemy::components::Enemy;
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile};
+use crate::talent::assets::{TalentDef, TalentLibrary};
+use crate::talent::components::AcquiredTalents;
+use crate::talent::modifier::resolve_params;
 
 /// Advances every ability's cooldown timer toward readiness.
 pub fn tick_ability_cooldowns(time: Res<Time>, mut cooldowns: Query<&mut AbilityCooldown>) {
@@ -42,7 +44,9 @@ pub fn execute_ready_abilities(
     registry: Res<BehaviorRegistry>,
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
-    owners: Query<(&WorldPosition, &Facing)>,
+    talent_defs: Res<Assets<TalentDef>>,
+    talent_library: Res<TalentLibrary>,
+    owners: Query<(&WorldPosition, &Facing, Option<&AcquiredTalents>)>,
     enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
     mut instances: Query<(&AbilityInstance, &mut AbilityCooldown)>,
 ) {
@@ -52,10 +56,14 @@ pub fn execute_ready_abilities(
         .map(|(entity, pos)| EnemyTarget { entity, pos: pos.0 })
         .collect();
 
+    // Fallback for owners without a talent list (e.g. non-player casters) — an empty stack.
+    let no_talents = AcquiredTalents::default();
+
     for trigger in triggers.read() {
-        let Ok((owner_pos, owner_facing)) = owners.get(trigger.owner) else {
+        let Ok((owner_pos, owner_facing, acquired_opt)) = owners.get(trigger.owner) else {
             continue;
         };
+        let acquired = acquired_opt.unwrap_or(&no_talents);
         // No aim direction yet (Facing starts at zero until the first mouse move).
         if owner_facing.0.length_squared() < 1e-6 {
             continue;
@@ -83,7 +91,14 @@ pub fn execute_ready_abilities(
                 break;
             };
 
-            let params = resolve_params(&def.base_params);
+            let params = resolve_params(
+                &instance.def_id,
+                &def.base_params,
+                acquired,
+                &talent_defs,
+                &talent_library,
+                &[],
+            );
             let ctx = AbilityContext {
                 owner: trigger.owner,
                 origin: owner_pos.0,

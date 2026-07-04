@@ -1,0 +1,22 @@
+// WORKING NAME: "Honed Edge" (placeholder — needs naming pass)
+// Ability: death_strike
+// Rarity: Common
+// Uniqueness: Stack(3)
+//
+// Effect: +20% multiplicative bonus to the damage stat.
+// With 3 copies: damage = base * (1 + 0.20 + 0.20 + 0.20) = base * 1.60
+//
+// No code hook needed — pure StatModifier, handled by resolve_params() in talent/modifier.rs.
+// Added in Phase 2 as the third numeric Death Strike talent so the offer screen presents
+// three working numeric options while validating the modifier stack.
+(
+    id: "death_strike_damage_common",
+    display_name: "Honed Edge",
+    ability_scope: Some("death_strike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.20),
+    )),
+)

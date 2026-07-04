@@ -9,6 +9,9 @@ mod pickup;
 mod world;
 mod run;
 mod ability;
+mod talent;
+mod progression;
+mod ui;
 
 use bevy::DefaultPlugins;
 use bevy::prelude::{App};

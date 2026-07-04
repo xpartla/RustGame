@@ -6,8 +6,11 @@ use crate::enemy::EnemyPlugin;
 use crate::game::state::GameState;
 use crate::pickup::PickUpPlugin;
 use crate::player::PlayerPlugin;
+use crate::progression::plugin::ProgressionPlugin;
 use crate::projectile::ProjectilePlugin;
 use crate::run::rng::RunRng;
+use crate::talent::plugin::TalentPlugin;
+use crate::ui::UiPlugin;
 use crate::world::WorldPlugin;
 
 pub struct GamePlugin;
@@ -28,10 +31,13 @@ impl Plugin for GamePlugin {
                 WorldPlugin,
                 PlayerPlugin,
                 AbilityPlugin,
+                TalentPlugin,
+                ProgressionPlugin,
                 EnemyPlugin,
                 ProjectilePlugin,
                 PickUpPlugin,
                 CameraPlugin,
+                UiPlugin,
             ));
     }
 }

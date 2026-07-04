@@ -66,10 +66,9 @@ pub struct TriggerAbilityEvent {
     pub owner: Entity,
 }
 
-/// Event emitted by progression/systems/level_up.rs when an ability is unlocked.
-/// Ability plugin will listen and spawn the AbilityInstance entity. Reserved for the
-/// progression flow (Phase 2); Phase 1 grants the starting ability directly.
-#[allow(dead_code)]
+/// Event emitted when an ability is unlocked — by `grant_level_1_abilities` at spawn (Phase-2
+/// stub for HeroDef.level_1_abilities) and by progression/systems/level_up.rs for band unlocks.
+/// The ability plugin listens and spawns the AbilityInstance entity (idempotently).
 #[derive(Event, Debug)]
 pub struct UnlockAbilityEvent {
     pub ability_id: AbilityId,

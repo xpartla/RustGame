@@ -1,4 +1,4 @@
-// TalentDef — one file per talent, loaded from assets/talents/*.ron.
+// TalentDef — one file per talent, loaded from assets/talents/*.talent.ron.
 //
 // NOTE: All names are WORKING NAMES. The `id` field is the stable internal key.
 // `display_name` is what players see and can be changed freely.
@@ -8,22 +8,31 @@
 // Class-wide passives: "bdk_passive_<description>_<rarity>"
 // General passives: "general_<description>_<rarity>"
 //
+// File extension is `.talent.ron` (mirroring `.ability.ron`) so the loader registers
+// unambiguously alongside the ability loader and future hero/enemy/theme loaders — no
+// collisions on a shared plain `.ron`.
+//
 // Interactions:
 //   - AbilityDef.talent_pool lists TalentIds offered for that ability.
 //   - HeroDef.class_passive_pool lists class-wide TalentIds.
 //   - AcquiredTalents (talent/components.rs) stores the player's acquired list.
 //   - progression/systems/offer.rs samples from all eligible pools to generate offers.
 //   - talent/systems/apply.rs installs ActiveHook when a Behavior talent is acquired.
+//   - talent/modifier.rs::resolve_params reads Modifier talents to build the stat stack.
+//   - TalentLibrary (below) maps TalentId → Handle<TalentDef> so runtime systems can
+//     resolve an acquired talent's string id to the loaded asset (mirrors AbilityLibrary).
 
+use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
+use std::collections::HashMap;
 use crate::ability::assets::{AbilityId, HookId, StatId};
 
 pub type TalentId = String;
 
-/// Loaded from assets/talents/<id>.ron.
-#[derive(Asset, TypePath, Debug, Clone)]
+/// Loaded from assets/talents/<id>.talent.ron.
+#[derive(Asset, TypePath, Debug, Clone, serde::Deserialize)]
 pub struct TalentDef {
-    /// Stable internal key. Must match the filename (without extension).
+    /// Stable internal key. Must match the filename stem (without extension).
     pub id: TalentId,
     /// Player-facing name. Working name — safe to change.
     pub display_name: String,
@@ -35,14 +44,14 @@ pub struct TalentDef {
     pub effect: TalentEffect,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize)]
 pub enum TalentRarity {
     Common,
     Rare,
     Epic,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum UniquenessConstraint {
     /// No limit — can be offered and taken as many times as the pool allows.
     None,
@@ -55,7 +64,7 @@ pub enum UniquenessConstraint {
     MutuallyExcludes(TalentId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum TalentEffect {
     /// Pure data — handled by the modifier stack in resolve_params(). No code hook needed.
     Modifier(StatModifier),
@@ -65,14 +74,14 @@ pub enum TalentEffect {
     Behavior(HookId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct StatModifier {
     /// The stat key this modifier applies to (must match a key in AbilityDef.base_params).
     pub stat: StatId,
     pub op: ModOp,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum ModOp {
     /// Adds a flat value: new = base + sum(Add)
     Add(f32),
@@ -80,4 +89,101 @@ pub enum ModOp {
     MultiplyAdd(f32),
     /// Replaces the stat entirely. Use sparingly; for epic-level behavior changes.
     Override(f32),
+}
+
+/// Asset loader for `*.talent.ron`. Registered in `TalentPlugin::build`.
+#[derive(Default)]
+pub struct TalentDefLoader;
+
+impl AssetLoader for TalentDefLoader {
+    type Asset = TalentDef;
+    type Settings = ();
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<TalentDef, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let def = ron::de::from_bytes::<TalentDef>(&bytes)?;
+        Ok(def)
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["talent.ron"]
+    }
+}
+
+/// Resource: maps a TalentId to the handle of its loaded TalentDef asset.
+/// Populated at startup (`load_talent_defs`); read by resolve_params (modifier stack) and the
+/// offer generator to resolve an acquired/eligible talent id to the actual `TalentDef`.
+#[derive(Resource, Default)]
+pub struct TalentLibrary {
+    pub defs: HashMap<TalentId, Handle<TalentDef>>,
+}
+
+impl TalentLibrary {
+    pub fn get(&self, id: &str) -> Option<&Handle<TalentDef>> {
+        self.defs.get(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Parse the real RON asset files through the same `ron::de` path the AssetLoader uses.
+    //! Headless — runs under `cargo test` without a window/GPU.
+    use super::*;
+
+    fn load(rel_path: &str) -> TalentDef {
+        let full = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), rel_path);
+        let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("read {full}: {e}"));
+        ron::de::from_bytes::<TalentDef>(&bytes)
+            .unwrap_or_else(|e| panic!("parse {rel_path}: {e}"))
+    }
+
+    #[test]
+    fn leech_common_parses() {
+        let def = load("assets/talents/death_strike_leech_common.talent.ron");
+        assert_eq!(def.id, "death_strike_leech_common");
+        assert_eq!(def.ability_scope.as_deref(), Some("death_strike"));
+        assert_eq!(def.rarity, TalentRarity::Common);
+        assert!(matches!(def.uniqueness, UniquenessConstraint::Stack(3)));
+        match def.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::MultiplyAdd(v) }) => {
+                assert_eq!(stat, "leech_percent");
+                assert!((v - 0.20).abs() < 1e-6);
+            }
+            _ => panic!("expected MultiplyAdd modifier on leech_percent"),
+        }
+    }
+
+    #[test]
+    fn range_and_damage_common_parse() {
+        let range = load("assets/talents/death_strike_range_common.talent.ron");
+        assert_eq!(range.id, "death_strike_range_common");
+        let dmg = load("assets/talents/death_strike_damage_common.talent.ron");
+        assert_eq!(dmg.id, "death_strike_damage_common");
+        assert!(matches!(dmg.effect, TalentEffect::Modifier(_)));
+    }
+
+    #[test]
+    fn bone_shield_epic_is_behavior() {
+        let def = load("assets/talents/death_strike_bone_shield_epic.talent.ron");
+        assert_eq!(def.rarity, TalentRarity::Epic);
+        assert!(matches!(def.uniqueness, UniquenessConstraint::Exclusive));
+        match def.effect {
+            TalentEffect::Behavior(ref hook) => assert_eq!(hook, "bone_shield_on_kill"),
+            _ => panic!("expected Behavior effect"),
+        }
+    }
+
+    #[test]
+    fn blood_boil_dnd_range_rare_parses() {
+        let def = load("assets/talents/blood_boil_dnd_range_rare.talent.ron");
+        assert_eq!(def.rarity, TalentRarity::Rare);
+        assert_eq!(def.ability_scope.as_deref(), Some("blood_boil"));
+    }
 }
