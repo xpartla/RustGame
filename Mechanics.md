@@ -19,6 +19,7 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
     * (rare, unique\[3\]) Blood boil deals additional X% of damage to enemies based on their current health for Y seconds  
     * (epic, unique) If an enemy affected by blood boil DoT dies, the DoT gets transferred to X additional enemies within Y range  
     * (rare, unique) Blood boil has double range when cast inside D\&D  
+      * _Phase 6 (implemented): a code-driven Pre hook (`blood_boil_dnd_range`) doubles Blood Boil's radius while the caster stands in the D\&D zone — the first zone-conditioned ability hook. Kept out of the offerable talent pool for now; validated by tests/zone.rs._  
 * Death Strike \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
   * Default attack, frontal melee cone, leech  
     * (common) Increase leech by X%  
@@ -37,6 +38,7 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
     * (epic, unique) Grip only ranged enemies  
 * D\&D \- Special Attack (X second cooldown) (Unlocked at level 1\)  
   * Periodically drop an area where enemies take increased Death Strike damage and Heart Strike hits additional target \+ you heal X% more when standing inside  
+    * _Phase 6 (implemented): D\&D drops a persistent "death_and_decay" zone (RMB Special). The owner-regen effect is live (heals % max health per second while inside). The cross-ability buffs (increased Death Strike damage / +1 Heart Strike target inside) are deferred to the BDK content pass — they need Heart Strike + a Death-Strike zone hook._  
 * Purgatory (cheat death) \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
   * Restore to 5% health, immune to damage for 5 seconds, long CD (rare, unique)  
     * (rare) Increase restored health by X%  
@@ -46,6 +48,7 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
   * Each X seconds spawn a companion for Y seconds that is going to mimic death strike  
 * AMZ \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
   * Periodically drop a zone around character that blocks projectiles (rare) (if enemies emit projectiles from inside the zone it has no effect \- it acts as a barrier)  
+    * _Phase 6 (implemented): base AMZ drops a fixed projectile-blocking zone that destroys enemy bolts entering it, except those emitted from inside (the barrier exception). The (epic) "attached to you as you move" variant is deferred — but the follow-anchor mechanism it needs is built + tested._  
     * (common) Increase the size of the zone by X%  
     * (rare) Increase your movement speed by X% when inside the zone  
     * (rare) You regenerate X% health each second you are inside the zone  
@@ -114,6 +117,7 @@ Animal form \- high damage, enhanced attacks, movement
     * (common, unique\[3\]) Lower cast time by X%  
 * Tree conduit (human) \- passive (X second cooldown) (Unlocked randomly at level 4/5)  
   * Spawn a tree for Y seconds, within X range of the tree, your next animal attack is enhanced  
+    * _Phase 6 (implemented as a marker demonstrator — no Druid hero yet): drops a "tree_conduit" zone queryable via PlayerZonePresence. The "enhanced next animal attack" consumer is deferred to the Druid content pass._  
     * (common) Increase tree radius by X%  
     * (rare) Reduce spawn range by X%  
     * (rare) Increase duration by X seconds  
@@ -233,6 +237,7 @@ Melee, healing, area damage zones, strong single target
     * (rare, unique) Flash of light makes your next hammer of justice deal X% increased damage  
 * Consecrated ground \- passive (passive, no cooldown) (Unlocked randomly at level 2/3/4)  
   * Drop zones of consecrated ground under your feet as you move, dealing X damage per second to enemies inside  
+    * _Phase 6 (implemented as a demonstrator — no Paladin hero yet): drops a "consecrated_ground" zone dealing a Holy DoT to enemies inside (the generic zone occupant-tick, faction-gated). The slow / per-enemy-scaling talents are deferred to the Paladin content pass._  
     * (rare) Increase the size of the zone by X  
     * (common) Increase the damage by X%  
     * (common) Consecrated ground also slows enemies inside by X%  

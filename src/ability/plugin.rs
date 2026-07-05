@@ -13,7 +13,8 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
-use crate::ability::behavior::{BehaviorRegistry, ContactMelee, MeleeCone, ProjectileBehavior, SelfNova};
+use crate::ability::behavior::{BehaviorRegistry, ContactMelee, DroppedZone, MeleeCone, ProjectileBehavior, SelfNova};
+use crate::ability::hooks::{BloodBoilDndRange, HookRegistry};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
 use crate::core::def_library::DefLibraryAppExt;
@@ -33,14 +34,23 @@ impl Plugin for AbilityPlugin {
             .add_event::<TriggerAbilityEvent>()
             .add_event::<UnlockAbilityEvent>();
 
-        // Built-in behaviors. melee_cone (Phase 1), projectile (Phase 3). Zone/orbit/summon/…
-        // register in their own phases; an ability whose behavior is unregistered stays inert.
+        // Built-in behaviors. melee_cone (Phase 1), projectile/self_nova (Phase 3), contact_melee
+        // (Phase 5), dropped_zone (Phase 6). orbit/summon/leap/channel register in their own phases;
+        // an ability whose behavior is unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
         behaviors.register("self_nova", SelfNova);
         behaviors.register("contact_melee", ContactMelee);
+        behaviors.register("dropped_zone", DroppedZone);
         app.insert_resource(behaviors);
+
+        // Code-driven ability hooks (Phase 6). A hook runs only when the caster has acquired the
+        // talent that installs it (ActiveHook) AND the ability lists it in `hooks`. bone_shield's
+        // Post hook stays unregistered until the shield/absorb system lands (§8.1(5)) → inert.
+        let mut hooks = HookRegistry::default();
+        hooks.register("blood_boil_dnd_range", BloodBoilDndRange);
+        app.insert_resource(hooks);
 
         // Ungated by GameState: when several level-ups land in one frame and cross from the
         // AbilityUnlock band into TalentChoices, the UnlockAbilityEvents are written the same

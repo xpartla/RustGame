@@ -1,6 +1,5 @@
-// Phase 6: Persistent ground zone system — D&D, Consecrated Ground, Tree Conduit, etc.
-//
-// NOT yet wired into main.rs or GamePlugin. Add in Phase 6.
+// Phase 6: Persistent ground zone system — D&D, Consecrated Ground, Tree Conduit, AMZ, etc.
+// Live since Phase 6 (ZonePlugin in GameLogicPlugin).
 //
 // Central concept: instead of every system querying zone entities directly, a single
 // `build_player_zone_presence` system rebuilds `PlayerZonePresence` each frame. Any
@@ -10,8 +9,10 @@
 // Module map:
 //   components.rs — PersistentZone, ZoneAnchor, PlayerZonePresence resource
 //   systems/
-//     lifetime.rs  — ticks zone timers, despawns expired zones
+//     lifetime.rs  — ticks zone timers (despawn expired) + follows the owner (FollowCaster)
 //     presence.rs  — rebuilds PlayerZonePresence each frame
+//     tick.rs      — occupant tick effects: DoT to opposing faction inside, regen the owner inside
+//     block.rs     — AMZ: destroys opposing-faction projectiles entering a blocking zone
 
 pub mod components;
 pub mod plugin;

@@ -1,0 +1,29 @@
+// WORKING NAME: "Consecrated Ground"
+// Class: Paladin — DEMONSTRATOR ONLY this phase (no Paladin hero yet, like the Phase-3
+// Fireblast/Frostbolt/Scratch demonstrators). Unbound; exercised by scenarios.
+// Unlock (design): randomly at level 2/3/4.
+//
+// Behavior: dropped_zone — drops a "consecrated_ground" zone under the caster. Per Mechanics it
+// deals X damage per second to enemies inside; here that is the generic occupant-tick DoT
+// (Phase 6D): damage_per_second to every OPPOSING-faction actor inside, Holy-tagged. The
+// Mechanics "drop as you move" trail is auto-cast on a short cooldown.
+(
+    id: "consecrated_ground",
+    display_name: "Consecrated Ground",
+    unlock_schedule: Band(2, 4),
+    activation: AutoCast,
+    behavior: "dropped_zone",
+    hooks: [],
+    base_params: {
+        "zone_radius": 60.0,
+        "zone_duration": 5.0,
+        "cooldown": 3.0,
+        // Holy DoT to enemies standing inside, per zone tick (1 Hz).
+        "damage_per_second": 3.0,
+    },
+    zone: Some((
+        zone_type: "consecrated_ground",
+        anchor: Fixed,
+    )),
+    talent_pool: [],
+)

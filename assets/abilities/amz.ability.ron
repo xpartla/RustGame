@@ -1,0 +1,32 @@
+// WORKING NAME: "AMZ" (Anti-Magic Zone)
+// Class: Blood Death Knight
+// Slot: passive (auto-cast on cooldown) — a band-4/5/6 unlock (in blood_death_knight's band_4_6_pool).
+// Unlock: randomly at level 4/5/6.
+//
+// Behavior: dropped_zone — drops an "amz" zone around the character that BLOCKS projectiles
+// (blocks_projectiles: true). The zone destroys any opposing-faction projectile that enters it
+// (an enemy bolt aimed at the Friendly player), acting as a barrier. Per Mechanics, a projectile
+// EMITTED from inside the zone is not blocked — handled by zone/systems/block.rs.
+//
+// The epic "the zone gets attached to you as you move" talent (anchor → FollowCaster) is DEFERRED
+// to the BDK content pass (Phase 9); base AMZ is a Fixed drop. The FollowCaster mechanism itself is
+// built + tested this phase.
+(
+    id: "amz",
+    display_name: "AMZ",
+    unlock_schedule: Band(4, 6),
+    activation: AutoCast,
+    behavior: "dropped_zone",
+    hooks: [],
+    base_params: {
+        "zone_radius": 90.0,
+        "zone_duration": 6.0,
+        "cooldown": 12.0,
+    },
+    zone: Some((
+        zone_type: "amz",
+        anchor: Fixed,
+        blocks_projectiles: true,
+    )),
+    talent_pool: [],
+)

@@ -56,6 +56,34 @@ pub enum EffectSpec {
     ApplyStatus { status: String, stacks: u8, target: EffectTarget },
 }
 
+/// A persistent ground zone an ability drops (Phase 6). Present on `dropped_zone` abilities
+/// (D&D, Consecrated Ground, AMZ, Tree Conduit). The `dropped_zone` behavior returns a spawn
+/// request; the execute system builds the `PersistentZone` (zone/components.rs) from this spec plus
+/// resolved params — `zone_radius`, `zone_duration`, and the occupant-effect params
+/// (`damage_per_second`, `regen_percent_per_second`) — and the caster's `Faction`. `zone_type` is a
+/// plain string key into `PlayerZonePresence`, so a new zone type is just a new name (no code).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ZoneSpec {
+    /// ZoneTypeId — the key other systems query via `PlayerZonePresence::is_inside`.
+    pub zone_type: String,
+    /// Where the zone's centre stays: fixed at the drop point (default) or following the caster.
+    #[serde(default)]
+    pub anchor: ZoneAnchorKind,
+    /// AMZ: the zone destroys opposing-faction projectiles that enter it (Phase 6E).
+    #[serde(default)]
+    pub blocks_projectiles: bool,
+}
+
+/// Whether a dropped zone stays put or trails its caster (the AMZ epic "attached to you" variant).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
+pub enum ZoneAnchorKind {
+    /// Fixed at the cast position (most zones).
+    #[default]
+    Fixed,
+    /// Follows the caster as they move.
+    FollowCaster,
+}
+
 /// Which entities from the behavior's CastOutcome an EffectSpec applies to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub enum EffectTarget {
@@ -101,6 +129,10 @@ pub struct AbilityDef {
     /// (inert). Applied by ability/systems/execute.rs::apply_effects.
     #[serde(default)]
     pub effects: Vec<EffectSpec>,
+    /// Persistent-zone spec for `dropped_zone` abilities (Phase 6). `None` for every non-zone
+    /// ability; `#[serde(default)]` so they parse unchanged.
+    #[serde(default)]
+    pub zone: Option<ZoneSpec>,
 }
 
 /// How an ability is triggered.
@@ -155,6 +187,14 @@ impl DefAsset for AbilityDef {
         ("brute_contact", "abilities/brute_contact.ability.ron"),
         // Ranged enemy bolt (Phase 5C) — projectile aimed at the player.
         ("spitter_bolt", "abilities/spitter_bolt.ability.ron"),
+        // Zone abilities (Phase 6) — dropped_zone. `dnd` is already listed above (BDK L1). Tree
+        // Conduit is a marker-only zone demonstrator (Druid content deferred); Consecrated Ground
+        // (6D) and AMZ (6E) join below.
+        ("tree_conduit", "abilities/tree_conduit.ability.ron"),
+        // Consecrated Ground (Phase 6D) — a Holy DoT zone demonstrator (Paladin content deferred).
+        ("consecrated_ground", "abilities/consecrated_ground.ability.ron"),
+        // AMZ (Phase 6E) — the BDK band-4/6 projectile-blocking zone.
+        ("amz", "abilities/amz.ability.ron"),
     ];
 }
 
@@ -206,5 +246,50 @@ mod tests {
         assert_eq!(def.behavior, "dropped_zone");
         assert!(def.hooks.is_empty());
         assert_eq!(def.base_params.get("zone_radius"), Some(&80.0));
+        // Phase 6: D&D drops a fixed "death_and_decay" zone. It is a buff zone (no enemy DoT — its
+        // damage_per_second is 0), only the owner-regen occupant effect is live.
+        let zone = def.zone.as_ref().expect("dnd defines a zone");
+        assert_eq!(zone.zone_type, "death_and_decay");
+        assert_eq!(zone.anchor, ZoneAnchorKind::Fixed);
+        assert!(!zone.blocks_projectiles);
+        assert_eq!(def.base_params.get("damage_per_second"), Some(&0.0), "D&D is a buff zone");
+        assert_eq!(def.activation, Activation::Input, "D&D is the RMB Special (never auto-casts)");
+    }
+
+    #[test]
+    fn tree_conduit_parses() {
+        let def = load("assets/abilities/tree_conduit.ability.ron");
+        assert_eq!(def.id, "tree_conduit");
+        assert_eq!(def.behavior, "dropped_zone");
+        let zone = def.zone.as_ref().expect("tree_conduit defines a zone");
+        assert_eq!(zone.zone_type, "tree_conduit");
+        assert_eq!(zone.anchor, ZoneAnchorKind::Fixed);
+    }
+
+    #[test]
+    fn consecrated_ground_parses() {
+        let def = load("assets/abilities/consecrated_ground.ability.ron");
+        assert_eq!(def.id, "consecrated_ground");
+        assert_eq!(def.behavior, "dropped_zone");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert_eq!(def.zone.as_ref().unwrap().zone_type, "consecrated_ground");
+        assert_eq!(def.base_params.get("damage_per_second"), Some(&3.0), "Holy DoT to occupants");
+    }
+
+    #[test]
+    fn amz_parses_with_projectile_blocking() {
+        let def = load("assets/abilities/amz.ability.ron");
+        assert_eq!(def.id, "amz");
+        assert_eq!(def.behavior, "dropped_zone");
+        let zone = def.zone.as_ref().unwrap();
+        assert_eq!(zone.zone_type, "amz");
+        assert!(zone.blocks_projectiles, "AMZ is a projectile-blocking zone");
+    }
+
+    #[test]
+    fn non_zone_ability_has_no_zone() {
+        // A regular ability parses with `zone: None` via serde(default).
+        let def = load("assets/abilities/death_strike.ability.ron");
+        assert!(def.zone.is_none());
     }
 }

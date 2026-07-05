@@ -25,6 +25,7 @@ use crate::run::rng::RunRng;
 use crate::status::plugin::StatusPlugin;
 use crate::talent::plugin::TalentPlugin;
 use crate::world::WorldPlugin;
+use crate::zone::plugin::ZonePlugin;
 
 /// The full gameplay simulation, free of render/window dependencies.
 pub struct GameLogicPlugin;
@@ -55,6 +56,7 @@ impl Plugin for GameLogicPlugin {
             EnemyPlugin,
             ProjectilePlugin,
             PickUpPlugin,
+            ZonePlugin,
         ));
     }
 }

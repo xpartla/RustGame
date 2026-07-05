@@ -25,15 +25,22 @@
         "zone_radius": 80.0,
         "zone_duration": 8.0,
         "cooldown": 15.0,
-        "damage_per_second": 2.0,
-        // Multiplier applied to Death Strike damage inside zone (read by death_strike behavior)
-        "death_strike_damage_multiplier": 1.5,
-        // Additional Heart Strike targets inside zone
-        "heart_strike_extra_targets": 1.0,
-        // Heal percent per second while standing inside
+        // D&D is a BUFF zone, not a damage zone (Mechanics: enemies inside take increased Death
+        // Strike damage + Heart Strike hits +1; the player heals more). It deals no direct DoT, so
+        // damage_per_second is 0 — the generic zone-tick (Phase 6D) reads it and emits nothing.
+        "damage_per_second": 0.0,
+        // Heal percent of max health per second while the owner stands inside (Phase 6D regen).
         "regen_percent_per_second": 0.5,
+        // Cross-ability buffs (Death Strike damage / Heart Strike targets inside) are DEFERRED to the
+        // BDK content pass (Phase 9) — they need Heart Strike + a Death-Strike zone hook. Kept out of
+        // params until their consumers exist, per docs/phase6-plan.md §7.
     },
-    // zone_type string used as the ZoneTypeId in PlayerZonePresence
-    // zone_type: "death_and_decay",   // TODO: add zone_type as a named param or separate field
+    // Phase 6: D&D drops a fixed "death_and_decay" zone at the player's position (RMB Special —
+    // activation stays Input). Zone type is read by other systems via PlayerZonePresence, e.g. the
+    // blood_boil_dnd_range talent doubles Blood Boil's radius while the caster stands inside.
+    zone: Some((
+        zone_type: "death_and_decay",
+        anchor: Fixed,
+    )),
     talent_pool: [],   // TODO(content pass): add D&D talents
 )

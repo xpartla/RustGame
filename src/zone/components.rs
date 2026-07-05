@@ -32,6 +32,25 @@ pub struct PersistentZone {
     pub anchor: ZoneAnchor,
 }
 
+/// Per-tick occupant effects a zone applies (Phase 6D). Present only on zones whose ability defines
+/// any (Consecrated Ground DoT, D&D regen); a pure marker zone (Tree Conduit) carries none. Baked
+/// from resolved params at spawn; `zone/systems/tick.rs::zone_tick_effects` reads it.
+#[derive(Component, Debug)]
+pub struct ZoneEffects {
+    /// Damage dealt to each opposing-faction actor inside, per tick (0 = buff/marker zone).
+    pub damage_per_second: f32,
+    /// Fraction of the owner's max health healed per tick while the owner stands inside (0 = none).
+    pub regen_fraction: f32,
+    /// Fixed-cadence tick timer (ZONE_TICK_INTERVAL, repeating). Discrete ticks keep it
+    /// deterministic (no per-frame f32 accumulation).
+    pub tick: Timer,
+}
+
+/// Marker: this zone destroys opposing-faction projectiles that enter it (AMZ, Phase 6E). Present
+/// only on zones whose ability sets `blocks_projectiles: true`.
+#[derive(Component, Debug)]
+pub struct ZoneBlocksProjectiles;
+
 /// Where the zone's center is located.
 #[derive(Debug, Clone)]
 pub enum ZoneAnchor {

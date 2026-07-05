@@ -899,10 +899,15 @@ caster + faction-aware engine + data-only scaling; see §8.7, docs/phase5-plan.m
    caster (`spitter`) with enemy projectiles hitting the player, a data-only enemy-scaling model, and
    the `suppress_abilities` wiring.
 
-**Phase 6 — Zone system**
-1. Implement `PersistentZone` entities, `ZoneAnchor`, `PlayerZonePresence`.
-2. Wire D&D and Tree Conduit as zone-emitting abilities.
-3. Add first zone-conditioned talent (Blood Boil range inside D&D) to validate the query.
+**Phase 6 — Zone system** _(complete 2026-07-05 — full scope incl. occupant DoT/regen + AMZ
+projectile blocking + the code-driven ability-hook system; see §8.8, docs/phase6-plan.md)_
+1. ✅ `PersistentZone` / `ZoneAnchor` / `PlayerZonePresence` wired live (the scaffold `zone` module
+   joined `lib.rs`/`GameLogicPlugin`).
+2. ✅ D&D + Tree Conduit as zone emitters (a new `AbilityDef.zone: Option<ZoneSpec>` + `dropped_zone`
+   behavior); plus Consecrated Ground (DoT) + AMZ (blocking) demonstrators.
+3. ✅ First zone-conditioned talent (Blood Boil ×2 range inside D&D) — implemented as the **first
+   code-driven ability hook** (`HookRegistry` + `AbilityHook`), which paid the §8.5
+   `execute_ready_abilities` resolve/apply-split debt.
 
 **Phase 7 — Act graph + room system**
 1. Implement `ActGraph`, `EncounterNode`, seeded graph generation.
@@ -1013,7 +1018,7 @@ phase that should absorb each item:
 | Debt | Why it can wait | Absorb in |
 |---|---|---|
 | ~~`Def`-library triplication~~ **RESOLVED (Phase 4).** Generic `DefLibrary<T>` + `DefAsset` + `RonDefLoader<T>` + `register_def_library` in `core/def_library.rs`; the three libraries are now type aliases and `HeroDef` reuses the same path. | — | Done |
-| `execute_ready_abilities` is a large system mixing trigger validation, faction target-gathering, param resolution, effect application, VFX + projectile spawning, the whiff gate + suppress gate, and cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway. **Still not triggered through Phase 5** — the faction/whiff/suppress additions are inline flags, not code-driven hooks | First code-driven hook: split into resolve/apply helpers around the hook points |
+| ~~`execute_ready_abilities` mixes trigger validation, faction gather, param resolution, effect application, VFX/projectile spawning, whiff/suppress gates, and cooldown bookkeeping — split around the hook points~~ **RESOLVED (Phase 6).** The first code-driven hook (`blood_boil_dnd_range`) landed; `execute_ready_abilities` now interleaves Pre hooks (resolve→behavior boundary) and Post hooks (after apply), each gated on `ActiveHooks` + registration. `ability/hooks.rs` = `AbilityHook`/`HookContext`/`HookRegistry`. Byte-identical (no registered hook is active on a campaign cast). | — | Done |
 | `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent |
 | ~~`suppress_abilities` is parsed but neither resolved into a component nor consumed~~ **RESOLVED (Phase 5).** `resolve_actor_status` folds it into a new `AbilitiesSuppressed` marker; `auto_cast_abilities`, `execute_ready_abilities`, and the hero input/stance systems skip a suppressed caster. Neutral (no shipped content applies stun). | — | Done |
 | ~~Travelling projectiles / Blood Boil have no visuals~~ **PARTLY RESOLVED (Phase 4).** Projectile sprites (`attach_projectile_visuals`, `Added<ProjectileMotion>`, element-tinted) + status tints (`tint_status_effects`) landed as pure presentation. **Still open:** the Blood Boil **nova flash** — the cone-flash path is logic-side, so a nova flash spawned the same way would move the golden baseline; it needs a presentation-only cast-VFX event bus | Nova flash: when the cast-VFX bus lands (or a baseline regen for it is accepted) |
@@ -1076,6 +1081,43 @@ section. **The golden baseline did not move at any of the five steps.** Delivere
 (5), forced movement (6), UI (9). Deferred from Phase 5 with triggers (phase5-plan §7): `ThemeDef`
 loader + theme/encounter spawning + `Elite`/boss spawn roles + a live scaling driver (Phase 7);
 multi-phase boss AI + enemy status/DoT kits (Phase 9); AMZ zones (Phase 6+).
+
+### 8.8 Phase 6 delivered (2026-07-05)
+
+Persistent zones + the **code-driven ability-hook system**, shipped at **full scope** (owner decision
+D2) with the real hook registry (D1 — not a declarative shortcut). See `docs/phase6-plan.md` and the
+CHANGELOG "Phase 6" section. **The golden baseline did not move at any of the six steps.** Delivered:
+- **Zone system live** — the scaffold `zone` module (`PersistentZone`/`ZoneAnchor`/`PlayerZonePresence`,
+  already written) joined `lib.rs`/`GameLogicPlugin`; maintenance runs at the end of
+  `MovementSet::Integrate` (positions settled, presence fresh before combat).
+- **Zone-emitting abilities** — new `AbilityDef.zone: Option<ZoneSpec>` (`zone_type` + `anchor`
+  {Fixed|FollowCaster} + `blocks_projectiles`) + a `dropped_zone` behavior returning a
+  `CastOutcome.zone` request; execute builds the `PersistentZone` from spec + params + the caster's
+  `Faction` (the projectile pattern). Content: D&D (buff zone, regen only — `damage_per_second` 0,
+  stays RMB `Input`), Tree Conduit (marker), Consecrated Ground (Holy DoT), AMZ (blocking).
+- **Code-driven hooks (pays the §8.5 `execute_ready_abilities`-split debt)** — `ability/hooks.rs`:
+  `AbilityHook` (`pre`/`post`) + `HookContext` + `HookRegistry`. Execute interleaves Pre hooks
+  (resolve→behavior; may mutate `ResolvedParams`) and Post hooks (after apply), gated on the caster's
+  `ActiveHooks` **and** registration. This finally consumes the `ActiveHooks` maintained since Phase 2.
+  Registered: `blood_boil_dnd_range` (×2 `radius` inside D&D — architecture-plan §4's Talent 3).
+  `bone_shield_on_kill` stays inert (its shield system is deferred, §8.1(5)). Byte-identical: no
+  registered hook is active on a campaign cast. **This is the deliberate deviation-free realization
+  of the §3.4 hook design** (unlike Phases 3/5, which replaced hook-sketches with declarative models,
+  Phase 6 built the literal registry because the zone-conditional effect is genuinely code-shaped).
+- **Occupant tick effects** — `ZoneEffects` (1 Hz) + `zone_tick_effects`: Holy DoT to opposing-faction
+  occupants (Consecrated Ground), regen to the owner inside (D&D). No RNG; neutral where no zone
+  exists.
+- **AMZ projectile blocking (closes §8.1(8))** — `ZoneBlocksProjectiles` + `block_projectiles_in_zones`
+  (before `projectile_collision`): destroys projectiles aimed at the zone's faction inside it, except
+  those emitted from inside. The `FollowCaster` anchor mechanism is built + tested; the AMZ-follow
+  *talent* is deferred content.
+
+§8.1 status after Phase 6: enemy **projectiles + AMZ blocking (8)** now **fully done**. Still open
+from §8.1: shields/absorbs (5) — its `ActiveHook`/Post-hook plumbing now exists (bone shield just
+needs the shield system); forced movement (6); UI (9). Deferred from Phase 6 with triggers
+(phase6-plan §7): cross-ability zone buffs (Death Strike / Heart Strike inside D&D), Tree Conduit's
+enhanced-attack consumer, the AMZ-follow talent, and the bone-shield Post hook — Phase 9 class
+content; zone visuals — a presentation pass.
 
 ---
 

@@ -581,6 +581,86 @@ Death-Knight campaign. See `docs/phase5-plan.md` for the plan + as-built notes.
   attack_cadence` unchanged (contact cadence via the ability path). Build warning-free; golden
   baseline unchanged (no regeneration this phase).
 
+### Phase 6 — Persistent Zones + Code-Driven Ability Hooks (complete)
+Brings the `zone` module online (added to `lib.rs`/`GameLogicPlugin`) and delivers persistent ground
+zones end-to-end: queryable presence, occupant DoT/regen, and AMZ projectile blocking — plus the
+long-deferred **code-driven ability-hook system** (the §8.5 `execute_ready_abilities` split), whose
+first consumer is the zone-conditioned Blood Boil talent. Two owner decisions widened the phase
+beyond architecture-plan §7's three bullets (see `docs/phase6-plan.md`): **D1** build the real hook
+registry (not a declarative shortcut), **D2** full scope incl. occupant ticks + AMZ. Delivered in
+six compat-gated steps (6A–6F). **The golden baseline did NOT move at any step** — every addition is
+inert in the Death-Knight campaign (no zone is ever cast; the validation talent is held out of the
+offerable pool; AMZ zones touch no snapshot column and the campaign has no enemy projectiles).
+
+- **Zone core (6A, neutral).** `pub mod zone;` (was an uncompiled scaffold); `ZonePlugin` inserts
+  `PlayerZonePresence` and runs the pre-written `tick_zone_lifetimes` → `move_anchored_zones` →
+  `build_player_zone_presence` chain at the **end of `MovementSet::Integrate`** (after
+  `world_to_grid`), so positions are settled and presence is fresh before `CombatSet::Damage` reads
+  it. Respects the Phase-3.1 movement pin (zone systems never write an actor `WorldPosition`); with
+  zero zones alive every system is an empty-loop no-op.
+- **`dropped_zone` behavior + `ZoneSpec` schema (6B, neutral).** New `AbilityDef.zone:
+  Option<ZoneSpec>` (`zone_type` + `anchor: ZoneAnchorKind{Fixed|FollowCaster}` +
+  `blocks_projectiles`); `#[serde(default)]` so every non-zone ability parses unchanged. The
+  `dropped_zone` behavior (`needs_aim() == false`) returns a `CastOutcome.zone` request and
+  `execute_ready_abilities` builds the `PersistentZone` entity from the spec + resolved params
+  (`zone_radius`/`zone_duration`) + the **caster's `Faction`** — mirroring the existing projectile
+  spawn path. **D&D** (`dnd`, the BDK L1 RMB Special — stays `activation: Input`) now drops a fixed
+  `death_and_decay` zone; its `damage_per_second` was set to **0** (per Mechanics it is a *buff*
+  zone, not a damage zone — the `2.0` scaffold value dropped). **Tree Conduit** (`tree_conduit`)
+  ships as a marker-only zone demonstrator (Druid enhanced-attack consumer deferred). D&D is `Input`
+  and the campaign bot never fires it ⇒ no zone spawns in the master ⇒ neutral.
+- **Code-driven ability hooks + execute split (6C, neutral — §8.5 debt paid).** New `ability/hooks.rs`:
+  `AbilityHook` trait (`pre(&mut ResolvedParams)` / `post(&CastOutcome)`, both defaulting to no-ops),
+  `HookContext { caster, zones }`, and a `HookRegistry` resource (mirrors `BehaviorRegistry`).
+  `execute_ready_abilities` was split to interleave hooks at two points: **Pre** (resolve → behavior
+  boundary; may rewrite resolved params) and **Post** (after effects apply; reads the outcome). A
+  hook runs only when its `HookId` is BOTH in the caster's `ActiveHooks` (installed on talent
+  acquisition since Phase 2, never consumed until now) AND registered — an un-acquired or
+  not-yet-implemented hook is zero-cost and silently skipped (unlike a missing *behavior*, which
+  warns). `ResolvedParams` gained `set`/`scale`. Registered: **`blood_boil_dnd_range`** (Pre).
+  `bone_shield_on_kill` stays **unregistered → inert** (its shield/absorb system is deferred,
+  §8.1(5)); `death_strike`'s Post-hook listing rides along harmlessly. **Split verified
+  byte-identical:** no registered hook is active on any campaign-cast ability, so the refactor
+  preserves the exact resolve→behavior→effects→cooldown order.
+- **Validation talent — Blood Boil range inside D&D (6C, testing.md DoD).** `BloodBoilDndRange`
+  (a Pre hook) doubles Blood Boil's `radius` param while the caster stands in `death_and_decay`
+  (Mechanics: "Blood boil has double range when cast inside D&D") — architecture-plan §4's "Talent 3
+  — Zone-interaction" realized: no D&D or base Blood Boil code touched. `blood_boil.ability.ron`
+  gained `hooks: [(Pre, "blood_boil_dnd_range")]`; the existing `blood_boil_dnd_range_rare.talent.ron`
+  (a `Behavior` effect) is unchanged and kept **out of `blood_boil.talent_pool`** so the campaign
+  can't offer/acquire it (master stays neutral) — validated by `tests/zone.rs` instead.
+- **Zone occupant-tick effects (6D, neutral).** New `ZoneEffects { damage_per_second, regen_fraction,
+  tick }` (a fixed 1 Hz repeating timer — discrete ticks, no per-frame float drift, no RNG),
+  attached at spawn only when the ability defines any. `zone_tick_effects` (in `CombatSet::Damage`)
+  emits, per tick, a **Holy DoT** to every **opposing-faction** actor inside (Consecrated Ground) and
+  **regen** to the owner while it stands inside (D&D heals `regen_percent_per_second`% of max health).
+  Damage/heal flow through the shared `apply_damage`/`apply_heal`. `consecrated_ground.ability.ron`
+  (AutoCast, Holy DoT) ships as a demonstrator (no Paladin hero). Neutral: no zone exists in the
+  campaign. **Guard:** `execute_ready_abilities`'s candidate query and `zone_tick_effects` both filter
+  `Without<PersistentZone>` — zones carry `WorldPosition` + `Faction`, so without this a friendly
+  zone could be gathered as an enemy cast's target (neutral in the campaign, but correct).
+- **AMZ projectile blocking (6E, neutral to the master).** New marker `ZoneBlocksProjectiles` +
+  `block_projectiles_in_zones` (in `CombatSet::Damage`, ordered `after(move_projectiles).before(
+  projectile_collision)` so a blocked shot never lands). A blocking zone destroys any projectile
+  whose `target_faction == zone.Faction` while it is inside the zone, **unless its `source` stands
+  inside** the zone (Mechanics: "no effect if enemies emit projectiles from inside — it acts as a
+  barrier"). `amz.ability.ron` (BDK band-4/6, `activation: AutoCast`, `blocks_projectiles: true`)
+  joins the manifest. The `FollowCaster` anchor mechanism (`move_anchored_zones`) is built + tested;
+  the AMZ-epic talent that flips base AMZ to follow is deferred content. **Measured gate:** the
+  master stayed **byte-identical** — AMZ zones are in no snapshot column and the campaign has no
+  enemy projectiles, so even if the fixed seed unlocks `amz` nothing observable moves.
+- **Sim helpers.** `zone_count`/`zone_types`/`zone_center`/`player_in_zone` (reads
+  `PlayerZonePresence`); `spawn_zone(type, center, radius, duration, follow, faction)` (direct
+  test spawn, for the follow-anchor mechanism); `grant_talent(id)` (installs a talent + its
+  `ActiveHook` via the real `TalentAcquiredEvent` path).
+- **Tests: 107 passing** (was 94). +5 unit (zone RON parse ×4 — `tree_conduit`/`consecrated_ground`/
+  `amz`/no-zone; the `blood_boil_dnd_range` hook doubling `radius` only inside D&D) and +8 golden
+  scenarios (`tests/zone.rs`: D&D drops a zone that expires; presence enter/exit; **D&D doubles Blood
+  Boil range inside it**; Consecrated Ground DoT hits enemies inside not outside and never the
+  Friendly owner; D&D regen heals the owner inside only; AMZ blocks an enemy bolt; a bolt emitted
+  from inside the AMZ is not blocked; a follow-anchor zone tracks the owner). Build warning-free;
+  golden baseline unchanged (no regeneration).
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -662,9 +742,9 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–5 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
-enemy abilities + AI + faction-aware engine) are complete. The following are designed and scaffolded
-but have zero implementation yet:
+Phases 0–6 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
+enemy abilities + AI + faction-aware engine, persistent zones + code-driven hooks) are complete. The
+following are designed and scaffolded but have zero implementation yet:
 
 - ~~Hero / stance system (HeroDef asset, Q swap) — Phase 4~~ **done** (focused vertical slice —
   Death Knight + Mage; heavier Mage subsystems deferred, see architecture-plan §8.6)
@@ -672,7 +752,12 @@ but have zero implementation yet:
   ability engine, contact melee + a ranged caster, data-only scaling, `suppress_abilities` wired;
   the AI "registry" became a component enum — see architecture-plan §8.7. Deferred: `ThemeDef`/theme
   spawning + `Elite`/boss spawn roles + boss AI + a live scaling driver — Phase 7/9)
-- Persistent zones (D&D, Consecrated Ground, Tree Conduit) — Phase 6
+- ~~Persistent zones (D&D, Consecrated Ground, Tree Conduit) — Phase 6~~ **done** (full scope:
+  `dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ projectile blocking; plus the
+  code-driven ability-hook system — `HookRegistry`/`AbilityHook` + the `execute_ready_abilities`
+  split — validated by Blood Boil's double-range-inside-D&D talent. Deferred to Phase 9 class
+  content: cross-ability zone buffs, Tree Conduit's enhanced-attack consumer, the AMZ-follow talent,
+  and the bone-shield Post hook — see architecture-plan §8.8)
 - Act graph, room types, encounter lifecycle — Phase 7
 - Persistence (save/load RunState, MetaState) — Phase 8
 - Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9

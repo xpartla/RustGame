@@ -5,16 +5,20 @@
 //
 // Effect: Behavior hook "blood_boil_dnd_range".
 //
-// Hook behavior (registered in AbilityPlugin):
+// Hook behavior (Phase 6 — implemented in ability/hooks.rs::BloodBoilDndRange, registered in
+// AbilityPlugin):
 //   Reads PlayerZonePresence (zone/components.rs).
 //   If presence.is_inside("death_and_decay"):
-//     Doubles the "range" param before the blood_boil behavior executes (Pre hook).
+//     Doubles the "radius" param (Blood Boil's self_nova reads "radius") before the behavior
+//     resolves (Pre hook) — Mechanics: "Blood boil has double range when cast inside D&D".
 //   Otherwise: no effect.
 //
 // This demonstrates the zone-presence pattern without modifying D&D or the base
 // blood_boil ability definition. The zone interaction is encoded entirely in this hook.
 //
-// Listed in blood_boil.ron under hooks: [(Pre, "blood_boil_dnd_range")].
+// Listed in blood_boil.ability.ron under hooks: [(Pre, "blood_boil_dnd_range")]. Deliberately NOT
+// in blood_boil's talent_pool this phase, so the golden campaign can't offer/acquire it (keeping
+// the master byte-identical); validated by tests/zone.rs instead.
 (
     id: "blood_boil_dnd_range_rare",
     display_name: "Empowered Reach",

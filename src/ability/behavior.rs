@@ -40,6 +40,19 @@ impl ResolvedParams {
     pub fn get(&self, stat: &str) -> f32 {
         *self.0.get(stat).unwrap_or(&0.0)
     }
+
+    /// Overwrites a param (Phase 6 — used by Pre hooks to rewrite a resolved number).
+    pub fn set(&mut self, stat: &str, value: f32) {
+        self.0.insert(stat.to_string(), value);
+    }
+
+    /// Multiplies an existing param by `factor` in place; no-op if the stat is absent. Used by
+    /// condition hooks (e.g. `blood_boil_dnd_range` doubles `radius` inside D&D).
+    pub fn scale(&mut self, stat: &str, factor: f32) {
+        if let Some(v) = self.0.get_mut(stat) {
+            *v *= factor;
+        }
+    }
 }
 
 /// A candidate target the execute system gathers up front and hands to the behavior.
@@ -63,6 +76,16 @@ pub struct HitTarget {
 #[derive(Debug, Clone, Copy)]
 pub enum VfxShape {
     Cone { radius: f32, half_angle: f32, forward: Vec2, lifetime: f32 },
+}
+
+/// A persistent ground zone a behavior wants dropped (D&D, Consecrated Ground, AMZ, Tree Conduit).
+/// The behavior resolves only the drop *point*; the ability's `zone` spec (ability/assets.rs) +
+/// resolved params supply the zone type, anchor, radius/duration, and any occupant effects — the
+/// execute system builds the `PersistentZone` entity. Mirrors `ProjectileSpawn`.
+#[derive(Debug, Clone, Copy)]
+pub struct ZoneSpawn {
+    /// Where the zone is dropped (caster origin for `dropped_zone`).
+    pub center: Vec2,
 }
 
 /// A travelling projectile a behavior wants spawned. The execute system spawns the entity and
@@ -92,6 +115,9 @@ pub struct CastOutcome {
     pub vfx: Option<VfxShape>,
     /// Optional travelling projectile to spawn (deferred delivery — see projectile module).
     pub projectile: Option<ProjectileSpawn>,
+    /// Optional persistent zone to drop (Phase 6 — D&D, Consecrated Ground, AMZ, Tree Conduit).
+    /// The execute system builds the `PersistentZone` from the ability's `zone` spec + params.
+    pub zone: Option<ZoneSpawn>,
 }
 
 /// What a behavior is given each time it runs. Read-only view of the caster.
@@ -192,6 +218,7 @@ impl AbilityBehavior for MeleeCone {
             hits,
             vfx: Some(VfxShape::Cone { radius: range, half_angle, forward, lifetime: ATTACK_LIFETIME }),
             projectile: None,
+            zone: None,
         }
     }
 }
@@ -212,7 +239,7 @@ impl AbilityBehavior for SelfNova {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None }
+        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None }
     }
 
     fn needs_aim(&self) -> bool {
@@ -239,7 +266,7 @@ impl AbilityBehavior for ContactMelee {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None }
+        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None }
     }
 
     fn needs_aim(&self) -> bool {
@@ -278,7 +305,30 @@ impl AbilityBehavior for ProjectileBehavior {
                 pierce,
                 lifetime,
             }),
+            zone: None,
         }
+    }
+}
+
+/// Dropped ground zone (D&D, Consecrated Ground, AMZ, Tree Conduit). Drops a persistent zone at the
+/// caster's position; no aim required, so it auto-casts cleanly. What the zone *does* — feed the
+/// `PlayerZonePresence` query, tick damage/regen to occupants, block projectiles — is decided by the
+/// ability's `zone` spec + params and handled by the zone module, not here. New in Phase 6.
+///
+/// Params: "zone_radius", "zone_duration" (+ any occupant-effect params the zone reads).
+pub struct DroppedZone;
+
+impl AbilityBehavior for DroppedZone {
+    fn resolve(&self, ctx: &AbilityContext, _params: &ResolvedParams) -> CastOutcome {
+        CastOutcome {
+            origin: ctx.origin,
+            zone: Some(ZoneSpawn { center: ctx.origin }),
+            ..Default::default()
+        }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
     }
 }
 

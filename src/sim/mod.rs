@@ -50,6 +50,7 @@ use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 use crate::talent::assets::{TalentDef, TalentLibrary};
 use crate::talent::components::AcquiredTalents;
 use crate::world::components::TileMap;
+use crate::zone::components::{PersistentZone, PlayerZonePresence, ZoneAnchor};
 
 /// Fixed timestep for every simulation frame: 60 updates per simulated second.
 pub const SIM_DT: f32 = 1.0 / 60.0;
@@ -575,12 +576,93 @@ impl Sim {
         def.base_params.insert(key.to_string(), value);
     }
 
+    /// Installs a talent on the player through the real TalentAcquiredEvent path (adds to
+    /// AcquiredTalents; a `Behavior` talent also installs its `ActiveHook`). Step once afterward so
+    /// `install_acquired_talent` runs. Hands a talent to the player without an offer — e.g. the
+    /// scenario-only `blood_boil_dnd_range_rare`, which is kept out of the offerable pool.
+    pub fn grant_talent(&mut self, talent_id: &str) {
+        let owner = self.player();
+        self.app
+            .world_mut()
+            .send_event(crate::talent::systems::apply::TalentAcquiredEvent {
+                owner,
+                talent_id: talent_id.to_string(),
+            });
+    }
+
     /// Awards XP to the player through the normal GainXpEvent path (kills, scripted surges).
     pub fn grant_xp(&mut self, amount: u32) {
         let target = self.player();
         self.app
             .world_mut()
             .send_event(crate::core::events::GainXpEvent { target, amount });
+    }
+
+    // ---------------------------------------------------------------- zones (Phase 6)
+
+    /// Number of live `PersistentZone` entities in the world.
+    pub fn zone_count(&mut self) -> usize {
+        let world = self.app.world_mut();
+        let mut q = world.query::<&PersistentZone>();
+        q.iter(world).count()
+    }
+
+    /// The `zone_type` of every live zone (one entry per zone entity).
+    pub fn zone_types(&mut self) -> Vec<String> {
+        let world = self.app.world_mut();
+        let mut q = world.query::<&PersistentZone>();
+        q.iter(world).map(|z| z.zone_type.clone()).collect()
+    }
+
+    /// World-space centre of the first live zone of `zone_type`, if any (Fixed anchor value or the
+    /// Follow-updated WorldPosition — both live on the entity).
+    pub fn zone_center(&mut self, zone_type: &str) -> Option<Vec2> {
+        let world = self.app.world_mut();
+        let mut q = world.query::<(&PersistentZone, &WorldPosition)>();
+        q.iter(world)
+            .find(|(z, _)| z.zone_type == zone_type)
+            .map(|(_, pos)| pos.0)
+    }
+
+    /// Directly spawns a `PersistentZone` (test tool — bypasses the ability path). `follow: Some(e)`
+    /// makes it track entity `e` (ZoneAnchor::Follow, the AMZ-epic mechanism); `None` fixes it at
+    /// `center`. A marker zone (no ZoneEffects / blocking) carrying `faction`.
+    pub fn spawn_zone(
+        &mut self,
+        zone_type: &str,
+        center: Vec2,
+        radius: f32,
+        duration: f32,
+        follow: Option<Entity>,
+        faction: Faction,
+    ) -> Entity {
+        let anchor = match follow {
+            Some(e) => ZoneAnchor::Follow(e),
+            None => ZoneAnchor::Fixed(center),
+        };
+        self.app
+            .world_mut()
+            .spawn((
+                PersistentZone {
+                    zone_type: zone_type.to_string(),
+                    owner: Entity::PLACEHOLDER,
+                    radius,
+                    duration: Timer::from_seconds(duration, TimerMode::Once),
+                    anchor,
+                },
+                WorldPosition(center),
+                faction,
+            ))
+            .id()
+    }
+
+    /// Whether the player currently stands inside a zone of `zone_type` — reads
+    /// `PlayerZonePresence`, the exact cache gameplay systems read (rebuilt each frame).
+    pub fn player_in_zone(&self, zone_type: &str) -> bool {
+        self.app
+            .world()
+            .resource::<PlayerZonePresence>()
+            .is_inside(zone_type)
     }
 
     // ---------------------------------------------------------------- environment control

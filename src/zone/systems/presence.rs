@@ -14,7 +14,9 @@ use crate::core::components::WorldPosition;
 use crate::player::components::Player;
 use crate::zone::components::{PersistentZone, PlayerZonePresence, ZoneAnchor};
 
-/// TODO(Phase 6): implement.
+/// Rebuilds `PlayerZonePresence` from every live zone each frame (Phase 6). The single system that
+/// spatially queries zone entities; all other systems gate on the resource. Runs at the end of
+/// MovementSet::Integrate so the snapshot is fresh before `CombatSet::Damage` reads it.
 pub fn build_player_zone_presence(
     player_q: Query<&WorldPosition, With<Player>>,
     zones: Query<(&PersistentZone, &WorldPosition)>,

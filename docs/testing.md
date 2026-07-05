@@ -109,7 +109,13 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   stops-and-shoots, an enemy bolt passes through a Hostile to hit the player, scaling grows
   health+damage by depth, and a suppressed (stunned) caster can't cast. Plus unit tests: `EnemyDef`
   RON parse and `resolve_enemy_stats` scaling math. Contact cadence stays in `tests/combat.rs`.
-- Phase 6: "D&D zone doubles Blood Boil range inside it".
+- Phase 6 (done): `tests/zone.rs` — "D&D zone doubles Blood Boil range inside it" (the code-driven
+  hook DoD), plus: a dropped zone spawns and expires, presence tracks enter/exit, Consecrated Ground
+  DoT damages enemies inside but not outside and never the Friendly owner, D&D regen heals the owner
+  inside only, AMZ destroys an enemy bolt entering it, a bolt emitted from inside the AMZ is not
+  blocked, and a follow-anchor zone tracks its owner. Plus unit tests: zone RON parse
+  (`dnd`/`tree_conduit`/`consecrated_ground`/`amz` + no-zone default) and the `blood_boil_dnd_range`
+  hook doubling `radius` only inside D&D.
 - Phase 7: "act graph is seed-deterministic", "objective completion advances the node".
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.

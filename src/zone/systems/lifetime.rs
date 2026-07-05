@@ -10,7 +10,9 @@ use bevy::prelude::*;
 use crate::zone::components::{PersistentZone, ZoneAnchor};
 use crate::core::components::WorldPosition;
 
-/// TODO(Phase 6): implement.
+/// Advances every zone's lifetime timer and despawns expired zones (Phase 6). Runs at the end of
+/// MovementSet::Integrate, before presence is rebuilt, so an expired zone grants no final-frame
+/// presence. Bevy 0.16 `despawn` is non-recursive; zones are top-level entities (no children).
 pub fn tick_zone_lifetimes(
     time: Res<Time>,
     mut zones: Query<(Entity, &mut PersistentZone)>,
@@ -24,7 +26,8 @@ pub fn tick_zone_lifetimes(
     }
 }
 
-/// TODO(Phase 6): implement.
+/// Syncs each `ZoneAnchor::Follow` zone's WorldPosition to the entity it tracks (Phase 6) — the
+/// AMZ-epic "attached to you as you move" mechanism. `Fixed` zones are left untouched.
 pub fn move_anchored_zones(
     mut zones: Query<(&PersistentZone, &mut WorldPosition)>,
     positions: Query<&WorldPosition, Without<PersistentZone>>,

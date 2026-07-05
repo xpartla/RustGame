@@ -10,10 +10,11 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
+| `docs/phase6-plan.md` | Phase 6 plan + as-built notes (persistent zones + code-driven ability hooks) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -54,10 +55,15 @@ in §8.7) — each item has an owning phase. Highlights a future session must no
   `EnemyDef` + faction-aware engine + `contact_melee`/ranged caster + data-only scaling. The **AI
   "registry" is a component enum** (`AiBehavior`), not the scaffold trait; the scaffold
   `enemy/behavior.rs` is deleted. Still open: `ThemeDef`/theme spawning + `Elite`/boss roles + a
-  live scaling driver (Phase 7); boss AI + enemy DoT kits (Phase 9); **AMZ projectile-blocking
-  zone** (Phase 6+).
-- `execute_ready_abilities` split — **still not triggered through Phase 5** (faction/whiff/suppress
-  are inline flags, not code-driven hooks); do it with the **first code-driven ability/status hook**.
+  live scaling driver (Phase 7); boss AI + enemy DoT kits (Phase 9).
+- ~~Persistent zones + AMZ projectile-blocking~~ **DONE (Phase 6, §8.8)** — `zone` module live
+  (`dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ blocking). New zone abilities via
+  `AbilityDef.zone: Option<ZoneSpec>`. Deferred to Phase 9: cross-ability zone buffs, Tree Conduit's
+  enhanced-attack consumer, the AMZ-follow talent.
+- ~~`execute_ready_abilities` split (do it with the first code-driven hook)~~ **DONE (Phase 6)** —
+  `ability/hooks.rs` (`HookRegistry`/`AbilityHook`); execute interleaves Pre/Post hooks gated on
+  `ActiveHooks` + registration. First hook: `blood_boil_dnd_range`. `bone_shield` stays inert until
+  the shield/absorb system (§8.1(5)) lands — its Post-hook plumbing now exists.
 - Projectile/status **visuals**: sprites + status tints **done (Phase 4)**; the **Blood Boil nova
   flash is still open** — needs a presentation-only cast-VFX bus (a logic-path spawn would move the
   golden baseline).

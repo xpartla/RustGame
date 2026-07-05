@@ -13,7 +13,12 @@
     unlock_schedule: Band(2, 3),
     activation: AutoCast,
     behavior: "self_nova",
-    hooks: [],
+    // Phase 6: the blood_boil_dnd_range_rare talent installs this Pre hook, which doubles `radius`
+    // while the caster stands in D&D. Inert unless that talent is acquired (kept out of the
+    // campaign-reachable talent_pool this phase, so the golden master stays neutral).
+    hooks: [
+        (Pre, "blood_boil_dnd_range"),
+    ],
     base_params: {
         "damage": 6.0,
         "radius": 90.0,

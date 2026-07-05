@@ -14,6 +14,11 @@ pub const ENEMY_ATTACK_FLASH_SECS: f32 = 0.15;
 // This is only the lifetime of the transient hitbox-flash gizmo entity.
 pub const ATTACK_LIFETIME: f32 = 0.1;
 
+// Persistent-zone occupant tick cadence (Phase 6). Zone DoT/regen land in discrete 1 Hz ticks
+// (`damage_per_second` per tick), not per-frame — deterministic, no f32 drift. Per-zone radius,
+// duration, dps, and regen come from the ability RON (assets/abilities/ → ZoneSpec + params).
+pub const ZONE_TICK_INTERVAL: f32 = 1.0;
+
 // XP / leveling. Per-enemy-type XP rewards live in the enemy RON files (`xp_value`); the level
 // curve is global: XP to advance from `level` to the next = XP_FIRST_LEVEL + (level-1)*XP_LEVEL_STEP.
 pub const XP_FIRST_LEVEL: u32 = 10;

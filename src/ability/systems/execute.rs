@@ -18,17 +18,20 @@
 // code-driven hook (see docs/phase3-plan.md §7).
 
 use bevy::prelude::*;
-use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation};
-use crate::ability::behavior::{AbilityContext, BehaviorRegistry, Target, VfxShape};
+use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation, HookPhase, ZoneAnchorKind, ZoneSpec};
+use crate::ability::behavior::{AbilityContext, BehaviorRegistry, ResolvedParams, Target, VfxShape};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent};
 use crate::ability::effects::{apply_resolved_effects, resolve_effects};
+use crate::ability::hooks::{HookContext, HookRegistry};
 use crate::core::components::{AbilitiesSuppressed, Facing, Faction, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
 use crate::talent::assets::{TalentDef, TalentLibrary};
-use crate::talent::components::AcquiredTalents;
+use crate::talent::components::{AcquiredTalents, ActiveHooks};
 use crate::talent::modifier::resolve_params;
+use crate::constants::ZONE_TICK_INTERVAL;
+use crate::zone::components::{PersistentZone, PlayerZonePresence, ZoneAnchor, ZoneBlocksProjectiles, ZoneEffects};
 
 /// Advances every ability's cooldown timer toward readiness.
 pub fn tick_ability_cooldowns(time: Res<Time>, mut cooldowns: Query<&mut AbilityCooldown>) {
@@ -79,12 +82,16 @@ pub fn execute_ready_abilities(
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
     registry: Res<BehaviorRegistry>,
+    hook_registry: Res<HookRegistry>,
+    zone_presence: Res<PlayerZonePresence>,
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
     talent_library: Res<TalentLibrary>,
-    owners: Query<(&WorldPosition, &Facing, &Faction, Option<&AcquiredTalents>)>,
-    actors: Query<(Entity, &WorldPosition, &Faction)>,
+    owners: Query<(&WorldPosition, &Facing, &Faction, Option<&AcquiredTalents>, Option<&ActiveHooks>)>,
+    // Candidate targets are actors only — never zones (which also carry WorldPosition + Faction, so
+    // without this guard a friendly zone could be gathered/targeted by an enemy's cast).
+    actors: Query<(Entity, &WorldPosition, &Faction), Without<PersistentZone>>,
     suppressed: Query<(), With<AbilitiesSuppressed>>,
     mut instances: Query<(&AbilityInstance, &mut AbilityCooldown)>,
 ) {
@@ -110,7 +117,7 @@ pub fn execute_ready_abilities(
     let no_talents = AcquiredTalents::default();
 
     for trigger in triggers.read() {
-        let Ok((owner_pos, owner_facing, owner_faction, acquired_opt)) = owners.get(trigger.owner) else {
+        let Ok((owner_pos, owner_facing, owner_faction, acquired_opt, active_hooks)) = owners.get(trigger.owner) else {
             continue;
         };
         // A suppressed (stunned) caster cannot fire, even via a queued trigger.
@@ -149,7 +156,7 @@ pub fn execute_ready_abilities(
                 break;
             }
 
-            let params = resolve_params(
+            let mut params = resolve_params(
                 &instance.def_id,
                 &def.base_params,
                 acquired,
@@ -157,6 +164,25 @@ pub fn execute_ready_abilities(
                 &talent_library,
                 &[],
             );
+
+            // Pre hooks (Phase 6 — the resolve→behavior boundary): a behavior-rewriting talent the
+            // caster has acquired may mutate the resolved params before the behavior resolves — e.g.
+            // `blood_boil_dnd_range` doubles `radius` while the caster stands in D&D. Runs only for
+            // hooks BOTH installed on the caster (ActiveHooks) AND registered in HookRegistry; an
+            // un-acquired or not-yet-implemented hook (e.g. bone_shield) is skipped, zero cost.
+            if let Some(active) = active_hooks {
+                for (phase, hook_id) in &def.hooks {
+                    if *phase == HookPhase::Pre && active.contains(hook_id) {
+                        if let Some(hook) = hook_registry.get(hook_id) {
+                            hook.pre(
+                                &HookContext { caster: trigger.owner, zones: &zone_presence },
+                                &mut params,
+                            );
+                        }
+                    }
+                }
+            }
+
             let ctx = AbilityContext {
                 owner: trigger.owner,
                 origin: owner_pos.0,
@@ -197,6 +223,14 @@ pub fn execute_ready_abilities(
                 ));
             }
 
+            // Dropped persistent zone (D&D / Consecrated Ground / AMZ / Tree Conduit). The behavior
+            // resolved the drop point; the ability's `zone` spec + resolved params supply the type,
+            // anchor, radius/duration, and occupant effects. Carries the caster's Faction so occupant
+            // damage targets the opposing side and blocking protects the caster's side.
+            if let (Some(spawn), Some(spec)) = (outcome.zone, def.zone.as_ref()) {
+                spawn_dropped_zone(&mut commands, spec, &params, spawn.center, trigger.owner, *owner_faction);
+            }
+
             // Travelling projectile: spawn it carrying the baked effects for on-impact delivery.
             if let Some(spawn) = outcome.projectile {
                 commands.spawn((
@@ -217,6 +251,23 @@ pub fn execute_ready_abilities(
                 ));
             }
 
+            // Post hooks (Phase 6 — after effects apply): react to the resolved cast outcome (e.g.
+            // count kills for bone shield). No shipped Post hook is registered yet — bone_shield's
+            // grant needs the deferred shield/absorb system (§8.1(5)) — so this is inert today but
+            // the boundary is wired.
+            if let Some(active) = active_hooks {
+                for (phase, hook_id) in &def.hooks {
+                    if *phase == HookPhase::Post && active.contains(hook_id) {
+                        if let Some(hook) = hook_registry.get(hook_id) {
+                            hook.post(
+                                &HookContext { caster: trigger.owner, zones: &zone_presence },
+                                &outcome,
+                            );
+                        }
+                    }
+                }
+            }
+
             cooldown.elapsed = 0.0;
             let resolved_cd = params.get("cooldown");
             if resolved_cd > 0.0 {
@@ -224,6 +275,52 @@ pub fn execute_ready_abilities(
             }
             break; // one instance per trigger
         }
+    }
+}
+
+/// Builds a `PersistentZone` entity for a `dropped_zone` cast, from the ability's `zone` spec +
+/// resolved params + the caster's faction. Occupant tick effects (Phase 6D) and projectile blocking
+/// (Phase 6E) attach as extra components here as those steps land; a plain marker zone (Tree Conduit)
+/// carries neither and is queried only via `PlayerZonePresence`.
+fn spawn_dropped_zone(
+    commands: &mut Commands,
+    spec: &ZoneSpec,
+    params: &ResolvedParams,
+    center: Vec2,
+    owner: Entity,
+    faction: Faction,
+) {
+    let radius = params.get("zone_radius");
+    let duration = params.get("zone_duration");
+    let anchor = match spec.anchor {
+        ZoneAnchorKind::Fixed => ZoneAnchor::Fixed(center),
+        ZoneAnchorKind::FollowCaster => ZoneAnchor::Follow(owner),
+    };
+    let mut zone = commands.spawn((
+        PersistentZone {
+            zone_type: spec.zone_type.clone(),
+            owner,
+            radius,
+            duration: Timer::from_seconds(duration, TimerMode::Once),
+            anchor,
+        },
+        WorldPosition(center),
+        faction,
+    ));
+    // Occupant tick effects (Phase 6D) — attached only when the ability defines any (Consecrated
+    // Ground DoT, D&D regen). `regen_percent_per_second` is a percent of the owner's max health.
+    let damage_per_second = params.get("damage_per_second");
+    let regen_fraction = params.get("regen_percent_per_second") / 100.0;
+    if damage_per_second > 0.0 || regen_fraction > 0.0 {
+        zone.insert(ZoneEffects {
+            damage_per_second,
+            regen_fraction,
+            tick: Timer::from_seconds(ZONE_TICK_INTERVAL, TimerMode::Repeating),
+        });
+    }
+    // AMZ (Phase 6E): destroys opposing-faction projectiles that enter it.
+    if spec.blocks_projectiles {
+        zone.insert(ZoneBlocksProjectiles);
     }
 }
 

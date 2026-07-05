@@ -15,6 +15,7 @@ pub mod assets;
 pub mod behavior;
 pub mod components;
 pub mod effects;
+pub mod hooks;
 pub mod plugin;
 pub mod systems;
 
