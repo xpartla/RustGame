@@ -1052,6 +1052,7 @@ phase that should absorb each item:
 | Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if Mage playtesting makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Mage playtesting |
 | Per-hero **base-stat application** — `HeroDef.base_stats` (max_health, move_speed) is data-only; `spawn_player` still uses the shared constants, so the Mage plays with the Death Knight's HP/speed | No class HP/speed differentiation is needed for the stance mechanic; keeping it out kept Phase 4 baseline-neutral | When class HP/speed differentiation matters (feel/balance) |
 | String ids (`AbilityId`/`StatusEffectId`/`TalentId` = `String`) are cloned per event/frame in hot-ish loops | Scale is tiny; determinism unaffected | Only if profiling ever says so (interning/`Arc<str>`) |
+| **Orphaned `AbilityInstance` entities on enemy death / encounter teardown** (found Phase 7.5). Enemy ability instances are separate top-level entities carrying an `owner` field (not real Bevy children), so `enemy_death`'s `despawn(enemy)` and `despawn_encounter_entities` (Enemy/Projectile/Zone/PickUp only) never remove them — they accumulate across a run. Harmless to the golden trace (not a snapshot field), but each orphaned **auto-cast** instance keeps emitting a wasted `TriggerAbilityEvent` every frame (execute then skips it — the dead owner fails the `owners.get`), so wasted work grows O(dead enemies). Only the Phase-7.5 run-reset (`reset.rs`) despawns them all (on restart). | Bounded per run; never affects behavior/determinism, only memory + per-frame waste; the golden master is byte-identical | Cheap fix: despawn an enemy's owned `AbilityInstance` entities in `enemy_death` (+ add them to `despawn_encounter_entities`). Byte-identical (no snapshot field) — do it with the next enemy/perf pass, or now if a run's frame cost is felt |
 
 ### 8.6 Phase 4 delivered (2026-07-05)
 
@@ -1209,6 +1210,10 @@ master** (no regeneration, like Phases 4–7). See `docs/phase7.5-ui-plan.md` §
 - **Presentation backlog.** Zone discs (`attach_zone_visuals`) + the **cast-VFX bus** (`CastVfxEvent`,
   write-only from `execute_ready_abilities` — byte-identical; the Blood Boil **nova flash** drawn by
   `game/vfx.rs`). Closes the §8.5 nova-flash + Phase-6 zone-visuals deferrals.
+- **Debt discovered (filed to §8.5, not fixed).** Building the run-reset teardown surfaced that
+  **`AbilityInstance` entities orphan on enemy death / encounter teardown** — nothing but the new
+  `reset.rs` despawns them. Byte-identical (not a snapshot field) but a per-run leak + wasted per-frame
+  auto-cast triggers; the cheap fix (despawn in `enemy_death`) is filed to §8.5 for the next enemy/perf pass.
 
 §8.1 status after Phase 7.5: **(9) UI phase is done** except the Phase-8 carve-outs below. Still open
 from §8.1: shields/absorbs (5), forced movement (6). Deferred from Phase 7.5 with triggers

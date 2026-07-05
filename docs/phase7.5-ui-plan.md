@@ -338,8 +338,10 @@ Consecrated / AMZ; Blood Boil nova flash. Screenshot pass into the phase §9 not
 | Settings screen | when there's something to set (audio/keybinds — out of scope until further notice) |
 | Separate "Heroes" gallery screen | Phase 9 content pass (character select covers it) |
 | Migrating the existing cone-flash to the VFX bus | the next deliberate baseline regen (zero behavior gain alone) |
+| **Mouse-input handlers** (hover/click) for every screen (D4 — keyboard-first shipped; mouse is additive, presentation-only, untestable headless) | a later UX pass (must only emit the same logic events the keys do) |
 | Damage numbers, minimap, tooltips, gamepad, art/audio | later UX/art pass |
 | Frost-charge bar *content* | Phase 9 Mage capstone (the HUD slot is ready) |
+| **Orphaned `AbilityInstance` cleanup on enemy death** (found this phase; filed to architecture-plan §8.5) | the next enemy/perf pass — the run-reset already despawns them, so restarts are clean |
 
 ---
 
