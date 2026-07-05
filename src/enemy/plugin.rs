@@ -1,6 +1,6 @@
 use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Timer, TimerMode, Update, in_state};
 use crate::core::components::FlowField;
-use crate::core::sets::CombatSet;
+use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::core::systems::flow_field::rebuild_flow_field_from_player;
 use crate::enemy::components::EnemySpawner;
@@ -30,9 +30,12 @@ impl Plugin for EnemyPlugin {
                 Update,
                 (
                     rebuild_flow_field_from_player,
-                    enemy_follow_flow_field.after(rebuild_flow_field_from_player),
-                    update_enemy_facing.after(enemy_follow_flow_field),
-                ).run_if(in_state(GameState::InRun)),
+                    enemy_follow_flow_field,
+                    update_enemy_facing,
+                )
+                    .chain()
+                    .in_set(MovementSet::Intent)
+                    .run_if(in_state(GameState::InRun)),
             );
     }
 }

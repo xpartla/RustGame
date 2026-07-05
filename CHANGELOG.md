@@ -3,7 +3,7 @@
 ---
 
 ## [Unreleased] — Architecture, Scaffold, Phases 0–3 & Testing Infrastructure
-_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2) → `884a406` (test suite) → phase 3_
+_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2) → `884a406` (test suite) → `7004259` (phase 3) → phase 3.1 hardening_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -370,6 +370,61 @@ compat-gated sub-steps (3A–3F); the golden baseline moved only on declared cha
   `tests/projectile.rs` (travel-then-hit, blaze/frostbite on impact, cross-element via real Mage
   abilities, bleed cone), `tests/autocast.rs` (Blood Boil auto-cast + cooldown gate, per-behavior
   aim gate). Build is warning-free.
+
+### Phase 3.1 — Hardening (post-Phase-3 review) (complete)
+A review pass over the Phase 3 implementation (2026-07-05) fixed one latent bug, closed the
+review's structural findings, and filled the test-coverage gaps promised in
+`docs/phase3-plan.md` §6 but not delivered with 3E. **The golden baseline did NOT move** — the
+scheduling pin below matched the order the single-threaded tie-break already produced, and every
+other change is behavior-neutral by construction (verified: `campaign_matches_golden_baseline`
+passes against the unchanged committed baseline).
+
+- **MovementSet pin (the Phase-3 "known follow-up").** New `MovementSet::{Intent, Integrate}`
+  (core/sets.rs) chained ahead of the combat sets:
+  `Intent (player_input, flow-field rebuild → enemy_follow → enemy_facing) → Integrate
+  (apply_velocity → world_to_grid) → CombatSet::Damage → …`. Positions are no longer hostage to
+  the scheduler's tie-break, so future phases can add Update systems without nudging the golden
+  master's px/py (the cause of two benign regens within Phase 3).
+- **Combat events survive overlay states (freeze-semantics fix).** Previously, an event written
+  the frame an overlay opened could silently expire: every combat reader is InRun-gated and Bevy
+  expires unread events after two frames — concretely, a DoT tick's `DamageEvent` (written in
+  `StatusSet::Tick`, consumed by `apply_damage` the *next* frame) vanished whenever a level-up
+  opened the TalentPicker in between. New `AddGameplayEventExt::add_gameplay_event`
+  (core/events.rs): `DamageEvent`, `HealEvent`, `ApplyStatusEvent`, `RemoveStatusEvent` now
+  advance their buffers only during InRun frames — the world freezes with pending events intact
+  and they resolve on the first frame after resume; entering GameOver/Menu clears them so a dead
+  run never leaks into the next. Input-intent events (`TriggerAbilityEvent`) still expire, and
+  same-frame-consumed events (`GainXpEvent`, `LevelUpEvent`, `UnlockAbilityEvent`) stay standard.
+  Locked by `tests/freeze.rs::dot_tick_pending_when_picker_opens_lands_after_resume`.
+- **BUG FIX: same-frame double application of a status.** `apply_status_effects` spawns through
+  `Commands`, so a second `ApplyStatusEvent` for the same (target, effect) in the same frame saw
+  "no existing instance" and spawned a duplicate — two live instances of a `RefreshOnReapply`
+  effect (double DoT), and `StackCapped` could overshoot its cap. Latent (no shipped content
+  emits two same-status events in one frame yet; Phase 4 multi-appliers would have). Fixed with
+  same-frame pending bookkeeping; locked by `same_frame_double_apply_keeps_a_single_refresh_instance`
+  and the StackCapped scenario.
+- **Hurtbox split (logic/presentation).** `projectile_collision` read `EnemyAppearance.radius` —
+  a presentation-data component — as the gameplay collision radius. New generic
+  `core::components::Hurtbox { radius }`: enemies get it in `enemy_bundle` (same archetype value,
+  so behavior is identical), the player gets one (`PLAYER_RADIUS = 25`, extracted to constants.rs
+  and shared with the visual circle) ready for enemy shots in Phase 5. Gameplay no longer reads
+  any presentation component.
+- **Coverage gaps closed** (promised in phase3-plan §6, missing from 3E): `StackCapped` /
+  `StackUnlimited` scenarios (via a new `Sim::insert_status_def` synthetic-def helper — no
+  shipped effect uses these rules yet), projectile pierce ×2 (pierce 0 stops at the first enemy;
+  pierce 1 passes through — via new `Sim::set_ability_param` test knob), orphaned-status reaping
+  on target death. New sim helpers: `insert_status_def`, `set_ability_param`,
+  `hasten_status_tick` (aligns a DoT tick with another event without fragile frame counting),
+  `grant_xp`.
+- **Cleanups.** Stale Phase-1-era header comment in `ability/systems/execute.rs` rewritten for
+  the Phase-3 model; stale `TODO(Phase 3)` in core/sets.rs removed; vestigial no-op assertion in
+  tests/status.rs and dead `despawned` variable in projectile collision removed.
+- **Debt made agent-visible.** Tech-debt register at `docs/architecture-plan.md` §8.5 (each item
+  with its owning phase); new repo `CLAUDE.md` mapping the contract documents and register for
+  future sessions; `/compat-check` now cross-checks findings against the register. Design
+  decision recorded there: **projectiles passing through walls is accepted for now** (project
+  owner, 2026-07-05); revisit during Phase 4 playtesting.
+- **Tests: 73 passing** (was 66). Build remains warning-free.
 
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.

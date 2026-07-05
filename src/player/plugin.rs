@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::core::sets::CombatSet;
+use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
@@ -20,7 +20,7 @@ impl Plugin for PlayerPlugin {
         app.add_systems(
             Update,
             (
-                player_input,
+                player_input.in_set(MovementSet::Intent),
                 update_player_facing.before(CombatSet::Damage),
                 // Input → ability trigger. Fires before CombatSet::Damage so the ability
                 // system (also in that set) can act on the event the same frame.

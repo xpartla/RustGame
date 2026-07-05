@@ -12,9 +12,9 @@
 use bevy::prelude::*;
 use crate::ability::effects::apply_resolved_effects;
 use crate::ability::behavior::HitTarget;
-use crate::core::components::WorldPosition;
+use crate::core::components::{Hurtbox, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
-use crate::enemy::components::{Enemy, EnemyAppearance};
+use crate::enemy::components::Enemy;
 use crate::projectile::components::{ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
 
@@ -31,15 +31,14 @@ pub fn projectile_collision(
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
     mut projectiles: Query<(Entity, &WorldPosition, &mut ProjectileMotion, &mut ProjectilePayload)>,
-    enemies: Query<(Entity, &WorldPosition, &EnemyAppearance), With<Enemy>>,
+    enemies: Query<(Entity, &WorldPosition, &Hurtbox), With<Enemy>>,
 ) {
     for (proj_entity, proj_pos, mut motion, mut payload) in &mut projectiles {
-        let mut despawned = false;
-        for (enemy, enemy_pos, appearance) in &enemies {
+        for (enemy, enemy_pos, hurtbox) in &enemies {
             if payload.already_hit.contains(&enemy) {
                 continue;
             }
-            if proj_pos.0.distance(enemy_pos.0) > motion.radius + appearance.radius {
+            if proj_pos.0.distance(enemy_pos.0) > motion.radius + hurtbox.radius {
                 continue;
             }
 
@@ -57,11 +56,9 @@ pub fn projectile_collision(
 
             if motion.pierce_remaining == 0 {
                 commands.entity(proj_entity).try_despawn();
-                despawned = true;
                 break;
             }
             motion.pierce_remaining -= 1;
         }
-        let _ = despawned;
     }
 }

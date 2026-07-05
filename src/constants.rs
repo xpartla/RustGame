@@ -2,6 +2,8 @@ pub const PLAYER_SPEED: f32 = 35.0;
 pub const FLOW_RADIUS: i32 = 50;
 pub const TILE_SIZE: f32 = 32.0;
 pub const PLAYER_HEALTH: f32 = 100.0;
+/// Player body radius: logic hurtbox (core::components::Hurtbox) and visual circle share it.
+pub const PLAYER_RADIUS: f32 = 25.0;
 
 // Per-type enemy stats (health, speed, attack damage/range/cooldown, size, color) live in
 // enemy/archetypes.rs. Only cross-type tuning stays here.

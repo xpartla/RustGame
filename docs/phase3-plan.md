@@ -493,10 +493,30 @@ Phase 3 landed as planned with a few deliberate deviations, all captured in the 
   sub-unit position drift from combat-schedule reordering (verified px/py-only across all
   snapshots); 3E was the real Blood Boil auto-cast change, bundled with the master enrichment (bot
   casts Frostbolt; `statuses` snapshot column).
+- **Correction to §2.3 as planned:** `suppress_abilities` is parsed from RON and asserted in the
+  unit tests, but is NOT resolved into a per-actor component — `resolve_actor_status` folds only
+  move/damage/immobilize. Phase 5 must add both the resolved component and its consumer (the
+  enemy/player cast gate) when stuns become reachable in play.
 
-**Known follow-up (not Phase 3):** the golden master's player position is sensitive to the
-single-threaded tie-break of the *loose* movement systems (`apply_velocity`, `enemy_follow`,
-`player_input`) versus the combat sets, so adding systems in any future phase can nudge positions
-and force a (benign) baseline regen. A dedicated hardening — pinning the movement pipeline into an
-explicit `MovementSet` ordered before `CombatSet::Damage` — would make positions robust to system
-additions. Deferred to keep Phase 3 in scope; worth doing before the phases that add many systems.
+**Known follow-up (not Phase 3):** ~~the golden master's player position is sensitive to the
+single-threaded tie-break of the *loose* movement systems~~ **Done in Phase 3.1** (2026-07-05):
+`MovementSet::{Intent, Integrate}` now pins the movement pipeline ahead of `CombatSet::Damage`.
+The pin happened to match the prevailing tie-break, so the baseline did not even move.
+
+---
+
+## 10. Phase 3.1 hardening (post-review, 2026-07-05)
+
+A review pass over the as-built Phase 3 produced a follow-up batch — see the CHANGELOG
+"Phase 3.1" section for full detail. In terms of THIS plan:
+
+- §6.1/§6.2 promises delivered late: StackCapped/StackUnlimited scenarios (synthetic defs via
+  `Sim::insert_status_def`), pierce scenarios (#12's pierce clause), orphan reaping (#11).
+- Bug found & fixed in §2.2's apply path: same-frame double application (Commands-deferred
+  spawns invisible to later events in the same frame) could duplicate a RefreshOnReapply
+  instance or overshoot a StackCapped cap.
+- §2.6's freeze timeline gained a rule: combat-resolution events pending when an overlay opens
+  are preserved (buffers advance only during InRun) instead of expiring; locked by
+  `tests/freeze.rs`.
+- §2.4's collision now reads a logic `Hurtbox` component instead of `EnemyAppearance` (the
+  presentation data); the player carries one too, ready for Phase 5 enemy shots.

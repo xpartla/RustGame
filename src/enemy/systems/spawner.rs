@@ -3,7 +3,7 @@ use bevy::prelude::{Bundle, Commands, Entity, Res, ResMut};
 use bevy::time::Time;
 use rand::Rng;
 use crate::constants::TILE_SIZE;
-use crate::core::components::{Facing, GridPosition, Health, LastHitBy, Velocity, WorldPosition};
+use crate::core::components::{Facing, GridPosition, Health, Hurtbox, LastHitBy, Velocity, WorldPosition};
 use crate::enemy::archetypes::{pick, EnemyArchetype};
 use crate::enemy::components::{
     AttackCooldown, AttackStats, Enemy, EnemyAppearance, EnemySpawner, MoveSpeed, XpReward,
@@ -29,6 +29,8 @@ pub fn enemy_bundle(archetype: &EnemyArchetype, grid: GridPosition) -> impl Bund
         WorldPosition(world),
         Velocity::default(),
         Facing(Vec2::default()),
+        // Same source value feeds the logic hurtbox and the visual size.
+        Hurtbox { radius: archetype.radius },
         EnemyAppearance {
             shape: archetype.shape,
             radius: archetype.radius,

@@ -42,15 +42,29 @@ Known nondeterminism that remains (by design, out of scenario scope):
   switched to `RunRng` because kills occur inside deterministic scenarios.
 - In the **windowed build**, `Update` runs multi-threaded; ambiguous system pairs may
   interleave differently than in the sim. All gameplay-relevant orderings are pinned
-  explicitly (CombatSet chain, `init_level_flow.after(generate_map)`,
+  explicitly (MovementSet → CombatSet/StatusSet chain, `init_level_flow.after(generate_map)`,
   `refill_offer.after(install_acquired_talent)`).
+
+Two scheduling guarantees added by Phase 3.1 (both are contracts the tests rely on):
+
+- **Movement is pinned** (`MovementSet::Intent → MovementSet::Integrate → CombatSet::Damage`),
+  so adding Update systems in later phases does not reshuffle position math and nudge the
+  golden master's px/py. If a future px/py-only baseline drift appears anyway, something
+  bypassed the sets — treat it as a finding, not an automatic regen.
+- **Overlay freeze preserves in-flight combat events.** `DamageEvent`, `HealEvent`,
+  `ApplyStatusEvent`, `RemoveStatusEvent` are registered via `add_gameplay_event`
+  (core/events.rs): their buffers advance only during InRun frames, so an event written the
+  frame the TalentPicker (or any overlay) opens resolves on the first frame after resume
+  instead of silently expiring. Terminal states (GameOver, Menu) clear them. Input-intent
+  events still expire normally. When adding a NEW gameplay event, choose deliberately:
+  combat-resolution → `add_gameplay_event`, input-intent or same-frame-consumed → `add_event`.
 
 ## Test layers
 
 | Layer | Where | What it locks in |
 |---|---|---|
-| Unit tests | `src/**` `#[cfg(test)]` | RON schemas parse, modifier-stack math, cone geometry, offer eligibility, band-pool flow |
-| Golden scenarios | `tests/*.rs` | End-to-end behavior of one mechanic per test: movement/collision, Death Strike damage/leech/cooldown, contact damage cadence, XP → unlock → talent-picker round-trip, uniqueness filtering, pickups, map determinism |
+| Unit tests | `src/**` `#[cfg(test)]` | RON schemas parse (abilities, talents, statuses), modifier-stack math, cone geometry, offer eligibility, band-pool flow |
+| Golden scenarios | `tests/*.rs` | End-to-end behavior of one mechanic per test: movement/collision, Death Strike damage/leech/cooldown, contact damage cadence, XP → unlock → talent-picker round-trip, uniqueness filtering, pickups, map determinism; status lifecycle (DoT cadence, stacking rules, CC, cross-element cancellation, kill credit, orphan reaping), projectiles (travel-then-hit, status-on-impact, pierce), auto-cast + aim gate, overlay freeze semantics (`tests/freeze.rs`) |
 | Golden master | `tests/golden_campaign.rs` | A 30-second scripted-bot campaign; a per-second trace of hp/level/xp/enemies/abilities/talents/**statuses**/position must match `tests/golden/campaign_baseline.ron` exactly. Since Phase 3 the bot also casts Frostbolt (projectiles + frostbite) and Blood Boil auto-casts, so the master covers status/projectile drift |
 
 Run everything: `cargo test`. Scenarios assert tuning values from the RON assets and

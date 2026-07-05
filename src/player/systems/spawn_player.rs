@@ -1,7 +1,7 @@
 use bevy::math::Vec2;
 use bevy::prelude::Commands;
-use crate::constants::PLAYER_HEALTH;
-use crate::core::components::{GridPosition, Health, Velocity, WorldPosition};
+use crate::constants::{PLAYER_HEALTH, PLAYER_RADIUS};
+use crate::core::components::{GridPosition, Health, Hurtbox, Velocity, WorldPosition};
 use crate::core::components::Facing;
 use crate::player::components::{Experience, Player};
 
@@ -17,5 +17,8 @@ pub fn spawn_player(mut commands: Commands) {
         GridPosition{x:0, y:0},
         Facing(Vec2::default()),
         Velocity::default(),
+        // No projectile can hit the player until enemies shoot (Phase 5), but the hurtbox is
+        // part of the actor's logic identity, so it spawns with the rest.
+        Hurtbox { radius: PLAYER_RADIUS },
     ));
 }

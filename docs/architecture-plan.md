@@ -995,6 +995,23 @@ Still open from §8.1: shields/absorbs (5), forced movement (6), enemy scaling (
 projectiles/AMZ (8), UI (9). The `StatusHookRegistry` is deferred until a code-driven status
 effect needs it.
 
+### 8.5 Phase 3.1 hardening + tech-debt register (2026-07-05)
+
+A post-Phase-3 review landed a hardening batch (CHANGELOG "Phase 3.1"): MovementSet pin,
+overlay-freeze event preservation, same-frame status-apply fix, Hurtbox logic/presentation
+split, and the test-coverage gaps from phase3-plan §6. The remaining known debt, with the
+phase that should absorb each item:
+
+| Debt | Why it can wait | Absorb in |
+|---|---|---|
+| `Def`-library triplication — `AbilityLibrary`/`TalentLibrary`/`StatusLibrary` are three near-identical (resource + loader + hardcoded Startup path list) copies | Three copies are tolerable; a fourth is not | **Phase 4 start**: introduce a generic `DefLibrary<T>` / shared loader-registration helper *before* adding `HeroDef`, then port the three existing ones |
+| `execute_ready_abilities` is a 12-param system mixing trigger validation, param resolution, effect application, VFX + projectile spawning, cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway | **Phase 4**, when ability hooks land: split into resolve/apply helpers around the hook points |
+| `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent (Phase 4) |
+| `suppress_abilities` is parsed but neither resolved into a component nor consumed | Nothing can stun the player yet; enemies have no casts | **Phase 5** (enemy abilities): resolve in `resolve_actor_status` + gate `auto_cast_abilities`/`execute_ready_abilities` |
+| Travelling projectiles and Blood Boil's nova have **no visuals** — logic-only entities; unbound Mage abilities are invisible if hand-bound | WSL cannot render; demonstrators are not player-facing yet | **Phase 4** (class binding) must include a presentation pass: projectile sprite/mesh dress-up (`Added<ProjectileMotion>`), nova flash VFX, status tints |
+| Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if playtesting Mage content (Phase 4) makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Phase 4 playtesting |
+| String ids (`AbilityId`/`StatusEffectId`/`TalentId` = `String`) are cloned per event/frame in hot-ish loops | Scale is tiny; determinism unaffected | Only if profiling ever says so (interning/`Arc<str>`) |
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

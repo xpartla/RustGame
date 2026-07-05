@@ -408,6 +408,63 @@ impl Sim {
         query.iter(world).count()
     }
 
+    /// Registers a synthetic StatusEffectDef directly in the library (no RON file) — for
+    /// exercising stacking rules no shipped effect uses yet (StackCapped, StackUnlimited).
+    pub fn insert_status_def(&mut self, def: StatusEffectDef) {
+        let id = def.id.clone();
+        let handle = self
+            .app
+            .world_mut()
+            .resource_mut::<Assets<StatusEffectDef>>()
+            .add(def);
+        self.app
+            .world_mut()
+            .resource_mut::<StatusLibrary>()
+            .defs
+            .insert(id, handle);
+    }
+
+    /// Fast-forwards the DoT tick timer of `target`'s `effect_id` instance so its next tick
+    /// fires on the very next stepped frame. Lets scenarios align a tick with another event
+    /// (e.g. the frame a level-up opens the TalentPicker) without fragile frame counting.
+    pub fn hasten_status_tick(&mut self, target: Entity, effect_id: &str) {
+        let dt = Duration::from_secs_f32(SIM_DT);
+        let world = self.app.world_mut();
+        let mut query = world.query::<&mut StatusEffectInstance>();
+        for mut inst in query.iter_mut(world) {
+            if inst.target == target && inst.def_id == effect_id {
+                if let Some(tick_timer) = inst.tick_timer.as_mut() {
+                    let target_elapsed = tick_timer.duration().saturating_sub(dt);
+                    tick_timer.set_elapsed(target_elapsed);
+                }
+            }
+        }
+    }
+
+    /// Overrides one base param of a loaded AbilityDef in place (e.g. give Frostbolt pierce).
+    /// Test-only knob: the change lasts for this sim's lifetime and bypasses the talent stack.
+    pub fn set_ability_param(&mut self, ability_id: &str, key: &str, value: f32) {
+        let world = self.app.world_mut();
+        let handle = world
+            .resource::<AbilityLibrary>()
+            .get(ability_id)
+            .unwrap_or_else(|| panic!("unknown ability '{ability_id}'"))
+            .clone();
+        let mut defs = world.resource_mut::<Assets<AbilityDef>>();
+        let def = defs
+            .get_mut(&handle)
+            .unwrap_or_else(|| panic!("ability '{ability_id}' not loaded yet — settle assets first"));
+        def.base_params.insert(key.to_string(), value);
+    }
+
+    /// Awards XP to the player through the normal GainXpEvent path (kills, scripted surges).
+    pub fn grant_xp(&mut self, amount: u32) {
+        let target = self.player();
+        self.app
+            .world_mut()
+            .send_event(crate::core::events::GainXpEvent { target, amount });
+    }
+
     // ---------------------------------------------------------------- environment control
 
     /// Pauses the ambient enemy/pickup spawner timers — the two remaining thread_rng

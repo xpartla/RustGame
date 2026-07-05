@@ -60,6 +60,8 @@ Run the ladder in order; later steps only make sense if earlier ones pass.
 ## Context you may need
 
 - `docs/testing.md` — how the harness, scenarios, and baseline procedure work.
-- `docs/architecture-plan.md` — the phase plan; §7 lists what each phase is allowed to change.
+- `docs/architecture-plan.md` — the phase plan; §7 lists what each phase is allowed to change;
+  **§8.5 is the tech-debt register** — check it before reporting a "finding" that is already a
+  known, deliberately deferred item (report those as "known debt, tracked" instead).
 - Baselines live in `tests/golden/`; their git history is the audit trail of declared
   behavior changes.

@@ -43,6 +43,15 @@ pub struct DamageTakenModifier(pub f32);
 #[derive(Component, Debug)]
 pub struct Immobilized;
 
+/// Logic collision radius for incoming hits (Phase 3.1). Read by projectile collision now;
+/// enemy shots hitting the *player* (Phase 5) read the same component. Visual size lives in
+/// presentation data (`EnemyAppearance`, the player mesh) — both are set from the same source
+/// value, but gameplay must never read a presentation component.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct Hurtbox {
+    pub radius: f32,
+}
+
 /// Direction an entity is oriented toward (unit vector). Source of truth for visual
 /// rotation (`apply_facing_rotation`) and, for the player, attack aim. Shared because both
 /// the player (mouse aim) and enemies (movement direction) carry it.

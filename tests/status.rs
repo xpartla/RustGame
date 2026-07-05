@@ -14,6 +14,25 @@ use bevy::math::Vec2;
 use rust_game::core::events::DamageTag;
 use rust_game::player::components::Experience;
 use rust_game::sim::Sim;
+use rust_game::status::assets::{StackingRule, StatusEffectDef};
+
+/// A minimal synthetic def for stacking rules no shipped effect uses yet.
+fn synthetic_def(id: &str, stacking: StackingRule) -> StatusEffectDef {
+    StatusEffectDef {
+        id: id.to_string(),
+        display_name: id.to_string(),
+        stacking,
+        base_duration_secs: 10.0,
+        tick: None,
+        move_speed_mult: 1.0,
+        damage_taken_mult: 1.0,
+        immobilize: false,
+        suppress_abilities: false,
+        removed_by_tags: Vec::new(),
+        removes_on_apply: Vec::new(),
+        hooks: Vec::new(),
+    }
+}
 
 #[test]
 fn bleed_applies_ticks_on_cadence_and_expires() {
@@ -56,6 +75,74 @@ fn bleed_refresh_on_reapply_keeps_single_instance_and_extends() {
 
     sim.step(180); // ~6 s total — past the original 4 s expiry, before the refreshed 7 s
     assert!(sim.has_status(enemy, "bleed"), "refresh extended the duration");
+}
+
+#[test]
+fn same_frame_double_apply_keeps_a_single_refresh_instance() {
+    let mut sim = Sim::new_arena(42);
+    let player = sim.player();
+    let enemy = sim.spawn_grunt((5, 0));
+    sim.set_health(enemy, 100.0);
+
+    // Two applications land in the SAME frame (e.g. two projectiles impacting together).
+    // RefreshOnReapply must still yield exactly one instance — the spawn queued by the first
+    // event is not yet visible to the second, so this needs explicit same-frame bookkeeping.
+    sim.apply_status(enemy, player, "bleed", 1);
+    sim.apply_status(enemy, player, "bleed", 1);
+    sim.step(1);
+    assert_eq!(sim.status_ids_on(enemy).len(), 1, "one bleed instance, not two");
+
+    // And the DoT is single: exactly one 3-damage tick by 1.5 s.
+    sim.step(89);
+    assert_eq!(sim.enemy_health(enemy), Some(97.0), "no doubled ticking");
+}
+
+#[test]
+fn stack_capped_status_respects_its_cap_within_and_across_frames() {
+    let mut sim = Sim::new_arena(42);
+    let player = sim.player();
+    let enemy = sim.spawn_grunt((5, 0));
+    sim.insert_status_def(synthetic_def("test_capped", StackingRule::StackCapped(3)));
+
+    // Five same-frame applications → capped at three (pending spawns count toward the cap).
+    for _ in 0..5 {
+        sim.apply_status(enemy, player, "test_capped", 1);
+    }
+    sim.step(1);
+    assert_eq!(sim.status_ids_on(enemy).len(), 3, "cap holds within one frame");
+
+    // A later application is still rejected while the cap is full.
+    sim.apply_status(enemy, player, "test_capped", 1);
+    sim.step(1);
+    assert_eq!(sim.status_ids_on(enemy).len(), 3, "cap holds across frames");
+}
+
+#[test]
+fn stack_unlimited_spawns_one_instance_per_stack() {
+    let mut sim = Sim::new_arena(42);
+    let player = sim.player();
+    let enemy = sim.spawn_grunt((5, 0));
+    sim.insert_status_def(synthetic_def("test_unlimited", StackingRule::StackUnlimited));
+
+    sim.apply_status(enemy, player, "test_unlimited", 2); // one event, two stacks
+    sim.apply_status(enemy, player, "test_unlimited", 1); // same frame, one more
+    sim.step(1);
+    assert_eq!(sim.status_ids_on(enemy).len(), 3, "2 + 1 stacks, all live");
+}
+
+#[test]
+fn statuses_are_reaped_when_their_target_dies() {
+    let mut sim = Sim::new_arena(42);
+    let player = sim.player();
+    let enemy = sim.spawn_grunt((5, 0));
+    sim.apply_status(enemy, player, "bleed", 1);
+    sim.step(1);
+    assert_eq!(sim.active_status_count(), 1, "bleed instance live");
+
+    sim.deal_damage(enemy, 999.0);
+    sim.step(2); // death, then the orphan sweep reaps the instance
+    assert_eq!(sim.enemy_health(enemy), None, "target died");
+    assert_eq!(sim.active_status_count(), 0, "no orphaned status instances");
 }
 
 #[test]
@@ -119,8 +206,6 @@ fn root_immobilizes_then_releases() {
     let enemy = sim.spawn_grunt((8, 0));
 
     sim.step(40); // moving toward the player
-    let before = sim.entity_pos(enemy).unwrap();
-    assert!((before - sim.entity_pos(enemy).unwrap()).length() < 1.0); // sanity: reads consistently
 
     sim.apply_status(enemy, player, "root", 1);
     sim.step(2); // Immobilized resolved

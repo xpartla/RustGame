@@ -75,6 +75,55 @@ fn frostbolt_impact_clears_blaze() {
 }
 
 #[test]
+fn projectile_without_pierce_stops_at_the_first_enemy() {
+    let mut sim = Sim::new_arena(42);
+    sim.set_player_pos(Vec2::ZERO);
+    sim.grant_ability("fireblast");
+    sim.step(1);
+    sim.set_player_facing(Vec2::X);
+
+    let near = sim.spawn_grunt((3, 0)); // 96 units ahead
+    let far = sim.spawn_grunt((6, 0)); // 192 units, same line
+    sim.set_health(near, 100.0);
+    sim.set_health(far, 100.0);
+
+    sim.trigger_ability("fireblast");
+    // Impact at ~17 frames (96 units at 320 u/s, target closing). Probe at 45: past any
+    // possible impact on either enemy, before blaze's first DoT tick (impact + 60 frames).
+    sim.step(45);
+
+    assert_eq!(sim.enemy_health(near), Some(92.0), "first enemy hit");
+    assert_eq!(sim.enemy_health(far), Some(100.0), "pierce 0: the shot despawned at the first hit");
+}
+
+#[test]
+fn pierced_projectile_passes_through_and_hits_one_more_enemy() {
+    let mut sim = Sim::new_arena(42);
+    sim.set_player_pos(Vec2::ZERO);
+    sim.grant_ability("fireblast");
+    sim.step(1);
+    sim.set_player_facing(Vec2::X);
+    // Test-only tuning override: give Fireblast one pierce.
+    sim.set_ability_param("fireblast", "pierce", 1.0);
+
+    let near = sim.spawn_grunt((3, 0));
+    let far = sim.spawn_grunt((6, 0));
+    sim.set_health(near, 100.0);
+    sim.set_health(far, 100.0);
+
+    sim.trigger_ability("fireblast");
+    // Second impact at ~33 frames (192 units); probe before the first blaze tick (~impact+60).
+    sim.step(45);
+
+    assert_eq!(sim.enemy_health(near), Some(92.0), "first enemy hit");
+    assert_eq!(sim.enemy_health(far), Some(92.0), "pierce 1: the shot continued to the second enemy");
+    assert!(
+        sim.has_status(near, "blaze") && sim.has_status(far, "blaze"),
+        "the carried effects apply at every impact"
+    );
+}
+
+#[test]
 fn scratch_cone_applies_bleed_to_all_hits() {
     let mut sim = Sim::new_arena(42);
     sim.set_player_pos(Vec2::ZERO);

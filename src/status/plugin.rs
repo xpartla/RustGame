@@ -13,6 +13,7 @@
 
 use bevy::asset::AssetApp;
 use bevy::prelude::*;
+use crate::core::events::AddGameplayEventExt;
 use crate::core::sets::StatusSet;
 use crate::game::state::GameState;
 use crate::status::assets::{StatusEffectDef, StatusEffectDefLoader, StatusLibrary};
@@ -30,8 +31,9 @@ impl Plugin for StatusPlugin {
         app.init_asset::<StatusEffectDef>()
             .register_asset_loader(StatusEffectDefLoader)
             .init_resource::<StatusLibrary>()
-            .add_event::<ApplyStatusEvent>()
-            .add_event::<RemoveStatusEvent>();
+            // Combat-resolution events: preserved across overlay states (see AddGameplayEventExt).
+            .add_gameplay_event::<ApplyStatusEvent>()
+            .add_gameplay_event::<RemoveStatusEvent>();
 
         app.add_systems(Startup, load_status_defs);
 

@@ -5,6 +5,7 @@
 use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::prelude::{Added, Circle, ColorMaterial, Commands, Entity, Mesh, Mesh2d, MeshMaterial2d, Query, ResMut, Transform};
+use crate::constants::PLAYER_RADIUS;
 use crate::core::components::WorldPosition;
 use crate::player::components::Player;
 
@@ -19,7 +20,7 @@ pub fn attach_player_visuals(
     for (entity, pos) in &players {
         commands.entity(entity).insert((
             Transform::from_xyz(pos.0.x, pos.0.y, 2.),
-            Mesh2d(meshes.add(Circle::new(25.))),
+            Mesh2d(meshes.add(Circle::new(PLAYER_RADIUS))),
             MeshMaterial2d(materials.add(Color::srgb(6.25, 9.4, 9.1))),
         ));
     }

@@ -1,16 +1,21 @@
 // Drives the per-frame ability execution loop.
 //
-// Two systems (chained, in CombatSet::Damage so emitted DamageEvents resolve this frame):
+// Three systems (chained, in CombatSet::Damage so emitted DamageEvents resolve this frame):
 //   tick_ability_cooldowns  — advances AbilityCooldown.elapsed for every AbilityInstance
+//   auto_cast_abilities     — emits a TriggerAbilityEvent for every ready AutoCast ability
 //   execute_ready_abilities — for each TriggerAbilityEvent, fires the matching ready ability
 //
-// Per fire:
-//   1. resolve_params(base_params)                      → ResolvedParams
-//   2. BehaviorRegistry.get(behavior_id).execute(...)   → pushes AbilityEffects
-//   3. apply_effects(...)                               → DamageEvent / HealEvent / VFX
-//   4. reset cooldown (duration taken from params("cooldown"))
+// Per fire (Phase 3 generic-effect model):
+//   1. resolve_params(base_params × talent modifier stack)   → ResolvedParams
+//   2. behavior.resolve(ctx, params)                          → CastOutcome (hits/vfx/projectile)
+//   3. resolve_effects(def.effects, params)                   → baked ResolvedEffects
+//   4. apply_resolved_effects(...)                            → Damage/Heal/ApplyStatus events
+//      (a projectile cast instead spawns the projectile entity carrying the baked effects;
+//       projectile/systems/motion.rs applies them on impact via the same shared applier)
+//   5. reset cooldown (duration taken from params("cooldown"))
 //
-// Hooks (AbilityDef.hooks) are not run in Phase 1 — they arrive with the talent system.
+// Ability hooks (AbilityDef.hooks) are still unconsumed — they arrive with the first
+// code-driven hook (see docs/phase3-plan.md §7).
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation};
