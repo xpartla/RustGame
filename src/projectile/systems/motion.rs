@@ -12,9 +12,8 @@
 use bevy::prelude::*;
 use crate::ability::effects::apply_resolved_effects;
 use crate::ability::behavior::HitTarget;
-use crate::core::components::{Hurtbox, WorldPosition};
+use crate::core::components::{Faction, Hurtbox, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
-use crate::enemy::components::Enemy;
 use crate::projectile::components::{ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
 
@@ -31,18 +30,23 @@ pub fn projectile_collision(
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
     mut projectiles: Query<(Entity, &WorldPosition, &mut ProjectileMotion, &mut ProjectilePayload)>,
-    enemies: Query<(Entity, &WorldPosition, &Hurtbox), With<Enemy>>,
+    targets: Query<(Entity, &WorldPosition, &Hurtbox, &Faction)>,
 ) {
     for (proj_entity, proj_pos, mut motion, mut payload) in &mut projectiles {
-        for (enemy, enemy_pos, hurtbox) in &enemies {
-            if payload.already_hit.contains(&enemy) {
+        for (target, target_pos, hurtbox, faction) in &targets {
+            // Only actors of the projectile's target faction can be hit (Phase 5): a player shot
+            // strikes Hostiles, an enemy shot strikes the Friendly player.
+            if *faction != payload.target_faction {
                 continue;
             }
-            if proj_pos.0.distance(enemy_pos.0) > motion.radius + hurtbox.radius {
+            if payload.already_hit.contains(&target) {
+                continue;
+            }
+            if proj_pos.0.distance(target_pos.0) > motion.radius + hurtbox.radius {
                 continue;
             }
 
-            let hit = HitTarget { entity: enemy, pos: enemy_pos.0 };
+            let hit = HitTarget { entity: target, pos: target_pos.0 };
             apply_resolved_effects(
                 &mut damage_events,
                 &mut heal_events,
@@ -52,7 +56,7 @@ pub fn projectile_collision(
                 Some(hit),
                 &payload.effects,
             );
-            payload.already_hit.push(enemy);
+            payload.already_hit.push(target);
 
             if motion.pierce_remaining == 0 {
                 commands.entity(proj_entity).try_despawn();

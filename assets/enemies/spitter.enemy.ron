@@ -1,0 +1,29 @@
+// WORKING NAME: "Spitter" — a ranged common enemy (Phase 5 demonstrator, the first non-chaser).
+// Approaches to `preferred_range`, stops, faces the player, and auto-casts `spitter_bolt` — a
+// projectile that hits the player through the faction-aware collision path. Fragile and slow so it
+// relies on standing off. Its bolt exercises enemy projectiles end-to-end.
+(
+    id: "spitter",
+    display_name: "Spitter",
+    rarity: Common,
+    base_stats: (
+        max_health: 8.0,
+        move_speed: 12.0,
+        size_radius: 11.0,
+    ),
+    appearance: (
+        shape: Triangle,
+        color: (0.55, 0.75, 0.35),
+    ),
+    spawn_weight: 2,
+    ai_behavior: "ranged_caster",
+    preferred_range: 140.0,
+    abilities: ["spitter_bolt"],
+    xp_value: 4,
+    drop_table: "common_enemy",
+    scaling: (
+        health_per_depth: 0.15,
+        damage_per_depth: 0.12,
+        xp_per_depth: 0.10,
+    ),
+)

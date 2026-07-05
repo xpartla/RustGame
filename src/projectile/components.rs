@@ -2,6 +2,7 @@ use bevy::math::Vec2;
 use bevy::prelude::{Component, Entity};
 use bevy::time::Timer;
 use crate::ability::effects::ResolvedEffect;
+use crate::core::components::Faction;
 
 // This module now serves two entity kinds, both marked `Projectile` and despawned by
 // `projectile_lifetime`:
@@ -25,11 +26,14 @@ pub struct ProjectileMotion {
     pub pierce_remaining: u32,
 }
 
-/// The baked effects a travelling projectile applies on impact, plus who fired it and which
-/// enemies it already struck (so a piercing shot never double-hits one enemy).
+/// The baked effects a travelling projectile applies on impact, plus who fired it, which faction
+/// it may hit, and which actors it already struck (so a piercing shot never double-hits one).
 #[derive(Component)]
 pub struct ProjectilePayload {
     pub source: Entity,
+    /// The faction this projectile collides with — the opposite of the caster's (Phase 5). A
+    /// player shot hits `Hostile`; an enemy shot hits `Friendly` (the player).
+    pub target_faction: Faction,
     pub effects: Vec<ResolvedEffect>,
     pub already_hit: Vec<Entity>,
 }

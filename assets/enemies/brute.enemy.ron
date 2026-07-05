@@ -1,0 +1,26 @@
+// WORKING NAME: "Brute" — slow, tanky, hits hard (labelled Elite; spawn roles are Phase 7).
+// Ported verbatim from the old `enemy/archetypes.rs`. See grunt.enemy.ron for the schema.
+(
+    id: "brute",
+    display_name: "Brute",
+    rarity: Elite,
+    base_stats: (
+        max_health: 30.0,
+        move_speed: 8.0,
+        size_radius: 18.0,
+    ),
+    appearance: (
+        shape: Square,
+        color: (0.80, 0.15, 0.15),
+    ),
+    spawn_weight: 1,
+    ai_behavior: "melee_chaser",
+    abilities: ["brute_contact"],
+    xp_value: 8,
+    drop_table: "common_enemy",
+    scaling: (
+        health_per_depth: 0.15,
+        damage_per_depth: 0.12,
+        xp_per_depth: 0.10,
+    ),
+)

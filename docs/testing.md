@@ -104,7 +104,11 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   fires through input slots", plus DK LMB regression, swap-effect applied (Ice Barrier / Boots of
   Fire), non-stance Q no-op, and the debug (M) hero swap. Plus unit tests: `DefLibrary::get`,
   `HeroDef` RON parse (DK + Mage), and the pure `resolve_slot` (stance → InputSlot → AbilityId).
-- Phase 5: "EnemyDef RON spawns an enemy with the declared stats".
+- Phase 5 (done): `tests/enemy.rs` — "EnemyDef RON spawns an enemy with the declared stats", enemy
+  contact hits the player not other enemies (faction), player casts don't self-hit, the ranged caster
+  stops-and-shoots, an enemy bolt passes through a Hostile to hit the player, scaling grows
+  health+damage by depth, and a suppressed (stunned) caster can't cast. Plus unit tests: `EnemyDef`
+  RON parse and `resolve_enemy_stats` scaling math. Contact cadence stays in `tests/combat.rs`.
 - Phase 6: "D&D zone doubles Blood Boil range inside it".
 - Phase 7: "act graph is seed-deterministic", "objective completion advances the node".
 
@@ -119,8 +123,10 @@ It is the on-demand backward-compatibility gate to run after each phase (or befo
 
 ## Balance testing (later stages)
 
-The same harness is the substrate for balance evaluation once enemies are data-driven with a
-scaling model (Phase 5+) and encounters exist (Phase 7):
+The same harness is the substrate for balance evaluation. Enemies are now data-driven with a
+scaling model (Phase 5 — `EnemyDef` + `resolve_enemy_stats(def, depth)`; `Sim::spawn_enemy_at_depth`
+drives the curve), so Stage 3's sweeps are unblocked; they become fully useful once encounters exist
+(Phase 7):
 
 - an `arena` binary running hero × build × encounter × seed sweeps at high speed,
 - `BotPolicy` implementations as the stand-in player (deterministic, comparable),

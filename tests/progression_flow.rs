@@ -9,7 +9,6 @@
 use bevy::math::Vec2;
 use bevy::prelude::KeyCode;
 use rust_game::core::events::GainXpEvent;
-use rust_game::enemy::archetypes::archetypes;
 use rust_game::game::state::GameState;
 use rust_game::progression::state::LevelUpPhase;
 use rust_game::sim::Sim;
@@ -143,7 +142,7 @@ fn damage_talent_multiplies_death_strike_output() {
     acquire(&mut sim, "death_strike_damage_common");
     sim.step(1);
 
-    let brute = sim.spawn_enemy(&archetypes()[2], (1, 1)); // 30 hp, out of contact range
+    let brute = sim.spawn_enemy("brute", (1, 1)); // 30 hp, out of contact range
     sim.set_player_facing(Vec2::new(1.0, 1.0));
     sim.trigger_ability("death_strike");
     sim.step(1);
@@ -165,7 +164,7 @@ fn leech_talent_multiplies_leech_only() {
     acquire(&mut sim, "death_strike_leech_common");
     sim.step(1);
 
-    let brute = sim.spawn_enemy(&archetypes()[2], (1, 1));
+    let brute = sim.spawn_enemy("brute", (1, 1));
     sim.set_player_facing(Vec2::new(1.0, 1.0));
     sim.trigger_ability("death_strike");
     sim.step(1);

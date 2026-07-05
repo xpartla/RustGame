@@ -497,6 +497,90 @@ the unchanged committed baseline; no regeneration).
   through input slots, stance-swap-remaps-LMB, swap-effect applied, non-stance Q no-op, debug
   hotkey). Build remains warning-free.
 
+### Phase 5 — Enemy Ability System + AI + Faction-Aware Engine (complete)
+Enemies become data-driven and cast through the **same** ability engine as the player. The engine
+is now faction-aware (an enemy's cast hits the player; a player's cast hits enemies), contact melee
+is a first-class auto-cast ability, a ranged caster fires projectiles at the player, enemies carry a
+data-only scaling model, and the long-parked `suppress_abilities` (stun) debt is wired. Delivered in
+five compat-gated steps (5A–5E). **The golden baseline did NOT move at any step** — the faction
+refactor preserves target sets/order, the contact-melee-as-ability change reproduces the prototype's
+exact cadence (verified byte-identical, no regeneration), and every other addition is inert in the
+Death-Knight campaign. See `docs/phase5-plan.md` for the plan + as-built notes.
+
+- **Faction-aware engine (5A, neutral).** New `core::components::Faction { Friendly, Hostile }`
+  (+ `opposing()`); the player is `Friendly`, enemies `Hostile`. `execute_ready_abilities` gathers
+  candidates once per faction and hands each cast the list **opposing** its caster
+  (`AbilityContext.enemies` → `targets`; `EnemyTarget` → `Target`). `ProjectilePayload` gained a
+  `target_faction` (baked at spawn as the opposite of the caster's faction); `projectile_collision`
+  collides only that faction. A player's Frostbolt still hits the same enemy set in the same order
+  (baseline-neutral); an enemy's bolt now hits the Friendly player (the player's `Hurtbox`, added in
+  Phase 3.1 "ready for Phase 5 enemy shots", is finally used).
+- **`EnemyDef` data-drive (5B, neutral).** `EnemyDef` is now a live `DefAsset` (`.enemy.ron`, via
+  `register_def_library::<EnemyDef>()`), the single source of truth per enemy — stats, appearance
+  (shape + rgb → `EnemyAppearance`), `spawn_weight`, `ai_behavior`, `preferred_range`,
+  `abilities: Vec<AbilityId>`, `xp_value`, and a `scaling` curve. The compiled
+  `enemy/archetypes.rs` (`EnemyArchetype`/`archetypes()`/`pick()`) is **deleted**; Grunt/Runner/Brute
+  are ported to `assets/enemies/{grunt,runner,brute}.enemy.ron` with **byte-identical** logic
+  numbers. `enemy_bundle`/`spawn_enemy_from_def` build the enemy plus one `AbilityInstance` per
+  declared ability. The ambient `spawn_enemy_over_time` weighted-picks a loaded `EnemyDef` (still
+  `thread_rng`, still paused in scenarios). (`EnemyDef`/`ThemeDef`/`enemy/behavior.rs` were
+  uncompiled scaffolds — never declared in `mod.rs`; `behavior.rs`'s `AiBehaviorRegistry` is deleted,
+  see AI below. `ThemeDef` stays scaffold-only until Phase 7.)
+- **Contact melee is a first-class ability (5B, neutral).** The hardcoded `enemy_attack` system and
+  the `AttackStats`/`AttackCooldown` components are **removed**; each enemy carries an auto-cast
+  `*_contact` ability (`grunt_contact` 5/28/1.0s, `runner_contact` 3/24/0.7s, `brute_contact`
+  12/32/1.6s) with a new `contact_melee` behavior (hits opposing-faction actors within `range`, no
+  aim, damage via the ability's `effects`). Cadence fidelity — first-hit-on-contact + no wasted swing
+  out of range — is preserved by (a) spawning the ability instance **with** the enemy (no
+  `Added<Enemy>` race), and (b) a new `AbilityBehavior::consumes_cooldown_on_whiff()` (default
+  `true`; `contact_melee` returns `false`) so `execute_ready_abilities` skips the cooldown reset when
+  a gated behavior resolves nothing. `melee_cone`/`self_nova`/`projectile` keep the default, so
+  Death Strike / Blood Boil / Frostbolt are unchanged. Net: the grunt/brute contact damage now flows
+  from `execute` instead of `enemy_attack`, but lands on identical frames for identical amounts —
+  **golden campaign byte-identical, no regeneration.**
+- **AI dispatch = component enum (5B, neutral).** New `enemy::components::AiBehavior`
+  (`MeleeChaser | RangedCaster{preferred_range} | Stationary`), set at spawn from
+  `EnemyDef.ai_behavior`. `enemy_follow_flow_field` + `update_enemy_facing` are gated to
+  `MeleeChaser` (all ported enemies are chasers ⇒ neutral). This deliberately supersedes the scaffold's
+  `&mut World`-free `AiBehaviorRegistry`/`EnemyAiHook` (which could not express flow-field steering):
+  movement AI needs world access; content-extensibility is already served by the ability
+  `BehaviorRegistry`. A new AI = one variant + one system (mirrors Phase 3 replacing the hook-first
+  status sketch with a declarative model).
+- **Ranged caster (5C, neutral to the master).** New enemy `spitter` (`ranged_caster`,
+  `preferred_range: 140`, ability `spitter_bolt` — an auto-cast `projectile`). `ranged_caster_ai`
+  (in `MovementSet::Intent`) approaches via the flow field until within `preferred_range`, then stops
+  and **faces the player** (independent of velocity, so the aim-dependent projectile can fire while
+  standing still). Its bolt bakes the Friendly target faction and hits the player, passing through
+  other Hostiles. The spitter is deliberately **not** added to the golden campaign (covered by
+  scenarios), so the master is untouched.
+- **Enemy scaling — data-only model (5D, neutral at depth 0).** `EnemyDef.scaling: EnemyScaling`
+  (`health_/damage_/xp_per_depth`, additive per depth) + a pure `resolve_enemy_stats(def, depth)`
+  resolver. Health/xp scale at spawn; damage is delivered by a generic
+  `core::components::DamageDealtModifier` (mirror of `DamageTakenModifier`, read on the
+  `DamageEvent.source` by `apply_damage`) inserted only when depth > 0. There is **no live driver**
+  yet — every shipped spawn passes `depth = 0` ⇒ base stats and no modifier ⇒ byte-identical. A
+  balance sweep (or `Sim::spawn_enemy_at_depth`) can spawn at depth > 0. Resolves architecture-plan
+  §8.1(7) as "scaling in data."
+- **`suppress_abilities` wired (5D, neutral — §8.5 debt paid).** New marker
+  `core::components::AbilitiesSuppressed`, reconciled by `resolve_actor_status` exactly like
+  `Immobilized`. A suppressed caster is skipped by `auto_cast_abilities`, `execute_ready_abilities`,
+  and the hero `resolve_input_to_ability` / `handle_stance_swap` (a stunned player or enemy cannot
+  cast, auto-cast, or stance-swap). No shipped content applies `stun` and the campaign never stuns,
+  so the marker is never present ⇒ baseline unchanged; reachable via `Sim::apply_status(.., "stun")`.
+- **Presentation.** `draw_enemy_attack_flash` (a debug gizmo, presentation-only) was repointed from
+  the removed `AttackCooldown` to the enemy's contact `AbilityCooldown` — flashes when a fired
+  ability's cooldown is fresh. `EnemyShape` moved to `enemy/components.rs` (gained `Deserialize`).
+- **Sim helpers.** `spawn_enemy(id, tile)` / `spawn_grunt` now spawn by `EnemyDef` id;
+  `spawn_enemy_at_depth(id, tile, depth)`; `enemy_ability_ids(entity)`; `faction(entity)`;
+  `assets_loaded` awaits `EnemyLibrary`. The three `spawn_enemy(&archetypes()[2], …)` brute call
+  sites (combat/progression/golden campaign) became `spawn_enemy("brute", …)`.
+- **Tests: 94 passing** (was 84). +3 unit (`EnemyDef` parse ×2, `resolve_enemy_stats` scaling math)
+  and +7 golden scenarios (`tests/enemy.rs`: declared-stats spawn, contact hits the player not other
+  enemies, player casts don't self-hit, ranged caster stops-and-shoots, enemy bolt through a Hostile,
+  scaling health+damage by depth, suppressed caster can't cast). `tests/combat.rs::grunt_contact_
+  attack_cadence` unchanged (contact cadence via the ability path). Build warning-free; golden
+  baseline unchanged (no regeneration this phase).
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -578,12 +662,16 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–4 (foundation, ability system, talent system, status effects, hero/stance system + Mage)
-are complete. The following are designed and scaffolded but have zero implementation yet:
+Phases 0–5 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
+enemy abilities + AI + faction-aware engine) are complete. The following are designed and scaffolded
+but have zero implementation yet:
 
 - ~~Hero / stance system (HeroDef asset, Q swap) — Phase 4~~ **done** (focused vertical slice —
   Death Knight + Mage; heavier Mage subsystems deferred, see architecture-plan §8.6)
-- Enemy ability kits and AI registry — Phase 5
+- ~~Enemy ability kits and AI registry — Phase 5~~ **done** (data-driven `EnemyDef`, faction-aware
+  ability engine, contact melee + a ranged caster, data-only scaling, `suppress_abilities` wired;
+  the AI "registry" became a component enum — see architecture-plan §8.7. Deferred: `ThemeDef`/theme
+  spawning + `Elite`/boss spawn roles + boss AI + a live scaling driver — Phase 7/9)
 - Persistent zones (D&D, Consecrated Ground, Tree Conduit) — Phase 6
 - Act graph, room types, encounter lifecycle — Phase 7
 - Persistence (save/load RunState, MetaState) — Phase 8

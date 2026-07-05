@@ -6,7 +6,6 @@
 // first hit immediate), kill credit → XP, and player death.
 
 use bevy::math::Vec2;
-use rust_game::enemy::archetypes::archetypes;
 use rust_game::player::components::Experience;
 use rust_game::sim::Sim;
 
@@ -48,7 +47,7 @@ fn death_strike_cooldown_gates_repeat_casts() {
     let mut sim = Sim::new_arena(42);
     // A brute (30 hp) diagonal at ~45 units: inside the 60 cone range, outside its own
     // 32-unit contact range for the duration of the test.
-    let brute = sim.spawn_enemy(&archetypes()[2], (1, 1));
+    let brute = sim.spawn_enemy("brute", (1, 1));
     sim.set_player_facing(Vec2::new(1.0, 1.0));
 
     sim.trigger_ability("death_strike");
@@ -84,7 +83,7 @@ fn unregistered_behavior_skips_gracefully() {
 fn grunt_contact_attack_cadence() {
     let mut sim = Sim::new_arena(42);
     // On top of the player: within the 28-unit contact range. First hit is immediate
-    // (AttackCooldown starts ready), then once per 1.0s.
+    // (the grunt_contact ability's cooldown starts ready), then once per 1.0s.
     sim.spawn_grunt((0, 0));
 
     sim.step(1);

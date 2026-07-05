@@ -9,7 +9,7 @@ use bevy::prelude::{
     Rectangle, RegularPolygon, ResMut, Transform,
 };
 use crate::core::components::WorldPosition;
-use crate::enemy::archetypes::EnemyShape;
+use crate::enemy::components::EnemyShape;
 use crate::enemy::components::{Enemy, EnemyAppearance};
 
 /// Attaches Transform + mesh + material to a freshly spawned enemy.

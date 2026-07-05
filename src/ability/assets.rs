@@ -148,6 +148,13 @@ impl DefAsset for AbilityDef {
         ("scratch", "abilities/scratch.ability.ron"),
         // Blood Boil: BDK L2/3 band ability, live as an auto-cast self-nova (Phase 3).
         ("blood_boil", "abilities/blood_boil.ability.ron"),
+        // Enemy abilities (Phase 5) — auto-cast, faction-aware (they target the player). One per
+        // (enemy, ability) so per-enemy numbers live in data.
+        ("grunt_contact", "abilities/grunt_contact.ability.ron"),
+        ("runner_contact", "abilities/runner_contact.ability.ron"),
+        ("brute_contact", "abilities/brute_contact.ability.ron"),
+        // Ranged enemy bolt (Phase 5C) — projectile aimed at the player.
+        ("spitter_bolt", "abilities/spitter_bolt.ability.ron"),
     ];
 }
 

@@ -37,11 +37,25 @@ pub struct MoveSpeedModifier(pub f32);
 #[derive(Component, Debug, Copy, Clone)]
 pub struct DamageTakenModifier(pub f32);
 
+/// Multiplies damage an actor *deals* (1.0 = normal). The mirror of `DamageTakenModifier`, read on
+/// the `DamageEvent.source` by `apply_damage`. Enemy scaling inserts it at spawn (depth > 0) so a
+/// deeper enemy hits harder without per-depth damage numbers; absent ⇒ 1.0, so it is neutral at
+/// depth 0 (Phase 5). Absent ⇒ 1.0.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct DamageDealtModifier(pub f32);
+
 /// Marker: the entity's velocity is not integrated this frame (root, stun). Present ⇒ frozen.
 /// `apply_velocity` skips integration; the AI still updates `Velocity`, so movement resumes
 /// cleanly when the marker is removed.
 #[derive(Component, Debug)]
 pub struct Immobilized;
+
+/// Marker: the entity cannot cast, auto-cast, or stance-swap while present (stun's
+/// `suppress_abilities`). Reconciled by `resolve_actor_status` like `Immobilized`, and consumed by
+/// the ability execute/auto-cast systems and the hero input/stance systems (Phase 5). Applies to
+/// player and enemy casters alike. Absent ⇒ may cast.
+#[derive(Component, Debug)]
+pub struct AbilitiesSuppressed;
 
 /// Logic collision radius for incoming hits (Phase 3.1). Read by projectile collision now;
 /// enemy shots hitting the *player* (Phase 5) read the same component. Visual size lives in
@@ -57,6 +71,26 @@ pub struct Hurtbox {
 /// the player (mouse aim) and enemies (movement direction) carry it.
 #[derive(Component, Debug, Copy, Clone)]
 pub struct Facing(pub Vec2);
+
+/// Which side an actor fights for (Phase 5). An ability targets the faction *opposing* its
+/// caster: the player (and player-side summons) are `Friendly`; enemies (and enemy summons) are
+/// `Hostile`. The ability engine gathers candidates by faction instead of the old hardcoded
+/// `With<Enemy>`, so enemy casts hit the player and player casts hit enemies through one path.
+#[derive(Component, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Faction {
+    Friendly,
+    Hostile,
+}
+
+impl Faction {
+    /// The faction an actor of this faction attacks.
+    pub fn opposing(self) -> Faction {
+        match self {
+            Faction::Friendly => Faction::Hostile,
+            Faction::Hostile => Faction::Friendly,
+        }
+    }
+}
 
 /// Records the entity that most recently dealt damage to this one (set by `apply_damage` from
 /// `DamageEvent.source`). Read for kill-credit — e.g. `enemy_death` awards XP to the killer.

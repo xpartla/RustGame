@@ -43,9 +43,10 @@ impl ResolvedParams {
 }
 
 /// A candidate target the execute system gathers up front and hands to the behavior.
-/// Phase 1: every `Enemy`. Later this becomes faction-aware.
+/// Phase 5: faction-aware — the execute system hands each caster the actors of the *opposing*
+/// faction (enemies for a player cast, the player for an enemy cast).
 #[derive(Debug, Clone, Copy)]
-pub struct EnemyTarget {
+pub struct Target {
     pub entity: Entity,
     pub pos: Vec2,
 }
@@ -100,8 +101,8 @@ pub struct AbilityContext<'a> {
     pub origin: Vec2,
     /// Caster aim direction, normalized.
     pub facing: Vec2,
-    /// Candidate targets gathered by the execute system.
-    pub enemies: &'a [EnemyTarget],
+    /// Candidate targets (opposing faction) gathered by the execute system.
+    pub targets: &'a [Target],
 }
 
 /// The base execution logic for one ability shape (melee cone, self nova, projectile, …).
@@ -114,6 +115,14 @@ pub trait AbilityBehavior: Send + Sync + 'static {
     /// self-centred shapes (nova) do not. The execute system skips a needs_aim cast — without
     /// consuming its cooldown — while the caster has no aim.
     fn needs_aim(&self) -> bool {
+        true
+    }
+
+    /// Whether a cast that resolves *no* hits and *no* projectile still spends its cooldown.
+    /// Aimed/nova casts return `true` — a whiff into empty space still commits the swing (the
+    /// prototype behavior, unchanged). `contact_melee` returns `false`, so an out-of-range enemy
+    /// stays charged and strikes the instant it reaches the player (the old enemy_attack cadence).
+    fn consumes_cooldown_on_whiff(&self) -> bool {
         true
     }
 }
@@ -162,7 +171,7 @@ impl AbilityBehavior for MeleeCone {
         let forward = ctx.facing;
 
         let mut hits = Vec::new();
-        for target in ctx.enemies {
+        for target in ctx.targets {
             let to_target = target.pos - ctx.origin;
             let dist = to_target.length();
             if dist > range {
@@ -197,7 +206,7 @@ impl AbilityBehavior for SelfNova {
     fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
         let radius = params.get("radius");
         let mut hits = Vec::new();
-        for target in ctx.enemies {
+        for target in ctx.targets {
             if target.pos.distance(ctx.origin) <= radius {
                 hits.push(HitTarget { entity: target.entity, pos: target.pos });
             }
@@ -207,6 +216,37 @@ impl AbilityBehavior for SelfNova {
     }
 
     fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
+/// Enemy contact melee (grunt/runner/brute). Hits opposing-faction actors (the player) within
+/// `range` of the caster — a proximity strike, no aim. Does **not** spend its cooldown on a whiff,
+/// so a chasing enemy charges its swing while approaching and lands the first hit the instant it
+/// reaches contact range, reproducing the prototype's `enemy_attack` cadence. Damage is the
+/// ability's `effects` (Physical to the player), not decided here.
+///
+/// Params: "range" (+ whatever the ability's effects reference, e.g. "damage").
+pub struct ContactMelee;
+
+impl AbilityBehavior for ContactMelee {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let range = params.get("range");
+        let mut hits = Vec::new();
+        for target in ctx.targets {
+            if target.pos.distance(ctx.origin) <= range {
+                hits.push(HitTarget { entity: target.entity, pos: target.pos });
+            }
+        }
+        let primary = nearest(&hits, ctx.origin);
+        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+
+    fn consumes_cooldown_on_whiff(&self) -> bool {
         false
     }
 }
@@ -256,12 +296,12 @@ mod tests {
         let in_cone = Entity::from_raw(2); // 30 ahead, dead centre
         let out_of_range = Entity::from_raw(3); // 100 to the side
         let outside_arc = Entity::from_raw(4); // ~53° off the aim, within range
-        let enemies = [
-            EnemyTarget { entity: in_cone, pos: Vec2::new(30.0, 0.0) },
-            EnemyTarget { entity: out_of_range, pos: Vec2::new(0.0, 100.0) },
-            EnemyTarget { entity: outside_arc, pos: Vec2::new(30.0, 40.0) },
+        let targets = [
+            Target { entity: in_cone, pos: Vec2::new(30.0, 0.0) },
+            Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0) },
+            Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0) },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, enemies: &enemies };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]); // ~45°
 
         let outcome = MeleeCone.resolve(&ctx, &p);
@@ -282,11 +322,11 @@ mod tests {
         let far = Entity::from_raw(3);
         // Both dead ahead and inside a wide cone; `far` is listed first to prove primary is
         // chosen by distance, not iteration order.
-        let enemies = [
-            EnemyTarget { entity: far, pos: Vec2::new(50.0, 0.0) },
-            EnemyTarget { entity: near, pos: Vec2::new(20.0, 0.0) },
+        let targets = [
+            Target { entity: far, pos: Vec2::new(50.0, 0.0) },
+            Target { entity: near, pos: Vec2::new(20.0, 0.0) },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, enemies: &enemies };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]);
 
         let outcome = MeleeCone.resolve(&ctx, &p);

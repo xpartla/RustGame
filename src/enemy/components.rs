@@ -1,12 +1,20 @@
-use std::time::Duration;
 use bevy::color::Color;
-use bevy::prelude::{Component, Resource, Timer, TimerMode};
-use crate::enemy::archetypes::EnemyShape;
+use bevy::prelude::{Component, Resource, Timer};
+use crate::enemy::assets::AiBehaviorId;
 
 #[derive(Component)]
 pub struct Enemy;
 
-/// Visual identity copied from the archetype at spawn. Pure data — the presentation layer
+/// Visual shape for an enemy type (built into a `Mesh2d` at spawn). Sourced from
+/// `EnemyDef.appearance.shape` (Phase 5); `Deserialize` so it parses straight from the RON.
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+pub enum EnemyShape {
+    Circle,
+    Triangle,
+    Square,
+}
+
+/// Visual identity copied from the `EnemyDef` at spawn. Pure data — the presentation layer
 /// (enemy/systems/visuals.rs) reads it to build the Mesh2d/material, so headless simulations
 /// never touch render assets.
 #[derive(Component, Clone, Copy)]
@@ -22,33 +30,38 @@ pub struct EnemySpawner {
     pub radius: i32,
 }
 
-/// Per-entity movement speed (world units/sec). Set from the enemy's archetype at spawn.
+/// Per-entity movement speed (world units/sec). Set from the enemy's `EnemyDef` at spawn.
 #[derive(Component)]
 pub struct MoveSpeed(pub f32);
 
-/// Per-entity contact-attack stats. Set from the enemy's archetype at spawn.
-#[derive(Component)]
-pub struct AttackStats {
-    pub damage: f32,
-    pub range: f32,
-}
-
-/// Experience awarded to the killer when this enemy dies. Set from the archetype at spawn.
+/// Experience awarded to the killer when this enemy dies. Set from the `EnemyDef` at spawn
+/// (scaled by depth via `resolve_enemy_stats`).
 #[derive(Component)]
 pub struct XpReward(pub u32);
 
-/// Gates how often an enemy can deal contact damage to the player.
-#[derive(Component)]
-pub struct AttackCooldown {
-    pub timer: Timer,
+/// Which AI drives an enemy's movement/targeting, set at spawn from `EnemyDef.ai_behavior`
+/// (Phase 5). Replaces the scaffold's `AiBehaviorRegistry` trait-object dispatch with a plain
+/// component enum: movement AI needs world access (flow field, player position, velocity/facing
+/// writes), which the `&mut World`-free hook could not express. A new AI = one variant + one
+/// system (the content-extensibility axis is already served by the ability `BehaviorRegistry`).
+#[derive(Component, Clone, Copy, Debug)]
+pub enum AiBehavior {
+    /// Flow-field follower (grunt/runner/brute). Faces its movement direction.
+    MeleeChaser,
+    /// Approaches to `preferred_range`, stops, and faces the player to fire a ranged ability.
+    RangedCaster { preferred_range: f32 },
+    /// Does not move; faces the player and casts on cooldown.
+    Stationary,
 }
 
-impl AttackCooldown {
-    /// Starts *ready* so the first time an enemy reaches the player it hits immediately,
-    /// then once every `seconds`.
-    pub fn new(seconds: f32) -> Self {
-        let mut timer = Timer::from_seconds(seconds, TimerMode::Once);
-        timer.tick(Duration::from_secs_f32(seconds));
-        Self { timer }
+impl AiBehavior {
+    /// Maps the `EnemyDef.ai_behavior` string to a behavior. Unknown ids fall back to
+    /// `MeleeChaser` (the original prototype behavior).
+    pub fn from_id(id: &AiBehaviorId, preferred_range: f32) -> Self {
+        match id.as_str() {
+            "ranged_caster" => AiBehavior::RangedCaster { preferred_range },
+            "stationary" => AiBehavior::Stationary,
+            _ => AiBehavior::MeleeChaser,
+        }
     }
 }

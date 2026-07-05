@@ -19,12 +19,11 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation};
-use crate::ability::behavior::{AbilityContext, BehaviorRegistry, EnemyTarget, VfxShape};
+use crate::ability::behavior::{AbilityContext, BehaviorRegistry, Target, VfxShape};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent};
 use crate::ability::effects::{apply_resolved_effects, resolve_effects};
-use crate::core::components::{Facing, WorldPosition};
+use crate::core::components::{AbilitiesSuppressed, Facing, Faction, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
-use crate::enemy::components::Enemy;
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
 use crate::talent::assets::{TalentDef, TalentLibrary};
@@ -48,10 +47,15 @@ pub fn auto_cast_abilities(
     mut triggers: EventWriter<TriggerAbilityEvent>,
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
+    suppressed: Query<(), With<AbilitiesSuppressed>>,
     instances: Query<(&AbilityInstance, &AbilityCooldown)>,
 ) {
     for (instance, cooldown) in &instances {
         if !cooldown.is_ready() {
+            continue;
+        }
+        // A suppressed (stunned) caster does not auto-cast.
+        if suppressed.contains(instance.owner) {
             continue;
         }
         let Some(def) = library.get(&instance.def_id).and_then(|h| defs.get(h)) else {
@@ -79,24 +83,43 @@ pub fn execute_ready_abilities(
     defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
     talent_library: Res<TalentLibrary>,
-    owners: Query<(&WorldPosition, &Facing, Option<&AcquiredTalents>)>,
-    enemies: Query<(Entity, &WorldPosition), With<Enemy>>,
+    owners: Query<(&WorldPosition, &Facing, &Faction, Option<&AcquiredTalents>)>,
+    actors: Query<(Entity, &WorldPosition, &Faction)>,
+    suppressed: Query<(), With<AbilitiesSuppressed>>,
     mut instances: Query<(&AbilityInstance, &mut AbilityCooldown)>,
 ) {
-    // Gather candidate targets once for all abilities fired this frame.
-    let targets: Vec<EnemyTarget> = enemies
-        .iter()
-        .map(|(entity, pos)| EnemyTarget { entity, pos: pos.0 })
-        .collect();
+    // Gather candidate targets once per faction for all abilities fired this frame. A cast is
+    // handed the list opposing its caster's faction (§Phase 5 faction-aware targeting).
+    let mut friendly: Vec<Target> = Vec::new();
+    let mut hostile: Vec<Target> = Vec::new();
+    for (entity, pos, faction) in &actors {
+        let t = Target { entity, pos: pos.0 };
+        match faction {
+            Faction::Friendly => friendly.push(t),
+            Faction::Hostile => hostile.push(t),
+        }
+    }
+    let targets_for = |opposing: Faction| -> &[Target] {
+        match opposing {
+            Faction::Friendly => &friendly,
+            Faction::Hostile => &hostile,
+        }
+    };
 
     // Fallback for owners without a talent list (e.g. non-player casters) — an empty stack.
     let no_talents = AcquiredTalents::default();
 
     for trigger in triggers.read() {
-        let Ok((owner_pos, owner_facing, acquired_opt)) = owners.get(trigger.owner) else {
+        let Ok((owner_pos, owner_facing, owner_faction, acquired_opt)) = owners.get(trigger.owner) else {
             continue;
         };
+        // A suppressed (stunned) caster cannot fire, even via a queued trigger.
+        if suppressed.contains(trigger.owner) {
+            continue;
+        }
         let acquired = acquired_opt.unwrap_or(&no_talents);
+        let opposing = owner_faction.opposing();
+        let targets = targets_for(opposing);
         let has_aim = owner_facing.0.length_squared() >= 1e-6;
 
         for (instance, mut cooldown) in &mut instances {
@@ -139,9 +162,18 @@ pub fn execute_ready_abilities(
                 origin: owner_pos.0,
                 // Non-zero for needs-aim casts (gated above); zero is fine for self-centred shapes.
                 facing: owner_facing.0.normalize_or_zero(),
-                enemies: &targets,
+                targets,
             };
             let outcome = behavior.resolve(&ctx, &params);
+            // Whiff gate (Phase 5): behaviors like contact_melee don't spend their cooldown when
+            // they resolve nothing, so an out-of-range enemy stays charged. Break without applying
+            // effects or resetting the cooldown. Aimed/nova casts keep the default (whiff commits).
+            if !behavior.consumes_cooldown_on_whiff()
+                && outcome.hits.is_empty()
+                && outcome.projectile.is_none()
+            {
+                break;
+            }
             let resolved = resolve_effects(&def.effects, &params);
             // Instant hits (cone/nova). Empty for a pure projectile cast (delivery is deferred).
             apply_resolved_effects(
@@ -177,6 +209,7 @@ pub fn execute_ready_abilities(
                     },
                     ProjectilePayload {
                         source: trigger.owner,
+                        target_faction: opposing,
                         effects: resolved.clone(),
                         already_hit: Vec::new(),
                     },

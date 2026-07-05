@@ -19,7 +19,6 @@
 
 use bevy::math::Vec2;
 use bevy::prelude::KeyCode;
-use rust_game::enemy::archetypes::archetypes;
 use rust_game::game::state::GameState;
 use rust_game::player::components::Experience;
 use rust_game::sim::Sim;
@@ -189,7 +188,7 @@ fn spawn_waves(sim: &mut Sim, frame: usize) {
         }
     }
     if frame % 900 == 0 {
-        sim.spawn_enemy(&archetypes()[2], (clamp(ptile.0), clamp(ptile.1 - 6)));
+        sim.spawn_enemy("brute", (clamp(ptile.0), clamp(ptile.1 - 6)));
     }
 }
 

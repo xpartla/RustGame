@@ -1,7 +1,7 @@
 use bevy::math::Vec2;
 use bevy::prelude::Commands;
 use crate::constants::{PLAYER_HEALTH, PLAYER_RADIUS};
-use crate::core::components::{GridPosition, Health, Hurtbox, Velocity, WorldPosition};
+use crate::core::components::{Faction, GridPosition, Health, Hurtbox, Velocity, WorldPosition};
 use crate::core::components::Facing;
 use crate::hero::components::{ActiveStance, HeroIdentity, DEFAULT_HERO_ID};
 use crate::player::components::{Experience, Player};
@@ -21,6 +21,8 @@ pub fn spawn_player(mut commands: Commands) {
         // No projectile can hit the player until enemies shoot (Phase 5), but the hurtbox is
         // part of the actor's logic identity, so it spawns with the rest.
         Hurtbox { radius: PLAYER_RADIUS },
+        // The player fights for the Friendly faction; enemy abilities target it (Phase 5).
+        Faction::Friendly,
         // Hero identity (Phase 4). The Death Knight is the default class; ActiveStance is
         // "default" (it has no Q swap). These drive input-slot resolution and the level-1 grant.
         HeroIdentity(DEFAULT_HERO_ID.to_string()),

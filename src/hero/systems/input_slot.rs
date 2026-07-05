@@ -19,6 +19,7 @@
 use bevy::prelude::*;
 use crate::ability::assets::AbilityId;
 use crate::ability::components::TriggerAbilityEvent;
+use crate::core::components::AbilitiesSuppressed;
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::{ActiveStance, HeroIdentity, InputSlot};
 
@@ -39,7 +40,8 @@ pub fn resolve_slot(hero_def: &HeroDef, stance: &str, slot: InputSlot) -> Option
 /// pressed, bound slot. No-op until the player's HeroDef asset has loaded.
 pub fn resolve_input_to_ability(
     mouse: Res<ButtonInput<MouseButton>>,
-    player: Query<(Entity, &HeroIdentity, &ActiveStance)>,
+    // A suppressed (stunned) player cannot cast — excluded from the query.
+    player: Query<(Entity, &HeroIdentity, &ActiveStance), Without<AbilitiesSuppressed>>,
     hero_library: Res<HeroLibrary>,
     hero_defs: Res<Assets<HeroDef>>,
     mut trigger_events: EventWriter<TriggerAbilityEvent>,

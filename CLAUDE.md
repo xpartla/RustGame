@@ -10,9 +10,10 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
+| `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -42,14 +43,21 @@ unrelated web project.)
 
 ## Known tech debt (before you add to it)
 
-The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6) —
-each item has an owning phase. Highlights a future session must not "rediscover":
+The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
+in §8.7) — each item has an owning phase. Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
-  the three libraries are type aliases; add new def types via `register_def_library::<T>()`.
-- `execute_ready_abilities` split — **not triggered in Phase 4** (the focused slice landed no
-  code-driven hook); do it with the **first code-driven ability/status hook**.
-- `suppress_abilities` is parsed but not resolved/consumed — Phase 5 must wire it.
+  add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
+- ~~`suppress_abilities` parsed but not consumed~~ **DONE (Phase 5)** — `AbilitiesSuppressed` marker,
+  folded by `resolve_actor_status`, gates auto-cast/execute + hero input/stance.
+- ~~Enemy ability/AI framework; enemy scaling; enemy projectiles~~ **DONE (Phase 5, §8.7)** — data
+  `EnemyDef` + faction-aware engine + `contact_melee`/ranged caster + data-only scaling. The **AI
+  "registry" is a component enum** (`AiBehavior`), not the scaffold trait; the scaffold
+  `enemy/behavior.rs` is deleted. Still open: `ThemeDef`/theme spawning + `Elite`/boss roles + a
+  live scaling driver (Phase 7); boss AI + enemy DoT kits (Phase 9); **AMZ projectile-blocking
+  zone** (Phase 6+).
+- `execute_ready_abilities` split — **still not triggered through Phase 5** (faction/whiff/suppress
+  are inline flags, not code-driven hooks); do it with the **first code-driven ability/status hook**.
 - Projectile/status **visuals**: sprites + status tints **done (Phase 4)**; the **Blood Boil nova
   flash is still open** — needs a presentation-only cast-VFX bus (a logic-path spawn would move the
   golden baseline).
@@ -58,6 +66,7 @@ each item has an owning phase. Highlights a future session must not "rediscover"
 - `resolved_cd > 0` guard ignores an Override(0) cooldown talent — fix with the first
   cooldown-manipulating talent.
 - `HeroDef.base_stats` is data-only — per-hero HP/move-speed application is deferred (the Mage
-  currently plays with the Death Knight's stats).
+  currently plays with the Death Knight's stats). Enemy `base_stats`, by contrast, ARE applied
+  (Phase 5); the enemy `scaling` curve has no live depth driver until Phase 7.
 
-When you resolve a register item, update §8.5/§8.6 and the CHANGELOG in the same change.
+When you resolve a register item, update §8.5/§8.6/§8.7 and the CHANGELOG in the same change.

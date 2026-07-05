@@ -31,11 +31,12 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
-use crate::ability::components::{AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
-use crate::core::components::{Facing, GridPosition, Health, WorldPosition};
+use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::core::components::{DamageDealtModifier, Facing, Faction, GridPosition, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag};
-use crate::enemy::archetypes::{archetypes, EnemyArchetype};
+use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary};
 use crate::enemy::components::{Enemy, EnemySpawner};
+use crate::enemy::systems::spawner::enemy_bundle;
 use crate::game::state::GameState;
 use crate::game::GameLogicPlugin;
 use crate::hero::assets::{HeroDef, HeroLibrary};
@@ -168,10 +169,13 @@ impl Sim {
             let status_defs = world.resource::<Assets<StatusEffectDef>>();
             let hero_lib = world.resource::<HeroLibrary>();
             let hero_defs = world.resource::<Assets<HeroDef>>();
+            let enemy_lib = world.resource::<EnemyLibrary>();
+            let enemy_defs = world.resource::<Assets<EnemyDef>>();
             ability_lib.defs.values().all(|h| ability_defs.get(h).is_some())
                 && talent_lib.defs.values().all(|h| talent_defs.get(h).is_some())
                 && status_lib.defs.values().all(|h| status_defs.get(h).is_some())
                 && hero_lib.defs.values().all(|h| hero_defs.get(h).is_some())
+                && enemy_lib.defs.values().all(|h| enemy_defs.get(h).is_some())
         };
         if !libs_ready {
             return false;
@@ -401,19 +405,71 @@ impl Sim {
 
     // ---------------------------------------------------------------- enemies
 
-    /// Spawns an enemy of the given archetype at a tile, identical to the timed spawner's
-    /// output (same enemy_bundle).
-    pub fn spawn_enemy(&mut self, archetype: &EnemyArchetype, tile: (i32, i32)) -> Entity {
-        let bundle = crate::enemy::systems::spawner::enemy_bundle(
-            archetype,
-            GridPosition { x: tile.0, y: tile.1 },
-        );
-        self.app.world_mut().spawn(bundle).id()
+    /// Spawns an enemy by `EnemyDef` id at a tile (depth 0), identical to the timed spawner's
+    /// output — the enemy plus its ability instances (contact melee, etc.). Panics if the id is
+    /// unknown or the def has not loaded (settle assets first).
+    pub fn spawn_enemy(&mut self, id: &str, tile: (i32, i32)) -> Entity {
+        self.spawn_enemy_def(id, tile, 0)
     }
 
-    /// Spawns the baseline Grunt archetype at a tile.
+    /// Spawns an enemy at a scaling `depth` (Phase 5, data-only). Depth 0 == base stats; depth > 0
+    /// scales health/xp and inserts a `DamageDealtModifier` — for balance/scaling scenarios.
+    pub fn spawn_enemy_at_depth(&mut self, id: &str, tile: (i32, i32), depth: u32) -> Entity {
+        self.spawn_enemy_def(id, tile, depth)
+    }
+
+    /// Spawns the baseline Grunt at a tile.
     pub fn spawn_grunt(&mut self, tile: (i32, i32)) -> Entity {
-        self.spawn_enemy(&archetypes()[0], tile)
+        self.spawn_enemy("grunt", tile)
+    }
+
+    /// Core enemy spawn: resolves the `EnemyDef`, spawns the bundle + one AbilityInstance per
+    /// declared ability, and (depth > 0) a `DamageDealtModifier`. Mirrors `spawn_enemy_from_def`
+    /// but on the World (the sim has direct world access, not a Commands buffer).
+    fn spawn_enemy_def(&mut self, id: &str, tile: (i32, i32), depth: u32) -> Entity {
+        let def = {
+            let world = self.app.world();
+            let handle = world
+                .resource::<EnemyLibrary>()
+                .get(id)
+                .unwrap_or_else(|| panic!("unknown enemy '{id}'"))
+                .clone();
+            world
+                .resource::<Assets<EnemyDef>>()
+                .get(&handle)
+                .unwrap_or_else(|| panic!("enemy '{id}' not loaded yet — settle assets first"))
+                .clone()
+        };
+        let grid = GridPosition { x: tile.0, y: tile.1 };
+        let stats = resolve_enemy_stats(&def, depth);
+        let world = self.app.world_mut();
+        let enemy = world.spawn(enemy_bundle(&def, grid, depth)).id();
+        if (stats.damage_mult - 1.0).abs() > 1e-6 {
+            world.entity_mut(enemy).insert(DamageDealtModifier(stats.damage_mult));
+        }
+        for ability_id in &def.abilities {
+            world.spawn((
+                AbilityInstance { def_id: ability_id.clone(), owner: enemy },
+                AbilityCooldown::new(0.0),
+            ));
+        }
+        enemy
+    }
+
+    /// The AbilityIds of the instances owned by `enemy` (contact melee, ranged bolt, …).
+    pub fn enemy_ability_ids(&mut self, enemy: Entity) -> Vec<String> {
+        let world = self.app.world_mut();
+        let mut query = world.query::<&AbilityInstance>();
+        query
+            .iter(world)
+            .filter(|i| i.owner == enemy)
+            .map(|i| i.def_id.clone())
+            .collect()
+    }
+
+    /// An entity's `Faction`, if any (player = Friendly, enemies = Hostile).
+    pub fn faction(&self, entity: Entity) -> Option<Faction> {
+        self.app.world().get::<Faction>(entity).copied()
     }
 
     pub fn enemy_count(&mut self) -> usize {

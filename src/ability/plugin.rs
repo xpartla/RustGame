@@ -13,7 +13,7 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
-use crate::ability::behavior::{BehaviorRegistry, MeleeCone, ProjectileBehavior, SelfNova};
+use crate::ability::behavior::{BehaviorRegistry, ContactMelee, MeleeCone, ProjectileBehavior, SelfNova};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
 use crate::core::def_library::DefLibraryAppExt;
@@ -39,6 +39,7 @@ impl Plugin for AbilityPlugin {
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
         behaviors.register("self_nova", SelfNova);
+        behaviors.register("contact_melee", ContactMelee);
         app.insert_resource(behaviors);
 
         // Ungated by GameState: when several level-ups land in one frame and cross from the

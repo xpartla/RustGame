@@ -13,7 +13,7 @@
 
 use bevy::prelude::*;
 use std::collections::HashMap;
-use crate::core::components::{DamageTakenModifier, Health, Immobilized, MoveSpeedModifier};
+use crate::core::components::{AbilitiesSuppressed, DamageTakenModifier, Health, Immobilized, MoveSpeedModifier};
 use crate::status::assets::{StatusEffectDef, StatusLibrary};
 use crate::status::components::StatusEffectInstance;
 
@@ -32,24 +32,27 @@ pub fn resolve_actor_status(
             Option<&mut MoveSpeedModifier>,
             Option<&mut DamageTakenModifier>,
             Option<&Immobilized>,
+            Option<&AbilitiesSuppressed>,
         ),
         With<Health>,
     >,
 ) {
-    // Net modifiers per target from active instances.
-    let mut acc: HashMap<Entity, (f32, f32, bool)> = HashMap::new();
+    // Net modifiers per target from active instances: (move×, damage×, immobilize, suppress).
+    let mut acc: HashMap<Entity, (f32, f32, bool, bool)> = HashMap::new();
     for inst in &instances {
         let Some(def) = library.get(&inst.def_id).and_then(|h| defs.get(h)) else {
             continue;
         };
-        let e = acc.entry(inst.target).or_insert((1.0, 1.0, false));
+        let e = acc.entry(inst.target).or_insert((1.0, 1.0, false, false));
         e.0 *= def.move_speed_mult;
         e.1 *= def.damage_taken_mult;
         e.2 |= def.immobilize;
+        e.3 |= def.suppress_abilities;
     }
 
-    for (entity, move_mod, dmg_mod, immobilized) in &mut actors {
-        let (move_mult, dmg_mult, immobile) = acc.get(&entity).copied().unwrap_or((1.0, 1.0, false));
+    for (entity, move_mod, dmg_mod, immobilized, suppressed) in &mut actors {
+        let (move_mult, dmg_mult, immobile, suppress) =
+            acc.get(&entity).copied().unwrap_or((1.0, 1.0, false, false));
 
         // MoveSpeedModifier: update in place, insert when it first deviates, drop when neutral.
         match move_mod {
@@ -90,6 +93,17 @@ pub fn resolve_actor_status(
             }
             (false, true) => {
                 commands.entity(entity).remove::<Immobilized>();
+            }
+            _ => {}
+        }
+
+        // AbilitiesSuppressed marker (stun): same insert-when-active / remove-when-clear reconcile.
+        match (suppress, suppressed.is_some()) {
+            (true, false) => {
+                commands.entity(entity).insert(AbilitiesSuppressed);
+            }
+            (false, true) => {
+                commands.entity(entity).remove::<AbilitiesSuppressed>();
             }
             _ => {}
         }

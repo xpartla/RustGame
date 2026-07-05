@@ -16,13 +16,15 @@
 // Runs before CombatSet::Damage.
 
 use bevy::prelude::*;
+use crate::core::components::AbilitiesSuppressed;
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::{ActiveStance, HeroIdentity};
 use crate::status::components::ApplyStatusEvent;
 
 pub fn handle_stance_swap(
     kb: Res<ButtonInput<KeyCode>>,
-    mut player: Query<(Entity, &HeroIdentity, &mut ActiveStance)>,
+    // A suppressed (stunned) player cannot stance-swap — excluded from the query.
+    mut player: Query<(Entity, &HeroIdentity, &mut ActiveStance), Without<AbilitiesSuppressed>>,
     hero_library: Res<HeroLibrary>,
     hero_defs: Res<Assets<HeroDef>>,
     mut apply_status: EventWriter<ApplyStatusEvent>,

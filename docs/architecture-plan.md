@@ -888,10 +888,16 @@ A suggested sequence that keeps the game playable at each step and avoids large-
 2. ✅ Added **Mage** (chosen per §8.2 — least extra machinery) with Fire/Ice stances + Q swap;
    Death Knight formalized as the default `HeroDef`. Heavier Mage subsystems deferred (§8.6).
 
-**Phase 5 — Enemy ability system + AI registry**
-1. Implement `EnemyDef` RON loader. Port existing 3 placeholder archetypes to RON.
-2. Implement `AiBehaviorRegistry`. Port flow-field follower to registered hook.
-3. Add contact melee as an enemy `AbilityDef`.
+**Phase 5 — Enemy ability system + AI registry** _(complete 2026-07-05 — full scope incl. a ranged
+caster + faction-aware engine + data-only scaling; see §8.7, docs/phase5-plan.md)_
+1. ✅ `EnemyDef` RON loader (via `DefLibrary<T>`); the 3 archetypes ported to `.enemy.ron`;
+   `enemy/archetypes.rs` deleted.
+2. ✅ AI dispatch — an **`AiBehavior` component enum** (not the scaffold's trait registry, which
+   couldn't express world-accessing movement AI); the flow-field follower is gated to `MeleeChaser`.
+3. ✅ Contact melee as an auto-cast enemy `AbilityDef` (`contact_melee` behavior), through the same
+   faction-aware execute path; the hardcoded `enemy_attack` is deleted. Plus (full scope): a ranged
+   caster (`spitter`) with enemy projectiles hitting the player, a data-only enemy-scaling model, and
+   the `suppress_abilities` wiring.
 
 **Phase 6 — Zone system**
 1. Implement `PersistentZone` entities, `ZoneAnchor`, `PlayerZonePresence`.
@@ -1007,9 +1013,9 @@ phase that should absorb each item:
 | Debt | Why it can wait | Absorb in |
 |---|---|---|
 | ~~`Def`-library triplication~~ **RESOLVED (Phase 4).** Generic `DefLibrary<T>` + `DefAsset` + `RonDefLoader<T>` + `register_def_library` in `core/def_library.rs`; the three libraries are now type aliases and `HeroDef` reuses the same path. | — | Done |
-| `execute_ready_abilities` is a 12-param system mixing trigger validation, param resolution, effect application, VFX + projectile spawning, cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway. **Not triggered in Phase 4** — the focused slice landed no code-driven hook | First code-driven hook: split into resolve/apply helpers around the hook points |
+| `execute_ready_abilities` is a large system mixing trigger validation, faction target-gathering, param resolution, effect application, VFX + projectile spawning, the whiff gate + suppress gate, and cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway. **Still not triggered through Phase 5** — the faction/whiff/suppress additions are inline flags, not code-driven hooks | First code-driven hook: split into resolve/apply helpers around the hook points |
 | `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent |
-| `suppress_abilities` is parsed but neither resolved into a component nor consumed | Nothing can stun the player yet; enemies have no casts | **Phase 5** (enemy abilities): resolve in `resolve_actor_status` + gate `auto_cast_abilities`/`execute_ready_abilities` |
+| ~~`suppress_abilities` is parsed but neither resolved into a component nor consumed~~ **RESOLVED (Phase 5).** `resolve_actor_status` folds it into a new `AbilitiesSuppressed` marker; `auto_cast_abilities`, `execute_ready_abilities`, and the hero input/stance systems skip a suppressed caster. Neutral (no shipped content applies stun). | — | Done |
 | ~~Travelling projectiles / Blood Boil have no visuals~~ **PARTLY RESOLVED (Phase 4).** Projectile sprites (`attach_projectile_visuals`, `Added<ProjectileMotion>`, element-tinted) + status tints (`tint_status_effects`) landed as pure presentation. **Still open:** the Blood Boil **nova flash** — the cone-flash path is logic-side, so a nova flash spawned the same way would move the golden baseline; it needs a presentation-only cast-VFX event bus | Nova flash: when the cast-VFX bus lands (or a baseline regen for it is accepted) |
 | Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if Mage playtesting makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Mage playtesting |
 | Per-hero **base-stat application** — `HeroDef.base_stats` (max_health, move_speed) is data-only; `spawn_player` still uses the shared constants, so the Mage plays with the Death Knight's HP/speed | No class HP/speed differentiation is needed for the stance mechanic; keeping it out kept Phase 4 baseline-neutral | When class HP/speed differentiation matters (feel/balance) |
@@ -1037,6 +1043,39 @@ absorb/shield system, code-driven status/ability hooks + the `execute_ready_abil
 character-select UI, and full Mage progression content (Blaze, Flamewrath, Frostbite, Frost charge,
 Flamestrike, talents — Phase 9 content pass). §8.1 gaps still open: shields/absorbs (5), forced
 movement (6), enemy scaling (7), enemy projectiles/AMZ (8), UI (9).
+
+### 8.7 Phase 5 delivered (2026-07-05)
+
+Enemy ability system + AI + a **faction-aware ability engine**, shipped at **full scope** (owner
+decision D1 — a ranged caster was included) with a **data-only** scaling model (D2) and a
+**unified** enemy/player execution path (D3). See `docs/phase5-plan.md` and the CHANGELOG "Phase 5"
+section. **The golden baseline did not move at any of the five steps.** Delivered:
+- **Faction-aware engine** — `Faction { Friendly, Hostile }`; target-gathering and projectile
+  collision resolve by opposing faction. Enemy casts hit the player; player casts hit enemies;
+  one engine for both. (Neutral: same target sets/order for player casts.)
+- **`EnemyDef` data-drive** — a live `.enemy.ron` `DefAsset`; `enemy/archetypes.rs` deleted; the 3
+  archetypes ported byte-identically; a ranged `spitter` added. AI dispatch is an **`AiBehavior`
+  component enum**, deliberately replacing the scaffold's `AiBehaviorRegistry`/`EnemyAiHook`
+  trait (a `&mut World`-free hook can't steer via the flow field). Both `EnemyDef` and
+  `enemy/behavior.rs` were uncompiled scaffolds; the latter is deleted.
+- **Contact melee as a first-class ability** — auto-cast `*_contact` abilities via a `contact_melee`
+  behavior; `enemy_attack` + `AttackStats`/`AttackCooldown` deleted. Cadence preserved exactly
+  (spawn-with-instances + a `consumes_cooldown_on_whiff` opt-out) ⇒ **baseline byte-identical, no
+  regeneration** (the change the phase plan expected to be a declared benign regen turned out neutral).
+- **Ranged caster** — `spitter` + `spitter_bolt` + `ranged_caster_ai` (approach → stop at
+  `preferred_range` → face the player → fire); enemy projectiles hit the Friendly player. Kept out
+  of the golden campaign, so the master is untouched.
+- **Enemy scaling — data-only** (resolves §8.1(7)): `EnemyScaling` on `EnemyDef` +
+  `resolve_enemy_stats(def, depth)` + a generic `DamageDealtModifier` (mirror of
+  `DamageTakenModifier`). No live driver; depth 0 ⇒ base ⇒ neutral. Phase 7 supplies real depth.
+- **`suppress_abilities` wired** (pays the §8.5 debt) — `AbilitiesSuppressed` marker + gates in
+  auto-cast/execute/hero-input/stance.
+
+§8.1 status after Phase 5: enemy scaling (7) **done (data model)**; enemy **projectiles** (8) **done**
+(the AMZ projectile-blocking zone is still open — Phase 6+). Still open from §8.1: shields/absorbs
+(5), forced movement (6), UI (9). Deferred from Phase 5 with triggers (phase5-plan §7): `ThemeDef`
+loader + theme/encounter spawning + `Elite`/boss spawn roles + a live scaling driver (Phase 7);
+multi-phase boss AI + enemy status/DoT kits (Phase 9); AMZ zones (Phase 6+).
 
 ---
 

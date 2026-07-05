@@ -1,0 +1,23 @@
+// WORKING NAME: "Grunt Contact"
+// Enemy ability (Phase 5) — the Grunt's contact melee, replacing the hardcoded enemy_attack.
+// Auto-cast: fires on cooldown whenever the player is within `range`. Faction-aware — it targets
+// the Friendly player (the caster is Hostile). The `contact_melee` behavior does not spend the
+// cooldown on a whiff, so the Grunt charges its swing while approaching and hits on contact
+// (matching the prototype: 5 dmg, range 28, 1.0s cadence, first hit immediate).
+(
+    id: "grunt_contact",
+    display_name: "Grunt Contact",
+    unlock_schedule: Level1,
+    activation: AutoCast,
+    behavior: "contact_melee",
+    hooks: [],
+    base_params: {
+        "damage": 5.0,
+        "range": 28.0,
+        "cooldown": 1.0,
+    },
+    talent_pool: [],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+    ],
+)
