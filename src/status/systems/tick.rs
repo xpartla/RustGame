@@ -1,44 +1,56 @@
-// Status effect lifecycle: application, ticking, and expiry.
+// Ticking status effects: advances duration + DoT timers, emits DamageEvent for periodic
+// effects (bleed, blaze), and despawns expired instances.
 //
-// Three responsibilities:
-//   1. apply_status_effects — consumes ApplyStatusEvent, spawns StatusEffectInstance child entities.
-//      Respects StackingRule: RefreshOnReapply resets the existing timer; StackCapped(n) only
-//      spawns if the current stack count < n; StackUnlimited always spawns.
-//   2. tick_status_effects — advances timers, fires on_tick_hooks (usually emits DamageEvent
-//      for DoT effects like bleed/blaze), despawns expired instances.
-//   3. Runs in StatusSet (after CombatSet::Apply, before CombatSet::Death).
+// A DoT tick emits a DamageEvent carrying the effect's `source` (for kill credit) and the
+// TickSpec's element tags. Fire ticks therefore clear frostbite emergently, via cross_interact —
+// no special case here. Runs in StatusSet::Tick, after apply_status_effects.
+//
+// DoT damage lands one frame later (it is emitted here, in Tick; apply_damage already ran this
+// frame in CombatSet::Apply). This one-frame latency is deterministic and pinned by scenarios.
 
 use bevy::prelude::*;
-use crate::status::assets::StatusEffectDef;
-use crate::status::components::{ApplyStatusEvent, RemoveStatusEvent, StatusEffectInstance};
+use crate::core::events::DamageEvent;
+use crate::status::assets::{StatusEffectDef, StatusLibrary};
+use crate::status::components::StatusEffectInstance;
 
-/// TODO(Phase 3): implement.
-/// Consumes ApplyStatusEvent, spawns child entities on the target respecting StackingRule.
-pub fn apply_status_effects(
-    mut _events: EventReader<ApplyStatusEvent>,
-    _effect_defs: Res<Assets<StatusEffectDef>>,
-    mut _commands: Commands,
-    _existing: Query<(&StatusEffectInstance, &Parent)>,
-) {
-    todo!("Phase 3")
-}
-
-/// TODO(Phase 3): implement.
-/// Advances timers; fires DoT damage via DamageEvent; despawns expired effects.
 pub fn tick_status_effects(
-    _time: Res<Time>,
-    mut _instances: Query<(Entity, &mut StatusEffectInstance, &Parent)>,
-    mut _commands: Commands,
-    // + EventWriter<DamageEvent> for DoT effects
+    time: Res<Time>,
+    library: Res<StatusLibrary>,
+    defs: Res<Assets<StatusEffectDef>>,
+    mut commands: Commands,
+    mut damage_events: EventWriter<DamageEvent>,
+    mut instances: Query<(Entity, &mut StatusEffectInstance)>,
 ) {
-    todo!("Phase 3")
-}
+    let dt = time.delta();
+    for (entity, inst) in &mut instances {
+        let inst = inst.into_inner(); // split-borrow tick_timer vs. the id/target/source fields
 
-/// Consumes RemoveStatusEvent, despawns all matching StatusEffectInstance children.
-pub fn remove_status_effects(
-    mut _events: EventReader<RemoveStatusEvent>,
-    mut _commands: Commands,
-    _instances: Query<(Entity, &StatusEffectInstance, &Parent)>,
-) {
-    todo!("Phase 3")
+        // Damage-over-time.
+        if let Some(tick_timer) = inst.tick_timer.as_mut() {
+            tick_timer.tick(dt);
+            let fires = tick_timer.times_finished_this_tick();
+            if fires > 0 {
+                if let Some(tick) = library
+                    .get(&inst.def_id)
+                    .and_then(|h| defs.get(h))
+                    .and_then(|d| d.tick.as_ref())
+                {
+                    for _ in 0..fires {
+                        damage_events.write(DamageEvent {
+                            target: inst.target,
+                            amount: tick.damage,
+                            source: inst.source,
+                            tags: tick.tags.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Duration.
+        inst.timer.tick(dt);
+        if inst.timer.finished() {
+            commands.entity(entity).try_despawn();
+        }
+    }
 }

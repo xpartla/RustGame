@@ -14,9 +14,9 @@
 use bevy::asset::AssetApp;
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityDefLoader, AbilityId, AbilityLibrary};
-use crate::ability::behavior::{BehaviorRegistry, MeleeCone};
+use crate::ability::behavior::{BehaviorRegistry, MeleeCone, ProjectileBehavior, SelfNova};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent, UnlockAbilityEvent};
-use crate::ability::systems::execute::{execute_ready_abilities, tick_ability_cooldowns};
+use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
 use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
 use crate::player::components::Player;
@@ -31,9 +31,12 @@ impl Plugin for AbilityPlugin {
             .add_event::<TriggerAbilityEvent>()
             .add_event::<UnlockAbilityEvent>();
 
-        // Built-in behaviors. Phase 1 implements only melee_cone; others register in their phase.
+        // Built-in behaviors. melee_cone (Phase 1), projectile (Phase 3). Zone/orbit/summon/…
+        // register in their own phases; an ability whose behavior is unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
+        behaviors.register("projectile", ProjectileBehavior);
+        behaviors.register("self_nova", SelfNova);
         app.insert_resource(behaviors);
 
         app.add_systems(Startup, load_ability_defs);
@@ -48,7 +51,7 @@ impl Plugin for AbilityPlugin {
         );
         app.add_systems(
             Update,
-            (tick_ability_cooldowns, execute_ready_abilities)
+            (tick_ability_cooldowns, auto_cast_abilities, execute_ready_abilities)
                 .chain()
                 .in_set(CombatSet::Damage)
                 .run_if(in_state(GameState::InRun)),
@@ -62,6 +65,12 @@ fn load_ability_defs(asset_server: Res<AssetServer>, mut library: ResMut<Ability
     const ABILITIES: &[(&str, &str)] = &[
         ("death_strike", "abilities/death_strike.ability.ron"),
         ("dnd", "abilities/dnd.ability.ron"),
+        // Phase 3 demonstrators (not yet class/stance-bound — Phase 4 wires them to the Mage/Druid).
+        ("fireblast", "abilities/fireblast.ability.ron"),
+        ("frostbolt", "abilities/frostbolt.ability.ron"),
+        ("scratch", "abilities/scratch.ability.ron"),
+        // Blood Boil: BDK L2/3 band ability, now live as an auto-cast self-nova (Phase 3).
+        ("blood_boil", "abilities/blood_boil.ability.ron"),
     ];
     for (id, path) in ABILITIES {
         library.defs.insert((*id).to_string(), asset_server.load(*path));

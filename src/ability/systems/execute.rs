@@ -13,13 +13,15 @@
 // Hooks (AbilityDef.hooks) are not run in Phase 1 — they arrive with the talent system.
 
 use bevy::prelude::*;
-use crate::ability::assets::{AbilityDef, AbilityLibrary};
-use crate::ability::behavior::{AbilityContext, AbilityEffect, BehaviorRegistry, EnemyTarget};
+use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation};
+use crate::ability::behavior::{AbilityContext, BehaviorRegistry, EnemyTarget, VfxShape};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent};
+use crate::ability::effects::{apply_resolved_effects, resolve_effects};
 use crate::core::components::{Facing, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::enemy::components::Enemy;
-use crate::projectile::components::{ArcHitbox, Lifetime, Projectile};
+use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
+use crate::status::components::ApplyStatusEvent;
 use crate::talent::assets::{TalentDef, TalentLibrary};
 use crate::talent::components::AcquiredTalents;
 use crate::talent::modifier::resolve_params;
@@ -34,6 +36,31 @@ pub fn tick_ability_cooldowns(time: Res<Time>, mut cooldowns: Query<&mut Ability
     }
 }
 
+/// Emits a TriggerAbilityEvent for every ready AutoCast ability, so passive abilities (Blood Boil,
+/// …) fire on cooldown without input. Runs before `execute_ready_abilities` in CombatSet::Damage;
+/// execute resets the cooldown when it fires, so exactly one trigger lands per ready period.
+pub fn auto_cast_abilities(
+    mut triggers: EventWriter<TriggerAbilityEvent>,
+    library: Res<AbilityLibrary>,
+    defs: Res<Assets<AbilityDef>>,
+    instances: Query<(&AbilityInstance, &AbilityCooldown)>,
+) {
+    for (instance, cooldown) in &instances {
+        if !cooldown.is_ready() {
+            continue;
+        }
+        let Some(def) = library.get(&instance.def_id).and_then(|h| defs.get(h)) else {
+            continue;
+        };
+        if def.activation == Activation::AutoCast {
+            triggers.write(TriggerAbilityEvent {
+                ability_id: instance.def_id.clone(),
+                owner: instance.owner,
+            });
+        }
+    }
+}
+
 /// Fires the ability matching each TriggerAbilityEvent, if its cooldown is ready and its
 /// AbilityDef has finished loading.
 pub fn execute_ready_abilities(
@@ -41,6 +68,7 @@ pub fn execute_ready_abilities(
     mut triggers: EventReader<TriggerAbilityEvent>,
     mut damage_events: EventWriter<DamageEvent>,
     mut heal_events: EventWriter<HealEvent>,
+    mut status_events: EventWriter<ApplyStatusEvent>,
     registry: Res<BehaviorRegistry>,
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
@@ -64,10 +92,7 @@ pub fn execute_ready_abilities(
             continue;
         };
         let acquired = acquired_opt.unwrap_or(&no_talents);
-        // No aim direction yet (Facing starts at zero until the first mouse move).
-        if owner_facing.0.length_squared() < 1e-6 {
-            continue;
-        }
+        let has_aim = owner_facing.0.length_squared() >= 1e-6;
 
         for (instance, mut cooldown) in &mut instances {
             if instance.owner != trigger.owner || instance.def_id != trigger.ability_id {
@@ -90,6 +115,11 @@ pub fn execute_ready_abilities(
                 );
                 break;
             };
+            // Aim-dependent shapes (cone, projectile) need a non-zero facing; self-centred shapes
+            // (nova) do not. Skip without consuming the cooldown when a needs-aim cast has no aim.
+            if behavior.needs_aim() && !has_aim {
+                break;
+            }
 
             let params = resolve_params(
                 &instance.def_id,
@@ -102,12 +132,52 @@ pub fn execute_ready_abilities(
             let ctx = AbilityContext {
                 owner: trigger.owner,
                 origin: owner_pos.0,
-                facing: owner_facing.0.normalize(),
+                // Non-zero for needs-aim casts (gated above); zero is fine for self-centred shapes.
+                facing: owner_facing.0.normalize_or_zero(),
                 enemies: &targets,
             };
-            let mut effects = Vec::new();
-            behavior.execute(&ctx, &params, &mut effects);
-            apply_effects(&mut commands, &mut damage_events, &mut heal_events, trigger.owner, effects);
+            let outcome = behavior.resolve(&ctx, &params);
+            let resolved = resolve_effects(&def.effects, &params);
+            // Instant hits (cone/nova). Empty for a pure projectile cast (delivery is deferred).
+            apply_resolved_effects(
+                &mut damage_events,
+                &mut heal_events,
+                &mut status_events,
+                trigger.owner,
+                &outcome.hits,
+                outcome.primary,
+                &resolved,
+            );
+
+            // Shape VFX (melee cone flash), reusing the prototype's gizmo entity path.
+            if let Some(VfxShape::Cone { radius, half_angle, forward, lifetime }) = outcome.vfx {
+                commands.spawn((
+                    Projectile,
+                    WorldPosition(outcome.origin),
+                    ArcHitbox { radius, half_angle },
+                    Facing(forward),
+                    Lifetime { timer: Timer::from_seconds(lifetime, TimerMode::Once) },
+                ));
+            }
+
+            // Travelling projectile: spawn it carrying the baked effects for on-impact delivery.
+            if let Some(spawn) = outcome.projectile {
+                commands.spawn((
+                    Projectile,
+                    WorldPosition(outcome.origin),
+                    ProjectileMotion {
+                        velocity: spawn.velocity,
+                        radius: spawn.radius,
+                        pierce_remaining: spawn.pierce,
+                    },
+                    ProjectilePayload {
+                        source: trigger.owner,
+                        effects: resolved.clone(),
+                        already_hit: Vec::new(),
+                    },
+                    Lifetime { timer: Timer::from_seconds(spawn.lifetime, TimerMode::Once) },
+                ));
+            }
 
             cooldown.elapsed = 0.0;
             let resolved_cd = params.get("cooldown");
@@ -119,31 +189,3 @@ pub fn execute_ready_abilities(
     }
 }
 
-/// Applies the effects a behavior produced. The only place ability execution touches the world.
-fn apply_effects(
-    commands: &mut Commands,
-    damage_events: &mut EventWriter<DamageEvent>,
-    heal_events: &mut EventWriter<HealEvent>,
-    source: Entity,
-    effects: Vec<AbilityEffect>,
-) {
-    for effect in effects {
-        match effect {
-            AbilityEffect::Damage { target, amount, tags } => {
-                damage_events.write(DamageEvent { target, amount, source, tags });
-            }
-            AbilityEffect::Heal { target, amount } => {
-                heal_events.write(HealEvent { target, amount });
-            }
-            AbilityEffect::ConeVfx { origin, radius, half_angle, forward, lifetime } => {
-                commands.spawn((
-                    Projectile,
-                    WorldPosition(origin),
-                    ArcHitbox { radius, half_angle },
-                    Facing(forward),
-                    Lifetime { timer: Timer::from_seconds(lifetime, TimerMode::Once) },
-                ));
-            }
-        }
-    }
-}

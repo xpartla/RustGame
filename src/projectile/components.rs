@@ -1,15 +1,38 @@
-use bevy::prelude::Component;
+use bevy::math::Vec2;
+use bevy::prelude::{Component, Entity};
 use bevy::time::Timer;
+use crate::ability::effects::ResolvedEffect;
 
-// NOTE: provisional module. These are currently transient *attack VFX* entities — a melee
-// swing spawns one purely so the gizmos can draw the hitbox shape for `Lifetime`. The actual
-// damage is resolved instantly in the attack systems (see player/systems/attack.rs), not here.
-// When real travelling projectiles (ranged attacks) are added, this module should grow a
-// proper movement + collision system again (and likely be renamed/split).
+// This module now serves two entity kinds, both marked `Projectile` and despawned by
+// `projectile_lifetime`:
+//   1. Transient attack-VFX flashes (melee cone) — a shape + Lifetime, no motion. Damage is
+//      resolved instantly by the ability system, not here.
+//   2. Travelling projectiles (Fireblast, Frostbolt) — carry `ProjectileMotion` + a
+//      `ProjectilePayload`; `move_projectiles` integrates them and `projectile_collision` applies
+//      the payload's baked effects on impact. Only entities with `ProjectileMotion` are moved.
 
-/// Marker for a transient attack-VFX entity.
+/// Marker for a projectile entity (transient VFX flash or a travelling projectile).
 #[derive(Component)]
 pub struct Projectile;
+
+/// Travelling projectile motion + collision state.
+#[derive(Component)]
+pub struct ProjectileMotion {
+    pub velocity: Vec2,
+    /// Projectile collision radius; added to the target's radius at impact.
+    pub radius: f32,
+    /// Remaining enemies it can pass through after a hit (0 ⇒ despawn on the next hit).
+    pub pierce_remaining: u32,
+}
+
+/// The baked effects a travelling projectile applies on impact, plus who fired it and which
+/// enemies it already struck (so a piercing shot never double-hits one enemy).
+#[derive(Component)]
+pub struct ProjectilePayload {
+    pub source: Entity,
+    pub effects: Vec<ResolvedEffect>,
+    pub already_hit: Vec<Entity>,
+}
 
 #[derive(Component)]
 pub struct Lifetime {

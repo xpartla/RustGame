@@ -1,0 +1,28 @@
+// WORKING NAME: "Blood Boil"
+// Class: Blood Death Knight
+// Slot: passive (auto-cast on cooldown)
+// Unlock: randomly at level 2/3 (band ability).
+//
+// Behavior: self_nova — a periodic AoE pulse around the character that damages every enemy in
+// `radius` and leeches. Made live in Phase 3 as the auto-cast demonstrator (its inert instance
+// existed since Phase 2). Talent variants (current-health %, DoT transfer, D&D synergy) arrive in
+// the BDK content pass.
+(
+    id: "blood_boil",
+    display_name: "Blood Boil",
+    unlock_schedule: Band(2, 3),
+    activation: AutoCast,
+    behavior: "self_nova",
+    hooks: [],
+    base_params: {
+        "damage": 6.0,
+        "radius": 90.0,
+        "leech_percent": 5.0,
+        "cooldown": 4.0,
+    },
+    talent_pool: [],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+        Leech(percent: "leech_percent"),
+    ],
+)

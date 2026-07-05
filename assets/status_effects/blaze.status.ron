@@ -1,0 +1,13 @@
+// Blaze — Mage fire DoT. Applied by Fireblast (and later Flamestrike / Flamewrath).
+//
+// The 1.0s tick is Fire-tagged: on a target that also has frostbite, the tick clears frostbite
+// emergently (cross_interact reads frostbite's removed_by_tags: [Fire]) — no special case.
+// Blaze itself is removed by frost damage (removed_by_tags: [Frost]).
+(
+    id: "blaze",
+    display_name: "Blaze",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 4.0,
+    tick: Some((interval_secs: 1.0, damage: 3.0, tags: [Fire])),
+    removed_by_tags: [Frost],
+)

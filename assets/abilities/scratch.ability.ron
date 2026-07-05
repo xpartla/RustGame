@@ -1,0 +1,25 @@
+// WORKING NAME: "Scratch"
+// Class: Druid (animal) — Basic attack. NOT yet class/stance-bound (Phase 4).
+// Unlock: Level 1 (in the eventual Druid kit).
+//
+// Behavior: melee_cone — hits every enemy in a frontal cone for Physical damage and applies bleed
+// (physical DoT). Added in Phase 3 to demonstrate a cone that applies a status to all hits (the
+// "enhanced Scratch applies bleed" baseline; talent variants arrive with the Druid, Phase 4).
+(
+    id: "scratch",
+    display_name: "Scratch",
+    unlock_schedule: Level1,
+    behavior: "melee_cone",
+    hooks: [],
+    base_params: {
+        "damage": 7.0,
+        "range": 70.0,
+        "half_angle": 0.9,
+        "cooldown": 1.0,
+    },
+    talent_pool: [],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+        ApplyStatus(status: "bleed", stacks: 1, target: AllHits),
+    ],
+)

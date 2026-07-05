@@ -1,0 +1,15 @@
+// Frostbite — Mage ice debuff. Applied by Frostbolt.
+//
+// No DoT: a pure stat debuff. Slows the target (move_speed_mult 0.8 = -20%) and amplifies the
+// damage it takes (damage_taken_mult 1.1 = +10%). Both are folded into the actor's modifier
+// components by resolve_actor_status (Phase 3C) and consumed by apply_movement_status / apply_damage.
+// Removed by fire damage (removed_by_tags: [Fire]).
+(
+    id: "frostbite",
+    display_name: "Frostbite",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 5.0,
+    move_speed_mult: 0.8,
+    damage_taken_mult: 1.1,
+    removed_by_tags: [Fire],
+)

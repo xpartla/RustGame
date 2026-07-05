@@ -31,9 +31,9 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
-use crate::ability::components::{AbilityInstance, TriggerAbilityEvent};
+use crate::ability::components::{AbilityInstance, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::core::components::{Facing, GridPosition, Health, WorldPosition};
-use crate::core::events::DamageEvent;
+use crate::core::events::{DamageEvent, DamageTag};
 use crate::enemy::archetypes::{archetypes, EnemyArchetype};
 use crate::enemy::components::{Enemy, EnemySpawner};
 use crate::game::state::GameState;
@@ -42,6 +42,8 @@ use crate::pickup::components::PickUpSpawner;
 use crate::player::components::Player;
 use crate::progression::state::LevelUpFlowState;
 use crate::run::rng::RunRng;
+use crate::status::assets::{StatusEffectDef, StatusLibrary};
+use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 use crate::talent::assets::{TalentDef, TalentLibrary};
 use crate::talent::components::AcquiredTalents;
 use crate::world::components::TileMap;
@@ -158,8 +160,11 @@ impl Sim {
         let ability_defs = world.resource::<Assets<AbilityDef>>();
         let talent_lib = world.resource::<TalentLibrary>();
         let talent_defs = world.resource::<Assets<TalentDef>>();
+        let status_lib = world.resource::<StatusLibrary>();
+        let status_defs = world.resource::<Assets<StatusEffectDef>>();
         ability_lib.defs.values().all(|h| ability_defs.get(h).is_some())
             && talent_lib.defs.values().all(|h| talent_defs.get(h).is_some())
+            && status_lib.defs.values().all(|h| status_defs.get(h).is_some())
     }
 
     // ---------------------------------------------------------------- world access
@@ -295,6 +300,17 @@ impl Sim {
         });
     }
 
+    /// Grants the player an ability instance through the real UnlockAbilityEvent path (used to
+    /// hand the not-yet-class-bound demonstrators — Fireblast/Frostbolt/Scratch — to the player).
+    /// Step once afterward so `spawn_unlocked_ability` creates the instance.
+    pub fn grant_ability(&mut self, ability_id: &str) {
+        let owner = self.player();
+        self.app.world_mut().send_event(UnlockAbilityEvent {
+            ability_id: ability_id.to_string(),
+            owner,
+        });
+    }
+
     /// Deals direct damage to an entity through the normal DamageEvent → apply_damage chain.
     pub fn deal_damage(&mut self, target: Entity, amount: f32) {
         self.app.world_mut().send_event(DamageEvent {
@@ -303,6 +319,22 @@ impl Sim {
             source: Entity::PLACEHOLDER,
             tags: vec![],
         });
+    }
+
+    /// Deals element-tagged damage (drives status cross-interaction, e.g. a Fire hit that
+    /// clears frostbite) without needing a real fire ability.
+    pub fn deal_tagged_damage(&mut self, target: Entity, amount: f32, tag: DamageTag) {
+        self.app.world_mut().send_event(DamageEvent {
+            target,
+            amount,
+            source: Entity::PLACEHOLDER,
+            tags: vec![tag],
+        });
+    }
+
+    /// World position of any entity (enemies, projectiles, …). None if it has no WorldPosition.
+    pub fn entity_pos(&self, entity: Entity) -> Option<Vec2> {
+        self.app.world().get::<WorldPosition>(entity).map(|p| p.0)
     }
 
     // ---------------------------------------------------------------- enemies
@@ -330,6 +362,50 @@ impl Sim {
 
     pub fn enemy_health(&mut self, enemy: Entity) -> Option<f32> {
         self.app.world().get::<Health>(enemy).map(|h| h.current)
+    }
+
+    /// Sets any entity's current health (test setup — e.g. a durable dummy for DoT scenarios).
+    pub fn set_health(&mut self, entity: Entity, current: f32) {
+        if let Some(mut health) = self.app.world_mut().get_mut::<Health>(entity) {
+            health.current = current;
+        }
+    }
+
+    // ---------------------------------------------------------------- status effects
+
+    /// Applies a status effect to `target`, attributed to `source`, through the normal
+    /// ApplyStatusEvent → apply_status_effects chain.
+    pub fn apply_status(&mut self, target: Entity, source: Entity, effect_id: &str, stacks: u8) {
+        self.app.world_mut().send_event(ApplyStatusEvent {
+            target,
+            source,
+            effect_id: effect_id.to_string(),
+            stacks,
+        });
+    }
+
+    /// The status effect ids currently afflicting `target` (one entry per active instance, so
+    /// stacks appear multiple times).
+    pub fn status_ids_on(&mut self, target: Entity) -> Vec<String> {
+        let world = self.app.world_mut();
+        let mut query = world.query::<&StatusEffectInstance>();
+        query
+            .iter(world)
+            .filter(|i| i.target == target)
+            .map(|i| i.def_id.clone())
+            .collect()
+    }
+
+    /// Whether `target` currently has at least one instance of `effect_id`.
+    pub fn has_status(&mut self, target: Entity, effect_id: &str) -> bool {
+        self.status_ids_on(target).iter().any(|id| id == effect_id)
+    }
+
+    /// Total active status-effect instances across all entities (golden-master coverage column).
+    pub fn active_status_count(&mut self) -> usize {
+        let world = self.app.world_mut();
+        let mut query = world.query::<&StatusEffectInstance>();
+        query.iter(world).count()
     }
 
     // ---------------------------------------------------------------- environment control

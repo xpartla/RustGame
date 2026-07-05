@@ -40,6 +40,8 @@ struct Snapshot {
     enemies: usize,
     abilities: usize,
     talents: u32,
+    /// Active status-effect instances in the world (frostbite from the bot's Frostbolt casts).
+    statuses: usize,
     /// Player position rounded to 1 decimal.
     px: f32,
     py: f32,
@@ -87,6 +89,7 @@ fn snapshot(sim: &mut Sim, frame: usize) -> Snapshot {
         enemies: sim.enemy_count(),
         abilities: sim.owned_abilities().len(),
         talents,
+        statuses: sim.active_status_count(),
         px,
         py,
     }
@@ -151,8 +154,11 @@ fn bot_frame(sim: &mut Sim, digit_held: &mut bool) {
         }
     }
 
+    // Face the nearest enemy and throw a Frostbolt (ranged; its own cooldown gates the cadence) —
+    // this exercises projectiles + frostbite (status) in the master. Death Strike when close.
+    sim.set_player_facing(epos - ppos);
+    sim.trigger_ability("frostbolt");
     if dist < 50.0 {
-        sim.set_player_facing(epos - ppos);
         sim.trigger_ability("death_strike");
     }
 }
@@ -189,6 +195,8 @@ fn spawn_waves(sim: &mut Sim, frame: usize) {
 
 fn run_campaign() -> CampaignTrace {
     let mut sim = Sim::new_arena(GOLDEN_SEED);
+    // Hand the bot Frostbolt (not yet class-bound) so the campaign covers projectiles + frostbite.
+    sim.grant_ability("frostbolt");
     let map_signature = sim.tilemap_signature();
     let mut snapshots = Vec::new();
     let mut digit_held = false;

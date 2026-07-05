@@ -51,7 +51,7 @@ Known nondeterminism that remains (by design, out of scenario scope):
 |---|---|---|
 | Unit tests | `src/**` `#[cfg(test)]` | RON schemas parse, modifier-stack math, cone geometry, offer eligibility, band-pool flow |
 | Golden scenarios | `tests/*.rs` | End-to-end behavior of one mechanic per test: movement/collision, Death Strike damage/leech/cooldown, contact damage cadence, XP → unlock → talent-picker round-trip, uniqueness filtering, pickups, map determinism |
-| Golden master | `tests/golden_campaign.rs` | A 30-second scripted-bot campaign; a per-second trace of hp/level/xp/enemies/abilities/talents/position must match `tests/golden/campaign_baseline.ron` exactly |
+| Golden master | `tests/golden_campaign.rs` | A 30-second scripted-bot campaign; a per-second trace of hp/level/xp/enemies/abilities/talents/**statuses**/position must match `tests/golden/campaign_baseline.ron` exactly. Since Phase 3 the bot also casts Frostbolt (projectiles + frostbite) and Blood Boil auto-casts, so the master covers status/projectile drift |
 
 Run everything: `cargo test`. Scenarios assert tuning values from the RON assets and
 `archetypes()` — **changing tuning intentionally will fail tests; update the affected
@@ -83,7 +83,9 @@ baseline-regeneration event — declare it in the CHANGELOG like any other behav
 
 Every phase from Phase 3 onward should land with golden scenarios for its mechanic, e.g.:
 
-- Phase 3: "frost-tagged damage removes blaze", "bleed ticks N damage over M seconds".
+- Phase 3 (done): `tests/status.rs`, `tests/projectile.rs`, `tests/autocast.rs` — bleed cadence,
+  frostbite slow/amp, root/stun, fire↔frost cancellation, DoT kill credit, projectile
+  travel-then-hit, status-on-impact, Blood Boil auto-cast, the per-behavior aim gate.
 - Phase 4: "stance swap remaps LMB", "second class basic attack fires through input slots".
 - Phase 5: "EnemyDef RON spawns an enemy with the declared stats".
 - Phase 6: "D&D zone doubles Blood Boil range inside it".

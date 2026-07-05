@@ -1,0 +1,13 @@
+// Root — immobilizes the target (velocity zeroed while active). Applied by Druid Roots / Earth Ent.
+//
+// `immobilize` is folded into an Immobilized marker by resolve_actor_status; apply_movement_status
+// zeroes the target's velocity before movement integration. Root allows casting (unlike stun).
+// Druid talents that key off root (Scratch/Primal Pounce bonus damage) read the target's
+// instances directly and arrive with the class (Phase 4).
+(
+    id: "root",
+    display_name: "Root",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 2.5,
+    immobilize: true,
+)

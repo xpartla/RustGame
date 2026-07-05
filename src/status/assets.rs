@@ -1,60 +1,189 @@
-// StatusEffectDef — one file per effect, loaded from assets/status_effects/*.ron.
+// StatusEffectDef — one file per effect, loaded from assets/status_effects/*.status.ron.
 //
-// Cross-element interactions are encoded here, not in the ability that applies the effect.
-// This means: adding a new element that cancels frostbite only requires editing
-// frostbite.ron's `removed_by_tags` list. The frostbite system code is untouched.
+// Phase 3 makes the six built-in effects fully DECLARATIVE — zero Rust per effect. A status is
+// described by data:
+//   tick               — optional damage-over-time (interval + flat damage + element tags)
+//   move_speed_mult    — multiplies the target's velocity while active (frostbite 0.8)
+//   damage_taken_mult  — multiplies incoming damage while active (frostbite 1.1)
+//   immobilize         — zeroes the target's velocity (root, stun)
+//   suppress_abilities — blocks the target's ability casts (stun; consumer lands with enemy AI)
+//   removed_by_tags    — a DamageEvent with one of these tags clears the effect (fire↔frost)
+//   removes_on_apply   — applying this effect clears these other effects on the same target
+//   hooks              — escape hatch for truly code-driven effects; EMPTY for all six built-ins,
+//                        wired to a StatusHookRegistry only when the first such effect lands.
 //
-// Key fields:
-//   stacking         — governs how multiple applications interact (see StackingRule).
-//   removed_by_tags  — this effect is removed when a DamageEvent with one of these tags hits.
-//   removes_on_apply — applying this effect removes these other effects from the target.
-//
-// Known effects: bleed, blaze, frostbite, holy_mark, root, stun.
-// Each lives in assets/status_effects/<id>.ron.
+// Adding a new element that cancels an existing one edits only the new effect's data — no code,
+// no change to any existing effect file (architecture-plan §3.5).
 //
 // Interactions:
-//   - status/components.rs: StatusEffectInstance holds the def_id for lookup.
-//   - status/systems/tick.rs: reads on_tick_hooks to emit DamageEvents for DoTs.
-//   - status/systems/cross_interact.rs: reads removed_by_tags to handle element cancellation.
-//   - ability/behavior.rs: behaviors apply status effects by emitting ApplyStatusEvent.
+//   - status/components.rs: StatusEffectInstance carries the def_id for lookup.
+//   - status/systems/tick.rs: reads `tick` to emit DamageEvents for DoTs.
+//   - status/systems/cross_interact.rs: reads `removed_by_tags` for element cancellation.
+//   - status/systems/resolve.rs (Phase 3C): folds move/damage/immobilize into actor modifiers.
+//   - ability/systems/execute.rs: EffectSpec::ApplyStatus emits ApplyStatusEvent.
 
+use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
+use std::collections::HashMap;
 use crate::ability::assets::HookId;
 use crate::core::events::DamageTag;
 
 pub type StatusEffectId = String;
 
-/// Loaded from assets/status_effects/<id>.ron.
-#[derive(Asset, TypePath, Debug, Clone)]
+/// Loaded from assets/status_effects/<id>.status.ron.
+#[derive(Asset, TypePath, Debug, Clone, serde::Deserialize)]
 pub struct StatusEffectDef {
     pub id: StatusEffectId,
     pub display_name: String,
     pub stacking: StackingRule,
     pub base_duration_secs: f32,
-    /// If Some, a damage tick fires at this interval using on_tick_hooks.
-    pub tick_interval_secs: Option<f32>,
-    /// Called on application: setup, VFX, sound.
-    pub on_apply_hooks: Vec<HookId>,
-    /// Called each tick: usually emits DamageEvent.
-    pub on_tick_hooks: Vec<HookId>,
-    /// Called on removal (expiry, element cancel, or talent consumption).
-    pub on_remove_hooks: Vec<HookId>,
-    /// This effect is removed when the target is hit by damage with one of these tags.
-    /// Example: frostbite.ron has removed_by_tags: [Fire]
+    /// Damage-over-time cadence. `None` = no periodic damage (pure debuff).
+    #[serde(default)]
+    pub tick: Option<TickSpec>,
+    /// Velocity multiplier while active. 1.0 = no change (frostbite 0.8).
+    #[serde(default = "one")]
+    pub move_speed_mult: f32,
+    /// Incoming-damage multiplier while active. 1.0 = no change (frostbite 1.1).
+    #[serde(default = "one")]
+    pub damage_taken_mult: f32,
+    /// Zeroes the target's velocity while active (root, stun).
+    #[serde(default)]
+    pub immobilize: bool,
+    /// Blocks the target's ability casts while active (stun). Consumer arrives with enemy AI (Phase 5).
+    #[serde(default)]
+    pub suppress_abilities: bool,
+    /// A DamageEvent carrying one of these tags removes this effect (fire clears frostbite, …).
+    #[serde(default)]
     pub removed_by_tags: Vec<DamageTag>,
     /// Applying this effect removes these other effects from the same target.
-    /// Example: blaze.ron could list frostbite here to remove it on blaze application.
-    /// (Cross-reference: use removed_by_tags on the other side too for mutual cancellation.)
+    #[serde(default)]
     pub removes_on_apply: Vec<StatusEffectId>,
+    /// Escape hatch for code-driven effects. Empty for the six built-ins; resolved against a
+    /// StatusHookRegistry only when the first code-driven status effect lands (Phase 4+).
+    #[serde(default)]
+    pub hooks: Vec<HookId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Neutral defaults for the multiplier fields so a RON file can omit them.
+fn one() -> f32 {
+    1.0
+}
+
+/// Damage-over-time spec: every `interval_secs`, deal `damage` tagged with `tags`.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TickSpec {
+    pub interval_secs: f32,
+    pub damage: f32,
+    pub tags: Vec<DamageTag>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub enum StackingRule {
     /// One instance maximum. Re-applying resets the duration timer. (Most effects.)
     RefreshOnReapply,
     /// Up to N simultaneous instances; each with its own timer.
-    /// Example: bleed with Mega Bleed talent (unique[3]).
     StackCapped(u8),
     /// Unlimited stacking (rare; use carefully).
     StackUnlimited,
+}
+
+/// Asset loader for `*.status.ron`. Registered in `StatusPlugin::build`. A distinct extension
+/// (mirroring `*.ability.ron` / `*.talent.ron`) so the loaders never collide on plain `.ron`.
+#[derive(Default)]
+pub struct StatusEffectDefLoader;
+
+impl AssetLoader for StatusEffectDefLoader {
+    type Asset = StatusEffectDef;
+    type Settings = ();
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<StatusEffectDef, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let def = ron::de::from_bytes::<StatusEffectDef>(&bytes)?;
+        Ok(def)
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["status.ron"]
+    }
+}
+
+/// Resource: maps a StatusEffectId to the handle of its loaded StatusEffectDef.
+/// Populated at startup (`load_status_defs`); read by the status systems.
+#[derive(Resource, Default)]
+pub struct StatusLibrary {
+    pub defs: HashMap<StatusEffectId, Handle<StatusEffectDef>>,
+}
+
+impl StatusLibrary {
+    pub fn get(&self, id: &str) -> Option<&Handle<StatusEffectDef>> {
+        self.defs.get(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Parse the real RON asset files through the same `ron::de` path the AssetLoader uses.
+    use super::*;
+
+    fn load(rel_path: &str) -> StatusEffectDef {
+        let full = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), rel_path);
+        let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("read {full}: {e}"));
+        ron::de::from_bytes::<StatusEffectDef>(&bytes)
+            .unwrap_or_else(|e| panic!("parse {rel_path}: {e}"))
+    }
+
+    #[test]
+    fn bleed_parses_as_physical_dot() {
+        let def = load("assets/status_effects/bleed.status.ron");
+        assert_eq!(def.id, "bleed");
+        assert_eq!(def.stacking, StackingRule::RefreshOnReapply);
+        let tick = def.tick.expect("bleed has a DoT tick");
+        assert_eq!(tick.interval_secs, 1.0);
+        assert_eq!(tick.tags, vec![DamageTag::Physical]);
+        assert!(def.removed_by_tags.is_empty(), "physical DoT — no element cancels it");
+        assert_eq!(def.move_speed_mult, 1.0);
+        assert_eq!(def.damage_taken_mult, 1.0);
+    }
+
+    #[test]
+    fn blaze_ticks_fire_and_is_removed_by_frost() {
+        let def = load("assets/status_effects/blaze.status.ron");
+        assert_eq!(def.tick.unwrap().tags, vec![DamageTag::Fire]);
+        assert_eq!(def.removed_by_tags, vec![DamageTag::Frost]);
+    }
+
+    #[test]
+    fn frostbite_slows_amplifies_and_is_removed_by_fire() {
+        let def = load("assets/status_effects/frostbite.status.ron");
+        assert!(def.tick.is_none(), "frostbite is a debuff, not a DoT");
+        assert_eq!(def.move_speed_mult, 0.8);
+        assert_eq!(def.damage_taken_mult, 1.1);
+        assert_eq!(def.removed_by_tags, vec![DamageTag::Fire]);
+    }
+
+    #[test]
+    fn root_and_stun_immobilize() {
+        let root = load("assets/status_effects/root.status.ron");
+        assert!(root.immobilize);
+        assert!(!root.suppress_abilities, "root allows casting");
+        let stun = load("assets/status_effects/stun.status.ron");
+        assert!(stun.immobilize);
+        assert!(stun.suppress_abilities, "stun locks casting too");
+    }
+
+    #[test]
+    fn holy_mark_is_a_neutral_marker() {
+        let def = load("assets/status_effects/holy_mark.status.ron");
+        assert!(def.tick.is_none());
+        assert_eq!(def.move_speed_mult, 1.0);
+        assert!(def.removed_by_tags.is_empty());
+        assert!(def.hooks.is_empty());
+    }
 }

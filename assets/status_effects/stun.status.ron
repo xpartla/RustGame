@@ -1,0 +1,13 @@
+// Stun — immobilizes AND locks ability casts. Applied by Abomination Limb / Spinning Hammer talents.
+//
+// Stronger than root: `immobilize` zeroes velocity and `suppress_abilities` blocks casting. The
+// cast-lock has no consumer in Phase 3 (enemies gain abilities in Phase 5; nothing stuns the
+// player yet) — it is resolved into the actor state and left for that consumer.
+(
+    id: "stun",
+    display_name: "Stun",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 1.5,
+    immobilize: true,
+    suppress_abilities: true,
+)

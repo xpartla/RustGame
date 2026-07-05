@@ -1,0 +1,27 @@
+// WORKING NAME: "Fireblast"
+// Class: Mage (fire) — Basic attack. NOT yet class/stance-bound (Phase 4).
+// Unlock: Level 1 (in the eventual Mage kit).
+//
+// Behavior: projectile — a travelling shot that, on first impact, deals Fire damage and sets the
+// target ablaze (blaze DoT). Being Fire-tagged, its impact also clears frostbite on that target
+// (emergent, via status cross-interaction). Added in Phase 3 as a status/projectile demonstrator.
+(
+    id: "fireblast",
+    display_name: "Fireblast",
+    unlock_schedule: Level1,
+    behavior: "projectile",
+    hooks: [],
+    base_params: {
+        "damage": 8.0,
+        "speed": 320.0,
+        "radius": 8.0,
+        "range": 400.0,
+        "pierce": 0.0,
+        "cooldown": 0.8,
+    },
+    talent_pool: [],
+    effects: [
+        Damage(amount: "damage", tags: [Fire], target: PrimaryHit),
+        ApplyStatus(status: "blaze", stacks: 1, target: PrimaryHit),
+    ],
+)

@@ -18,6 +18,7 @@ pub mod pickup;
 pub mod world;
 pub mod run;
 pub mod ability;
+pub mod status;
 pub mod talent;
 pub mod progression;
 pub mod ui;

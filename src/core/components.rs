@@ -25,6 +25,24 @@ pub struct WorldPosition(pub Vec2);
 #[derive(Component, Default)]
 pub struct Velocity(pub Vec2);
 
+/// Multiplies how far an entity is moved per frame (1.0 = normal). Generic actor stat, owned by
+/// whoever writes it — currently `status::resolve_actor_status` folds in frostbite's 0.8 slow;
+/// later buffs/haste use the same channel. `apply_velocity` scales the integration step by it, so
+/// the underlying `Velocity` (and any AI lerp toward it) is left intact. Absent ⇒ 1.0.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct MoveSpeedModifier(pub f32);
+
+/// Multiplies incoming damage (1.0 = normal). `apply_damage` reads it; `resolve_actor_status`
+/// folds in frostbite's 1.1 amplify. Absent ⇒ 1.0.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct DamageTakenModifier(pub f32);
+
+/// Marker: the entity's velocity is not integrated this frame (root, stun). Present ⇒ frozen.
+/// `apply_velocity` skips integration; the AI still updates `Velocity`, so movement resumes
+/// cleanly when the marker is removed.
+#[derive(Component, Debug)]
+pub struct Immobilized;
+
 /// Direction an entity is oriented toward (unit vector). Source of truth for visual
 /// rotation (`apply_facing_rotation`) and, for the player, attack aim. Shared because both
 /// the player (mouse aim) and enemies (movement direction) carry it.

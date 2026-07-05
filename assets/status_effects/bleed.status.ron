@@ -1,0 +1,12 @@
+// Bleed — Druid primary damage-over-time (physical). Applied by Scratch.
+//
+// Physical DoT: no element tag removes it. RefreshOnReapply by default; the Druid "Mega Bleed"
+// talent later swaps this to StackCapped(3) via its own data — this file is untouched.
+// The 1.0s Physical tick drives DoT kill credit through the applier's `source`.
+(
+    id: "bleed",
+    display_name: "Bleed",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 4.0,
+    tick: Some((interval_secs: 1.0, damage: 3.0, tags: [Physical])),
+)

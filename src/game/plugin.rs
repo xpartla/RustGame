@@ -21,6 +21,7 @@ use crate::player::PlayerPlugin;
 use crate::progression::plugin::ProgressionPlugin;
 use crate::projectile::ProjectilePlugin;
 use crate::run::rng::RunRng;
+use crate::status::plugin::StatusPlugin;
 use crate::talent::plugin::TalentPlugin;
 use crate::world::WorldPlugin;
 
@@ -46,6 +47,7 @@ impl Plugin for GameLogicPlugin {
             WorldPlugin,
             PlayerPlugin,
             AbilityPlugin,
+            StatusPlugin,
             TalentPlugin,
             ProgressionPlugin,
             EnemyPlugin,

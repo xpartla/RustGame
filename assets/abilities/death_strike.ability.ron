@@ -39,4 +39,10 @@
         "death_strike_damage_common",
         "death_strike_bone_shield_epic",
     ],
+    // Gameplay outcome (Phase 3 generic-effect model): the melee_cone behavior resolves the
+    // hit set; these apply to it. Physical damage to everyone hit, then leech a % of the total.
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+        Leech(percent: "leech_percent"),
+    ],
 )

@@ -2,8 +2,8 @@
 
 ---
 
-## [Unreleased] — Architecture, Scaffold, Phases 0–2 & Testing Infrastructure
-_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2)_
+## [Unreleased] — Architecture, Scaffold, Phases 0–3 & Testing Infrastructure
+_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2) → `884a406` (test suite) → phase 3_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -283,6 +283,94 @@ suite plus a golden-master campaign lock in current behavior, and a `/compat-che
   be offered (and taken) twice. Now explicitly ordered after the install system; locked in by
   the `offers_respect_uniqueness` scenario.
 
+### Phase 3 — Status Effects (+ generic effect model, projectiles, auto-cast) (complete)
+Brings the `status` module online (added to `main.rs`/`GameLogicPlugin`) and delivers the status
+effect system end-to-end: DoTs, cross-element cancellation, crowd control, and the stat debuffs
+that make them matter. Three planning decisions widened the phase (see `docs/phase3-plan.md`):
+auto-cast was folded in, ability→effect became a fully declarative effect list, and the Mage
+projectile abilities were pulled forward as faithful test vehicles. Implemented in six
+compat-gated sub-steps (3A–3F); the golden baseline moved only on declared changes.
+
+- **Generic effect model (3A).** Behaviors now resolve *targeting* (a `CastOutcome`: hits +
+  primary + optional VFX + optional projectile) and the ability's declarative
+  `effects: Vec<EffectSpec>` decides the *outcome*. `EffectSpec` = `Damage{amount,tags,target}` /
+  `Heal` / `Leech{percent}` / `ApplyStatus{status,stacks,target}`, with `EffectTarget` ∈
+  `AllHits | PrimaryHit | Caster`; numeric fields reference param keys so the talent modifier
+  stack still reaches every number. One shared applier (`ability/effects.rs`:
+  `resolve_effects` + `apply_resolved_effects`) drives both instant casts and projectile impacts.
+  `MeleeCone` was rewritten to return hits (damage/leech moved to `death_strike.ability.ron`'s
+  effect list); the prototype's `AbilityEffect` enum was removed. `AbilityDef.effects` is
+  `#[serde(default)]` so un-migrated abilities parse inert. **This step was a pure refactor —
+  Death Strike stayed numerically identical and the golden baseline was byte-for-byte unchanged.**
+  `DamageTag` gained `serde::Deserialize` (first RON consumer).
+- **Status core (3B).** `StatusEffectDef` is a Bevy asset with a `*.status.ron` loader
+  (extension mirrors `*.ability.ron`/`*.talent.ron`) + `StatusLibrary`. The scaffold's opaque
+  `on_*_hooks` sketch was replaced with a **declarative** schema — `tick: Option<TickSpec>`
+  (interval/damage/tags), `move_speed_mult`, `damage_taken_mult`, `immobilize`,
+  `suppress_abilities`, `removed_by_tags`, `removes_on_apply` — so the six built-ins need **zero
+  Rust** per effect; a `hooks` escape hatch remains (empty) for a future code-driven effect, and
+  the `StatusHookRegistry` is deferred until one lands. The six RON files were rewritten to the
+  new schema (`bleed`/`blaze`/`frostbite`/`holy_mark`/`root`/`stun`, renamed `*.status.ron`).
+  Each active effect is a top-level `StatusEffectInstance{def_id,target,source,timer,tick_timer}`
+  entity (the `target` field is the query key — no hierarchy, mirroring `AbilityInstance.owner`);
+  `despawn_orphaned_status` reaps instances whose target died (Bevy 0.16 `despawn()` is
+  non-recursive). Lifecycle systems: `apply_status_effects` (honors `StackingRule`
+  RefreshOnReapply / StackCapped(n) / StackUnlimited + `removes_on_apply`), `tick_status_effects`
+  (DoT DamageEvents carrying the effect's `source` and element tags; despawns on expiry),
+  `apply_cross_interactions` (DamageEvent tags → RemoveStatusEvent, deduped), `remove_status_effects`.
+  `EffectSpec::ApplyStatus` emits `ApplyStatusEvent`. `StatusSet::{Tick,CrossInteract}` was wired
+  into the combat chain (`Damage → Apply → Tick → CrossInteract → Death`).
+- **CC & stat integration (3C).** New generic core components `MoveSpeedModifier(f32)`,
+  `DamageTakenModifier(f32)`, `Immobilized`. `resolve_actor_status` folds each actor's active
+  statuses into them (product of move/damage mults, any immobilize), inserting a component only
+  when it deviates from neutral and removing it when it returns — so status-free actors never
+  carry them. `apply_velocity` scales its integration *step* by `MoveSpeedModifier` and skips when
+  `Immobilized` (scaling the step, not the stored velocity, keeps the enemy-AI lerp clean — this
+  is a deliberate simplification of the plan's separate `apply_movement_status` system, avoiding a
+  feedback bug). `apply_damage` multiplies incoming damage by `DamageTakenModifier`. Net effects:
+  frostbite slows 0.8× and amplifies 1.1×; root/stun freeze movement (stun also flags
+  `suppress_abilities`, whose consumer arrives with enemy AI in Phase 5). Status stat effects lag
+  application/removal by one frame by design (documented in `docs/phase3-plan.md` §2.6).
+- **Projectiles (3D).** The `projectile` module grew real motion + collision: `ProjectileMotion`
+  (velocity/radius/pierce) + `ProjectilePayload` (source + baked effects + already-hit set).
+  The `projectile` behavior returns a `ProjectileSpawn`; `execute` spawns the entity carrying the
+  ability's baked effects; `move_projectiles` + `projectile_collision` (in `CombatSet::Damage`)
+  integrate it and, on first contact (distance ≤ projectile radius + enemy radius), apply the
+  payload via the shared applier — so a shot's damage/status land on *impact*, not at cast, and a
+  pierce count is respected. Travelling projectiles reuse the `Projectile` marker + `Lifetime` so
+  `projectile_lifetime` despawns them; only entities with `ProjectileMotion` are moved.
+- **Demonstrator abilities (3D).** Added `fireblast` (Fire projectile → blaze), `frostbolt`
+  (Frost projectile → frostbite), `scratch` (Physical cone → bleed) as standalone
+  `*.ability.ron` files — **not yet class/stance-bound** (Phase 4 wires them to the Mage/Druid).
+  They give the status system faithful test vehicles and make cross-element cancellation testable
+  end-to-end (Fireblast clears frostbite; Frostbolt clears blaze; a blaze Fire tick clears
+  frostbite emergently).
+- **Auto-cast (3E).** `AbilityDef.activation` ∈ `Input` (default) | `AutoCast`; `auto_cast_abilities`
+  emits a TriggerAbilityEvent for every ready AutoCast instance (before `execute_ready_abilities`
+  in `CombatSet::Damage`). The blanket "no cast before aim" gate moved from owner-level to
+  per-behavior via `AbilityBehavior::needs_aim()` — cones/projectiles still require a facing (and
+  don't burn cooldown when aimless), self-centred novas don't. New `self_nova` behavior (hits all
+  enemies within radius, no aim). **Blood Boil** (BDK L2/3 band ability, inert since Phase 2) went
+  live as an auto-cast self-nova (6 dmg / radius 90 / 5% leech / 4s cd).
+- **Declared golden-baseline changes.** 3B and 3D each shifted the golden campaign by a **sub-unit
+  player-position drift** (verified across all 30 snapshots to be `px`/`py`-only — every gameplay
+  field identical): wiring `StatusSet` into the combat chain (3B) and adding the projectile
+  systems to `CombatSet::Damage` (3D) reordered the single-threaded tie-break for the loose
+  movement systems. Per `docs/testing.md`, a reorder that shifts float behavior is a declared
+  regeneration; both were regenerated after confirming no mechanical divergence. 3E regenerated
+  the baseline for a **real** behavior change (Blood Boil now auto-casts) and enriched the master:
+  the bot also throws Frostbolt (covering projectiles + frostbite) and the `Snapshot` gained a
+  `statuses` column. The reproducibility tripwire still passes (no new nondeterminism — DoTs,
+  projectiles, and status resolution carry no RNG). Post-Blood-Boil the bot reaches level 8 (was
+  7) by 30s.
+- **Tests (headless, `cargo test`): 66 passing** (was 43). Unit: 5 status RON round-trips,
+  2 new `MeleeCone` targeting tests. Golden scenarios: `tests/status.rs` (bleed tick cadence +
+  refresh + expiry, frostbite slow ≈0.8× + damage amp ×1.1, root/stun freeze-then-release,
+  fire↔frost cancellation, emergent blaze-tick clear, DoT kill credit, unknown-id no-op),
+  `tests/projectile.rs` (travel-then-hit, blaze/frostbite on impact, cross-element via real Mage
+  abilities, bleed cone), `tests/autocast.rs` (Blood Boil auto-cast + cooldown gate, per-behavior
+  aim gate). Build is warning-free.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -364,10 +452,9 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–2 (foundation, ability system, talent system) are complete. The following are designed
-and scaffolded but have zero implementation yet:
+Phases 0–3 (foundation, ability system, talent system, status effects) are complete. The
+following are designed and scaffolded but have zero implementation yet:
 
-- Status effects (bleed, blaze, frostbite, etc.) — Phase 3
 - Hero / stance system (HeroDef asset, Q swap) — Phase 4
 - Enemy ability kits and AI registry — Phase 5
 - Persistent zones (D&D, Consecrated Ground, Tree Conduit) — Phase 6

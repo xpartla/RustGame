@@ -980,6 +980,21 @@ CHANGELOG entry explaining the behavior change.** Stage 3 (balance arena binary,
 sweep metrics, balance-analyst agent) is scheduled after Phase 5 (enemy scaling in data) and
 becomes fully useful after Phase 7 (encounters).
 
+### 8.4 Phase 3 delivered (2026-07-05)
+
+Status effects shipped, absorbing several §8.1 gaps. See `docs/phase3-plan.md` for the full
+plan + as-built notes and the CHANGELOG for detail. Resolved here:
+- **8.1(1) auto-cast** — folded in (`Activation::AutoCast` + `auto_cast_abilities`; Blood Boil live).
+- **8.1(2) typed/string ability params** — solved via the declarative `effects: Vec<EffectSpec>`
+  list (incl. `ApplyStatus{status,…}`), superseding the float-only `base_params` for outcomes.
+- **8.1(3) projectile primitive** — implemented (motion + collision + on-impact effect delivery).
+- **8.1(4) CC semantics** — root/stun immobilize, frostbite slow + damage-taken amp, via generic
+  `MoveSpeedModifier`/`DamageTakenModifier`/`Immobilized` components. The *general* actor stat
+  sheet (crit/attack-speed) remains deferred.
+Still open from §8.1: shields/absorbs (5), forced movement (6), enemy scaling (7), enemy
+projectiles/AMZ (8), UI (9). The `StatusHookRegistry` is deferred until a code-driven status
+effect needs it.
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

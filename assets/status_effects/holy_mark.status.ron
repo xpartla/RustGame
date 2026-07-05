@@ -1,0 +1,12 @@
+// Holy Mark — Paladin marker applied by Smite / Spinning Hammer.
+//
+// Neutral: no DoT, no stat change, no element cancels it. It only marks a target so Paladin
+// abilities can react to its presence (Spinning Hammer double damage, Hammer-of-Justice
+// shockwave). Those consumers arrive with the Paladin (Phase 9); the marker itself is Phase-3
+// data so the infrastructure is exercised.
+(
+    id: "holy_mark",
+    display_name: "Holy Mark",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 6.0,
+)

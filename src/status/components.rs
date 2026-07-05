@@ -1,32 +1,35 @@
 // Per-entity status effect state.
 //
-// Each active effect instance is a child entity of the target (player or enemy).
-// This enables: multiple instances of the same effect (bleed stacks), independent timers,
-// and cheap ECS queries ("does entity X have effect Y?").
+// Each active effect instance is a separate top-level entity carrying `StatusEffectInstance`.
+// The target it afflicts is stored directly in the `target` field (mirroring how AbilityInstance
+// stores `owner` — no Bevy hierarchy join needed to query "does entity X have effect Y?"). This
+// enables: multiple instances of the same effect (bleed stacks) with independent timers, and
+// cheap iteration. Instances whose target has despawned are reaped by `despawn_orphaned_status`.
 //
-// Querying for a specific effect:
-//   Query<(&StatusEffectInstance, &Parent)> where instance.def_id == "frostbite"
-//   Filter by Parent to narrow to a specific entity.
-//
-// The ApplyStatusEvent is the public interface for applying effects from abilities.
-// status/systems/tick.rs handles the actual spawning and removal.
+// The ApplyStatusEvent is the public interface for applying effects from abilities
+// (EffectSpec::ApplyStatus → ApplyStatusEvent). status/systems/apply.rs spawns instances;
+// tick.rs / remove.rs / cross_interact.rs advance and clear them.
 
 use bevy::prelude::*;
 use crate::status::assets::StatusEffectId;
 
-/// Marks the effect as coming from a specific source (for kill credit and damage attribution).
+/// One active status effect afflicting `target`, applied by `source`.
 #[derive(Component, Debug, Clone)]
 pub struct StatusEffectInstance {
     pub def_id: StatusEffectId,
-    /// Entity that applied this effect. Used for kill credit (DoT kills) and leech attribution.
+    /// The entity this effect is afflicting (query key; no hierarchy).
+    pub target: Entity,
+    /// Entity that applied this effect. Used for DoT kill credit and damage attribution.
     pub source: Entity,
+    /// Remaining duration (TimerMode::Once).
     pub timer: Timer,
-    /// Tick timer — only meaningful if StatusEffectDef.tick_interval_secs is Some.
+    /// Tick cadence — `Some` iff the effect's StatusEffectDef has a `tick` (TimerMode::Repeating).
     pub tick_timer: Option<Timer>,
 }
 
 /// Event: request to apply a status effect to a target entity.
-/// Emitted by ability behaviors and hooks; consumed by status/systems/tick.rs.
+/// Emitted by ability execution (EffectSpec::ApplyStatus) and by hooks; consumed by
+/// status/systems/apply.rs.
 #[derive(Event, Debug)]
 pub struct ApplyStatusEvent {
     pub target: Entity,
@@ -37,7 +40,8 @@ pub struct ApplyStatusEvent {
 }
 
 /// Event: request to remove all instances of a status effect from a target.
-/// Emitted by status/systems/cross_interact.rs and by talent hooks that consume effects.
+/// Emitted by status/systems/cross_interact.rs (element cancellation) and by talent hooks that
+/// consume effects.
 #[derive(Event, Debug)]
 pub struct RemoveStatusEvent {
     pub target: Entity,

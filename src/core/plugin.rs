@@ -1,6 +1,6 @@
 use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Update, in_state};
 use crate::core::events::{DamageEvent, GainXpEvent, HealEvent, LevelUpEvent};
-use crate::core::sets::CombatSet;
+use crate::core::sets::{CombatSet, StatusSet};
 use crate::game::state::GameState;
 use crate::core::systems::{
     movement::apply_velocity,
@@ -24,7 +24,14 @@ impl Plugin for CorePlugin {
         app.add_event::<LevelUpEvent>();
         app.configure_sets(
             Update,
-            (CombatSet::Damage, CombatSet::Apply, CombatSet::Death).chain(),
+            (
+                CombatSet::Damage,
+                CombatSet::Apply,
+                StatusSet::Tick,
+                StatusSet::CrossInteract,
+                CombatSet::Death,
+            )
+                .chain(),
         );
         app.add_systems(Update,
                         (

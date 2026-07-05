@@ -3,7 +3,7 @@ use bevy::prelude::{Entity, Event};
 /// Element tags on a `DamageEvent`. Used by the status effect system (Phase 3) to
 /// trigger cross-element cancellations (Fire removes Frostbite, Frost removes Blaze).
 /// Existing callers pass an empty `tags` slice — the field is purely additive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub enum DamageTag {
     Physical,
     Fire,
