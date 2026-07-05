@@ -1,0 +1,21 @@
+// WORKING NAME: "Warlord Smash"
+// Boss ability (Phase 7) — the Warlord's heavy contact melee (20 dmg, range 40, 2.0s). Auto-cast,
+// faction-aware (targets the Friendly player), via the shared `contact_melee` behavior. A single
+// hard-hitting swing stands in for the multi-ability boss kit deferred to Phase 9.
+(
+    id: "warlord_smash",
+    display_name: "Warlord Smash",
+    unlock_schedule: Level1,
+    activation: AutoCast,
+    behavior: "contact_melee",
+    hooks: [],
+    base_params: {
+        "damage": 20.0,
+        "range": 40.0,
+        "cooldown": 2.0,
+    },
+    talent_pool: [],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+    ],
+)

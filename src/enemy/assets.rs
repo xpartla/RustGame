@@ -113,15 +113,49 @@ pub fn resolve_enemy_stats(def: &EnemyDef, depth: u32) -> ResolvedEnemyStats {
     }
 }
 
-/// Loaded from assets/themes/<id>.ron. Scaffold-only until Phase 7 (no loader yet).
-#[derive(Asset, TypePath, Debug, Clone)]
+/// Loaded from assets/themes/<id>.theme.ron (Phase 7). One file per map theme; its enemy pools are
+/// drawn by the seeded encounter spawner (RunRng). Adding a theme = one RON file referencing already
+/// -loaded EnemyIds — no code. (D4: the shipped pools point at existing enemies until the Phase 9
+/// content pass swaps in the designed per-theme rosters — a pure data edit.)
+#[derive(Asset, TypePath, Debug, Clone, serde::Deserialize)]
 pub struct ThemeDef {
     pub id: ThemeId,
     pub display_name: String,
+    /// Pack enemies (weighted-picked per spawn by RunRng).
     pub common_enemy_pool: Vec<EnemyId>,
+    /// Enemies eligible for a BossRoom's single boss.
     pub boss_pool: Vec<EnemyId>,
+    /// Enemies eligible for a Map's KillMapBoss objective (tagged `MapBoss`).
     pub map_boss_pool: Vec<EnemyId>,
 }
+
+/// Resource mapping ThemeId → Handle<ThemeDef>. A `DefLibrary<ThemeDef>` (see core/def_library.rs);
+/// populated at startup from `ThemeDef::MANIFEST` via `register_def_library::<ThemeDef>()`. Read by
+/// the encounter spawner (enemy/systems/spawner.rs) to build a themed roster.
+pub type ThemeLibrary = DefLibrary<ThemeDef>;
+
+impl DefAsset for ThemeDef {
+    // Compound `.theme.ron` extension so the loader never collides with plain `.ron` (mirrors
+    // `.enemy.ron` / `.ability.ron`).
+    const EXTENSIONS: &'static [&'static str] = &["theme.ron"];
+    const MANIFEST: &'static [(&'static str, &'static str)] = &[
+        ("sand_dune", "themes/sand_dune.theme.ron"),
+        ("forest", "themes/forest.theme.ron"),
+        ("castle_ruins", "themes/castle_ruins.theme.ron"),
+        ("frozen_wasteland", "themes/frozen_wasteland.theme.ron"),
+        ("alpine_lakeside", "themes/alpine_lakeside.theme.ron"),
+    ];
+}
+
+/// The five act themes, one assigned per act at run start (RunRng). Kept here so graph generation
+/// (world/graph.rs) and the run-start flow draw from the same list.
+pub const THEME_IDS: &[&str] = &[
+    "sand_dune",
+    "forest",
+    "castle_ruins",
+    "frozen_wasteland",
+    "alpine_lakeside",
+];
 
 /// Resource mapping EnemyId → Handle<EnemyDef>. A `DefLibrary<EnemyDef>` (see core/def_library.rs);
 /// populated at startup from `EnemyDef::MANIFEST` via `register_def_library::<EnemyDef>()`.
@@ -136,6 +170,10 @@ impl DefAsset for EnemyDef {
         ("brute", "enemies/brute.enemy.ron"),
         // Ranged demonstrator (Phase 5C).
         ("spitter", "enemies/spitter.enemy.ron"),
+        // Placeholder boss (Phase 7, D4) — never ambient-picked (spawn_weight 0); spawned only by
+        // the encounter spawner's boss roles (BossRoom / KillMapBoss / ActBoss). Phase 9 replaces
+        // the theme boss pools with the real per-theme bosses (a pure data edit).
+        ("warlord", "enemies/warlord.enemy.ron"),
     ];
 }
 
@@ -149,6 +187,48 @@ mod tests {
         let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("read {full}: {e}"));
         ron::de::from_bytes::<EnemyDef>(&bytes)
             .unwrap_or_else(|e| panic!("parse {rel_path}: {e}"))
+    }
+
+    fn load_theme(rel_path: &str) -> ThemeDef {
+        let full = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), rel_path);
+        let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("read {full}: {e}"));
+        ron::de::from_bytes::<ThemeDef>(&bytes)
+            .unwrap_or_else(|e| panic!("parse {rel_path}: {e}"))
+    }
+
+    #[test]
+    fn warlord_parses_as_placeholder_boss() {
+        let def = load("assets/enemies/warlord.enemy.ron");
+        assert_eq!(def.id, "warlord");
+        assert_eq!(def.rarity, EnemyRarity::MapBoss);
+        assert_eq!(def.spawn_weight, 0, "never ambient-picked — boss roles only");
+        assert_eq!(def.abilities, vec!["warlord_smash"]);
+        assert!(def.base_stats.max_health >= 100.0, "a boss is beefy");
+    }
+
+    #[test]
+    fn all_five_themes_parse_and_reference_loaded_enemies() {
+        // D4: pools point at existing enemies + the warlord boss. Every referenced id must be in
+        // the EnemyDef manifest, so the encounter spawner can always resolve them.
+        let manifest_ids: Vec<&str> = EnemyDef::MANIFEST.iter().map(|(id, _)| *id).collect();
+        for (id, path) in ThemeDef::MANIFEST {
+            let theme = load_theme(&format!("assets/{path}"));
+            assert_eq!(theme.id, *id, "theme id matches manifest key");
+            assert!(!theme.common_enemy_pool.is_empty(), "{id}: non-empty common pool");
+            assert!(!theme.boss_pool.is_empty(), "{id}: non-empty boss pool");
+            assert!(!theme.map_boss_pool.is_empty(), "{id}: non-empty map-boss pool");
+            for enemy_id in theme
+                .common_enemy_pool
+                .iter()
+                .chain(&theme.boss_pool)
+                .chain(&theme.map_boss_pool)
+            {
+                assert!(
+                    manifest_ids.contains(&enemy_id.as_str()),
+                    "theme '{id}' references unknown enemy '{enemy_id}' (D4: pools must point at loaded enemies)"
+                );
+            }
+        }
     }
 
     #[test]

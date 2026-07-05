@@ -195,6 +195,8 @@ impl DefAsset for AbilityDef {
         ("consecrated_ground", "abilities/consecrated_ground.ability.ron"),
         // AMZ (Phase 6E) — the BDK band-4/6 projectile-blocking zone.
         ("amz", "abilities/amz.ability.ron"),
+        // Boss contact melee (Phase 7) — the placeholder `warlord` boss's heavy smash.
+        ("warlord_smash", "abilities/warlord_smash.ability.ron"),
     ];
 }
 

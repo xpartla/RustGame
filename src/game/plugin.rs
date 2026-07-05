@@ -22,6 +22,8 @@ use crate::player::PlayerPlugin;
 use crate::progression::plugin::ProgressionPlugin;
 use crate::projectile::ProjectilePlugin;
 use crate::run::rng::RunRng;
+use crate::run::RunPlugin;
+use crate::run::systems::transitions::auto_start_run;
 use crate::status::plugin::StatusPlugin;
 use crate::talent::plugin::TalentPlugin;
 use crate::world::WorldPlugin;
@@ -57,6 +59,9 @@ impl Plugin for GameLogicPlugin {
             ProjectilePlugin,
             PickUpPlugin,
             ZonePlugin,
+            // Run lifecycle (Phase 7). All its systems gate on a live run (CurrentEncounter/RunState);
+            // with no run active — the headless sim's default, and the golden campaign — they are inert.
+            RunPlugin,
         ));
     }
 }
@@ -68,5 +73,10 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(GameLogicPlugin);
         app.add_plugins(PresentationPlugin);
+        // Windowed-only auto-start (D1): boot into an Act-1 encounter with a fresh entropy seed. Added
+        // by GamePlugin (windowed), NOT GameLogicPlugin — the headless sim never auto-starts
+        // (Sim::start_run drives runs there), so the golden campaign stays runless and byte-identical.
+        // PostStartup so the player, map, and LevelUpFlowState (all inserted in Startup) already exist.
+        app.add_systems(PostStartup, auto_start_run);
     }
 }

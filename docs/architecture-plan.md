@@ -909,11 +909,18 @@ projectile blocking + the code-driven ability-hook system; see §8.8, docs/phase
    code-driven ability hook** (`HookRegistry` + `AbilityHook`), which paid the §8.5
    `execute_ready_abilities` resolve/apply-split debt.
 
-**Phase 7 — Act graph + room system**
-1. Implement `ActGraph`, `EncounterNode`, seeded graph generation.
-2. Implement `ThemeDef` loader. Add all 5 themes with placeholder enemy IDs.
-3. Port `TileMap` generation to per-room (reuse blob logic as room interior, add corridor generation).
-4. Implement encounter lifecycle: enter node → spawn enemies → objective check → node complete → pick next node.
+**Phase 7 — Act graph + room system** _(complete 2026-07-05 — full scope incl. ThroneRoom + Merchant;
+the golden master stayed byte-identical; see §8.9, docs/phase7-plan.md)_
+1. ✅ `ActGraph` / `EncounterNode` + a **pure, seeded** `build_act_graph` (Slay-the-Spire columns;
+   `world/graph.rs` compiled).
+2. ✅ `ThemeDef` loader (`.theme.ron` `DefAsset`) + all 5 themes (D4: pools → existing enemies + a
+   `warlord` placeholder boss).
+3. ✅ Per-room `TileMap` generation (`world/generator.rs`) — the `generate_map` blob ported verbatim
+   into `procedural_room_layout` + boss/throne/act-boss/merchant layouts.
+4. ✅ Encounter lifecycle (`run/` live, `RunPlugin` in `GameLogicPlugin`): start → load (seeded
+   depth-scaled themed roster) → objective (KillAll/Survive/KillMapBoss/Rest) → complete → `MapSelect`
+   branch pick → teardown → load next; ActBoss advances the act. Plus the **live scaling driver** (D5
+   depth), spawn roles (`MapBoss`), the ThroneRoom curse + Rare-floor kiss, and a Merchant rest node.
 
 **Phase 8 — Persistence + meta**
 1. Implement `RunState` serialization (save on node complete, load on resume).
@@ -1118,6 +1125,45 @@ needs the shield system); forced movement (6); UI (9). Deferred from Phase 6 wit
 (phase6-plan §7): cross-ability zone buffs (Death Strike / Heart Strike inside D&D), Tree Conduit's
 enhanced-attack consumer, the AMZ-follow talent, and the bone-shield Post hook — Phase 9 class
 content; zone visuals — a presentation pass.
+
+### 8.9 Phase 7 delivered (2026-07-05)
+
+Act graph + room / encounter system, shipped at **full scope** (owner decision D2) with a
+**byte-identical golden master** (D1 — no regeneration, like Phases 4–6). See `docs/phase7-plan.md`
+and the CHANGELOG "Phase 7" section. Delivered across 7A–7G:
+- **The single flat arena became a seeded, branching, themed act of typed encounters.** `ThemeDef`
+  is a live `.theme.ron` `DefAsset` (5 themes); `build_act_graph(act, theme, rng)` is a pure,
+  seed-deterministic `COLUMNS_PER_ACT = 15` graph (single entry Map / terminal ActBoss / BossRoom /
+  1–3-node middle columns with a guaranteed ThroneRoom); `world/generator.rs` produces per-encounter
+  rooms (the `generate_map` blob ported verbatim as the Map layout + boss/throne/act-boss/merchant
+  layouts).
+- **The `run` module is live.** `RunState` + `CurrentEncounter` (in-memory; serde is Phase 8),
+  `RunPlugin` in `GameLogicPlugin`, and the lifecycle systems — all `run_if`-gated on a live run, so a
+  runless world (the golden campaign) leaves them inert (neutral by construction). Objectives:
+  `KillAll` / `Survive` / `KillMapBoss` (the tagged `MapBoss`, ignoring pack adds) / Merchant `Rest`.
+  Node selection is a minimal `GameState::MapSelect` keyboard picker (D3); the full visual map view is
+  the deferred UI phase.
+- **The Phase-5 scaling curve is finally driven (closes §8.1(7) fully).** The seeded encounter spawner
+  passes each spawn through `spawn_enemy_from_def(.., depth)` with the node's depth
+  (D5 = `(act−1)·COLUMNS_PER_ACT + column`); depth 0 (the Act-1 tutorial) ⇒ base stats (Phase 5's
+  neutral promise). Spawn roles draw pack vs. boss from the theme's pools.
+- **ThroneRoom = kiss/curse (architecture §6 Q1).** The curse (`RoomModifierDef`, now a `.roommod.ron`
+  `DefAsset`) is threaded into `resolve_params`'s `extra_modifiers` for **Hostile casts** (the
+  intended mechanism, §3.8) — empty outside a ThroneRoom, so byte-identical to the prior `&[]`. The
+  kiss reuses the TalentPicker with a **Rare rarity floor** (`OfferContext::ThroneRoom`). Player-stat
+  curses need bespoke consumers (deferred).
+- **Windowed-only auto-start (D1).** `GamePlugin` adds a `PostStartup` `auto_start_run`; the headless
+  sim never auto-starts, so the campaign stays runless and byte-identical.
+
+§8.1 status after Phase 7: enemy **scaling (7)** now **fully done** (data model + live driver). Still
+open from §8.1: shields/absorbs (5), forced movement (6), and the **UI phase (9)** — Phase 7 ships only
+the keyboard picker, not the HUD / character-select / visual act-graph map view / merchant screen.
+Deferred from Phase 7 with triggers (phase7-plan §7): RunState **serialization/resume** + score (Phase
+8, §8.2); **merchant ops** (remove / 3-for-1 — Phase 8/9); the **real per-theme rosters** + multi-phase
+boss AI (Phase 9 content — a data edit + boss design); the **visual act-graph map view** (UI phase);
+the **player-stat ThroneRoom curses'** bespoke consumers (as each mechanic lands). §8.5: the
+`HeroDef.base_stats` per-hero application remains the last open row (the Mage still plays with the DK's
+HP/speed).
 
 ---
 

@@ -12,7 +12,9 @@ use bevy::prelude::*;
 use crate::game::state::GameState;
 use crate::player::systems::experience::gain_experience;
 use crate::progression::systems::level_up::{handle_level_up, init_level_flow};
-use crate::progression::systems::offer::{handle_talent_choice, refill_offer, ThroneRoomRewardEvent};
+use crate::progression::systems::offer::{
+    handle_talent_choice, handle_throne_room_reward, refill_offer, ThroneRoomRewardEvent,
+};
 use crate::talent::systems::apply::install_acquired_talent;
 use crate::world::systems::generate_map::generate_map;
 
@@ -32,6 +34,13 @@ impl Plugin for ProgressionPlugin {
             handle_level_up
                 .after(gain_experience)
                 .run_if(in_state(GameState::InRun)),
+        );
+
+        // ThroneRoom reward (Phase 7F): consumes ThroneRoomRewardEvent (emitted by load_encounter)
+        // and opens the Rare-floor picker. InRun-gated so it reads the event before the world freezes.
+        app.add_systems(
+            Update,
+            handle_throne_room_reward.run_if(in_state(GameState::InRun)),
         );
 
         // Ordered after install_acquired_talent: when the backlog holds several owed choices,

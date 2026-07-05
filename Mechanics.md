@@ -332,6 +332,16 @@ Big picture:
   * The player can see the encounter type, and the map theme   
   * After Act 3 boss is a secret level, enabled by completing special feats of strength  
     * TBD  
+  * _Phase 7 (implemented): the act flow is live end-to-end — a seeded 15-column branching graph per
+    act (single entry Map / terminal Act Boss / a Boss Room / a guaranteed Throne Room), typed
+    encounters (Map with a Survive / Kill-all / Kill-map-boss objective, Boss Room, Act Boss, Throne
+    Room curse+kiss, Merchant rest node), a themed depth-scaled enemy spawner (enemies scale with how
+    deep into the run the node is), and a keyboard branch picker between encounters. **The 5 theme
+    rosters + bosses are placeholders** (they point at the existing grunt/runner/brute/spitter + a
+    stand-in "warlord" boss); the designed per-theme enemies/bosses above are a Phase-9 data pass. The
+    Throne Room curses are live for enemy-stat effects (e.g. "enemies deal double damage"); the
+    player-stat curses (no-regen / slow) get their consumers as those mechanics land. Merchant
+    remove/trade **ops**, run save/resume, and the visual act-graph map screen are later phases._
 * User Flow (screens)  
   * Log in  
   * Main menu  

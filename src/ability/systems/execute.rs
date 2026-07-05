@@ -27,7 +27,8 @@ use crate::core::components::{AbilitiesSuppressed, Facing, Faction, WorldPositio
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
-use crate::talent::assets::{TalentDef, TalentLibrary};
+use crate::run::state::RoomModifiers;
+use crate::talent::assets::{StatModifier, TalentDef, TalentLibrary};
 use crate::talent::components::{AcquiredTalents, ActiveHooks};
 use crate::talent::modifier::resolve_params;
 use crate::constants::ZONE_TICK_INTERVAL;
@@ -81,9 +82,13 @@ pub fn execute_ready_abilities(
     mut damage_events: EventWriter<DamageEvent>,
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
-    registry: Res<BehaviorRegistry>,
-    hook_registry: Res<HookRegistry>,
-    zone_presence: Res<PlayerZonePresence>,
+    // Grouped into one tuple SystemParam to stay under Bevy's 16-param-per-system limit.
+    (registry, hook_registry, zone_presence, room_mods): (
+        Res<BehaviorRegistry>,
+        Res<HookRegistry>,
+        Res<PlayerZonePresence>,
+        Res<RoomModifiers>,
+    ),
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
@@ -156,13 +161,21 @@ pub fn execute_ready_abilities(
                 break;
             }
 
+            // ThroneRoom curse (Phase 7F): a room's `RoomModifiers` are applied to HOSTILE casts only
+            // (the curse makes the fight harder — e.g. "enemies deal double damage"); player casts are
+            // untouched. Empty except inside a ThroneRoom, so this is byte-identical to the prior `&[]`.
+            let extra_modifiers: &[StatModifier] = if matches!(owner_faction, Faction::Hostile) {
+                &room_mods.0
+            } else {
+                &[]
+            };
             let mut params = resolve_params(
                 &instance.def_id,
                 &def.base_params,
                 acquired,
                 &talent_defs,
                 &talent_library,
-                &[],
+                extra_modifiers,
             );
 
             // Pre hooks (Phase 6 — the resolve→behavior boundary): a behavior-rewriting talent the

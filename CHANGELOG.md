@@ -661,6 +661,108 @@ offerable pool; AMZ zones touch no snapshot column and the campaign has no enemy
   from inside the AMZ is not blocked; a follow-anchor zone tracks the owner). Build warning-free;
   golden baseline unchanged (no regeneration).
 
+### Phase 7 — Act Graph + Room / Encounter System (complete)
+Turns the single flat arena into a seeded, branching, themed **act of typed encounters**. Brings the
+whole `run` module online (`RunState` + `CurrentEncounter`, `RunPlugin` in `GameLogicPlugin`, the
+encounter-lifecycle systems) plus the `ThemeDef` loader, seeded act-graph generation, per-encounter
+room generators, a seeded depth-scaled encounter spawner (finally driving the Phase-5 scaling curve),
+the ThroneRoom curse + kiss, a Merchant rest node, and a minimal `MapSelect` keyboard branch picker.
+Delivered in the plan's sub-steps (7A–7G). All five §0 decisions were confirmed with the owner as the
+recommended defaults (D1 byte-identical golden master; D2 full sequenced scope; D3 keyboard MapSelect;
+D4 existing enemies + a `warlord` placeholder boss; D5 depth = (act−1)·15 + column). **The golden
+baseline did NOT move — byte-identical, no regeneration** — because the campaign never starts a run:
+every encounter system is `run_if`-gated on a live run (`CurrentEncounter`/`RunState`), the windowed
+auto-start is not in any sim path, and the curse `extra_modifiers` is empty outside a ThroneRoom.
+See `docs/phase7-plan.md` §9 for the as-built notes.
+
+- **ThemeDef loader (7A, neutral).** `ThemeDef` (enemy/assets.rs) gained `serde::Deserialize` +
+  `impl DefAsset` (`.theme.ron`) + `ThemeLibrary`, registered via `register_def_library::<ThemeDef>()`
+  in `EnemyPlugin`. Five theme files ship (`sand_dune`/`forest`/`castle_ruins`/`frozen_wasteland`/
+  `alpine_lakeside`); **D4** — their pools point at the existing enemies (`grunt`/`runner`/`brute`/
+  `spitter`) + a new placeholder boss `warlord` (`warlord.enemy.ron`, `rarity: MapBoss`,
+  `spawn_weight: 0`, a `warlord_smash` contact ability), so encounters spawn + are testable now; Phase 9
+  swaps the rosters to the designed per-theme content (a pure data edit). A `MapBoss` marker component
+  tags the designated boss (KillMapBoss tracking).
+- **Act graph generation (7B, neutral).** `world/graph.rs` compiled (was an uncompiled scaffold):
+  `build_act_graph(act, theme, rng) -> ActGraph`, **pure over `&mut RunRng`** (seed-deterministic, no
+  `thread_rng`). `COLUMNS_PER_ACT = 15` Slay-the-Spire columns: a single entry `Map` (Act 1 → a fixed
+  KillAll **tutorial**; Acts 2/3 → a random-objective map), a single terminal `ActBoss`, a `BossRoom`
+  second-to-last, and 1–3-node middle columns (mostly `Map`, the occasional `Merchant`, one guaranteed
+  `ThroneRoom` with a RunRng-assigned curse). Edges wire each node to 1–2 next-column nodes, then a
+  connectivity pass guarantees every node reachable from entry with no dead ends. `EncounterNode`
+  gained a `column` (the depth driver) and the enums derive `PartialEq` (determinism assertions).
+- **Room generators (7C, neutral).** `world/generator.rs` compiled: `generate_room` dispatches to
+  `procedural_room_layout` (Map — the **old `generate_map` blob ported verbatim**, same RunRng draw
+  order), `boss_room_layout` (corner pillars), `throne_room_layout` (a distinct hall + raised dais),
+  `act_boss_layout` (open), and `merchant_layout` (a small safe room). `world/systems/generate_map.rs`
+  now delegates to `procedural_room_layout`, so the Startup map — and every downstream RunRng draw —
+  is unchanged (the golden master is byte-identical). All generators are RunRng-only and keep the
+  spawn-clear box walkable.
+- **Run lifecycle (7C/7D, neutral).** `run/{state,plugin,systems}` enabled. `RunState` +
+  `CurrentEncounter` (+ `ObjectiveProgress`) are **in-memory** resources (serde is Phase 8), inserted
+  only by the run-start flow. `RunPlugin` (in `GameLogicPlugin`) registers the `EncounterCompleteEvent`,
+  the ThroneRoom curse loader, `RoomModifiers`, and the lifecycle systems — all `run_if`-gated on a
+  live run, so a runless world (the campaign) leaves them inert. `start_run(&mut World, seed, hero)`
+  seeds RunRng, picks the act theme, builds the graph, and inserts RunState + the entry encounter.
+  `load_encounter` (a one-shot, in the `CombatSet::Death` region, gated on assets being loaded so the
+  windowed async load never spawns an empty roster) generates the room, teleports the player to the
+  origin, and spawns the roster. `check_objective` tracks the objective; `handle_encounter_complete`
+  advances. `GameState::MapSelect` added.
+- **Objectives + advance (7D, neutral to the master).** `KillAll` (complete when the roster is
+  cleared), `Survive { secs }` (a countdown), `KillMapBoss` (the tagged `MapBoss` dies — pack adds are
+  ignored), and a Merchant `Rest` (auto-completes; ops deferred). Each kill objective is *armed* only
+  once its targets are observed present, so the spawn-frame Commands gap can't complete it early. On
+  completion → `EncounterCompleteEvent`; `handle_encounter_complete` syncs the player into RunState,
+  then for an **ActBoss** advances the act (rebuild the next act's graph from a new theme, or → GameOver
+  after Act 3) and for every other encounter enters `MapSelect`.
+- **MapSelect branch picker (7D, D3).** `run/systems/select.rs::handle_map_select` (in
+  `GameState::MapSelect`) reads 1/2/3 to pick a reachable node, tears down the cleared encounter
+  (despawns `Enemy`/`Projectile`/`PersistentZone`/`PickUp` — the player entity persists), points
+  RunState at the chosen node, and returns to InRun (where `load_encounter` builds the next room). A
+  presentation-only overlay lists the branches (`ui/screens/map_select.rs`). The full visual act-graph
+  map view stays deferred to the UI phase.
+- **Seeded encounter spawner + scaling driver + roles (7D).** A themed, **RunRng-seeded** roster
+  replaces the ambient spawner during a run (`spawn_enemy_over_time` is gated off while a
+  `CurrentEncounter` exists; neutral for the campaign, which has no run). Pack enemies are weighted-
+  picked from the theme's `common_enemy_pool`; a `BossRoom` spawns one from `boss_pool`, a
+  `KillMapBoss` map a tagged boss from `map_boss_pool`, an `ActBoss` the `warlord`. Every spawn goes
+  through `spawn_enemy_from_def(.., depth)` with the node's **depth** (D5 =
+  `(act−1)·COLUMNS_PER_ACT + column`), so the Phase-5 curve (scaled health/xp + a `DamageDealtModifier`)
+  is finally driven; depth 0 (the Act-1 tutorial) ⇒ base stats (Phase 5's neutral promise). An
+  unknown/unloaded roster id degrades gracefully (skip + warn), never panics.
+- **ThroneRoom curse + kiss (7F, neutral to the master).** `RoomModifierDef` became a `DefAsset`
+  (`.roommod.ron`; the 3 existing curse files renamed) + a `RoomModifierLibrary`. On entering a
+  ThroneRoom, `load_encounter` populates the `RoomModifiers` resource from the node's curse and emits
+  `ThroneRoomRewardEvent`; `execute_ready_abilities` threads `RoomModifiers` into `resolve_params`'s
+  `extra_modifiers` **for Hostile casts only** (the curse makes the fight harder — e.g. "enemies deal
+  double damage" doubles enemy damage; player casts are untouched). With an empty `RoomModifiers`
+  (the campaign, and every non-ThroneRoom encounter) this is byte-identical to the prior `&[]` path.
+  The **kiss**: `handle_throne_room_reward` (progression) opens the TalentPicker with a **Rare-floor**
+  offer (`OfferContext::ThroneRoom`) before the fight, reusing the level-up picker flow. The
+  player-stat curses (`no_regen`/`player_slowed`) need bespoke consumers and stay inert for now
+  (flagged, deferred). `execute_ready_abilities` grouped four resources into one tuple SystemParam to
+  stay under Bevy's 16-param limit.
+- **Merchant rest node (7F).** A traversable no-combat node (`merchant_layout`, empty roster, `Rest`
+  objective that auto-completes on load). The remove-talent / 3-for-1 trade **ops** are deferred
+  (Phase 8/9).
+- **Windowed auto-start (7E, D1).** `GamePlugin` (NOT `GameLogicPlugin`) adds a `PostStartup`
+  `auto_start_run` (fresh entropy seed, default hero), so the windowed game boots into an Act-1
+  encounter. Not in any sim path ⇒ the headless sim never auto-starts and the golden campaign stays
+  runless. `PostStartup` (after the Startup command flush) avoids racing the deferred `init_level_flow`
+  insert. Per-encounter map re-render (`rerender_map`, presentation-only, on `TileMap` change) redraws
+  the floor/obstacle meshes between encounters. _(Windowed play is verified manually on Windows — WSL
+  has no GPU.)_
+- **Tests: 129 passing** (was 107). +10 unit (act-graph determinism + invariants ×5; room-layout port
+  + border/spawn-clear ×2; the depth formula; `warlord` + all-5-themes parse ×2) and +12 golden
+  scenarios (`tests/act_graph.rs` ×2: seed-determinism, connected-with-one-act-boss; `tests/encounter.rs`
+  ×10: themed roster spawn + determinism, tutorial-is-Act-1-entry, objective→MapSelect→advance, clean
+  teardown on branch pick, survive-on-timer, kill-map-boss-ignores-adds, act-boss advances the act,
+  depth deepens boss health + damage, ThroneRoom curse + Rare-floor reward, curse doubles enemy damage).
+  New sim helpers: `start_run`/`current_act`/`current_node`/`current_depth`/`reachable_nodes`/
+  `current_encounter_debug`/`encounter_spawned`/`set_current_encounter`/`pick_branch`/`map_boss_count`/
+  `map_boss_entities`/`enemy_entities`/`kill_all_enemies`/`damage_dealt_modifier`/`room_modifier_count`/
+  `apply_room_curse`. Build warning-free; **golden baseline unchanged (no regeneration)**.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -742,9 +844,10 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–6 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
-enemy abilities + AI + faction-aware engine, persistent zones + code-driven hooks) are complete. The
-following are designed and scaffolded but have zero implementation yet:
+Phases 0–7 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
+enemy abilities + AI + faction-aware engine, persistent zones + code-driven hooks, act graph + room /
+encounter system) are complete. The following are designed and scaffolded but have zero implementation
+yet:
 
 - ~~Hero / stance system (HeroDef asset, Q swap) — Phase 4~~ **done** (focused vertical slice —
   Death Knight + Mage; heavier Mage subsystems deferred, see architecture-plan §8.6)
@@ -758,7 +861,13 @@ following are designed and scaffolded but have zero implementation yet:
   split — validated by Blood Boil's double-range-inside-D&D talent. Deferred to Phase 9 class
   content: cross-ability zone buffs, Tree Conduit's enhanced-attack consumer, the AMZ-follow talent,
   and the bone-shield Post hook — see architecture-plan §8.8)
-- Act graph, room types, encounter lifecycle — Phase 7
+- ~~Act graph, room types, encounter lifecycle — Phase 7~~ **done** (seeded branching act graph +
+  themed typed encounters + objectives + a live depth-scaling driver + spawn roles + ThroneRoom
+  curse/kiss + Merchant + a minimal MapSelect keyboard picker. Deferred to Phase 8/9: RunState
+  serialization/resume, merchant ops, the real per-theme rosters + multi-phase boss AI, the visual
+  act-graph map view, and the player-stat ThroneRoom curses' bespoke consumers — see
+  architecture-plan §8.9)
 - Persistence (save/load RunState, MetaState) — Phase 8
 - Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9
-- All UI beyond a debug health bar gizmo + talent picker (no HUD, character select, or menus)
+- All UI beyond a debug health bar gizmo + talent + map-select pickers (no HUD, character select,
+  or menus)

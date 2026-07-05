@@ -1,0 +1,11 @@
+// WORKING NAME: "Alpine Lakeside" — theme #5.
+// Phase 7 (D4): existing enemies for now. Phase 9 → Stone Golem, Lake Siren, Mountain Eagle,
+// Corrupted Fisherman, Mud Golem; bosses The Lake Phantom, Fallen Townlord, Corrupted Mountaineer,
+// King Crab.
+(
+    id: "alpine_lakeside",
+    display_name: "Alpine Lakeside",
+    common_enemy_pool: ["runner", "brute", "spitter"],
+    boss_pool: ["warlord"],
+    map_boss_pool: ["warlord"],
+)

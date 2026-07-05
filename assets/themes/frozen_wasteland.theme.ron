@@ -1,0 +1,10 @@
+// WORKING NAME: "Frozen Wasteland" — theme #4.
+// Phase 7 (D4): existing enemies for now. Phase 9 → Frostbite Zombie, Ice Elemental, White Bear,
+// Snow Troll, Icy Owl, Sabretooth Cat; bosses Yeti Abomination, Frost Giant, Winter Witch.
+(
+    id: "frozen_wasteland",
+    display_name: "Frozen Wasteland",
+    common_enemy_pool: ["grunt", "runner", "brute", "spitter"],
+    boss_pool: ["warlord"],
+    map_boss_pool: ["warlord"],
+)

@@ -28,8 +28,9 @@ use crate::projectile::systems::debug::{draw_arc_attack_gizmos, draw_circle_atta
 use crate::projectile::systems::visuals::attach_projectile_visuals;
 use crate::status::systems::visuals::tint_status_effects;
 use crate::ui::UiPlugin;
+use crate::world::components::TileMap;
 use crate::world::systems::generate_map::generate_map;
-use crate::world::systems::render_map::render_map;
+use crate::world::systems::render_map::{render_map, rerender_map};
 
 pub struct PresentationPlugin;
 
@@ -38,6 +39,15 @@ impl Plugin for PresentationPlugin {
         app.add_plugins((CameraPlugin, UiPlugin));
 
         app.add_systems(Startup, render_map.after(generate_map));
+        // Per-encounter map re-render (Phase 7): rebuild floor/obstacle meshes when load_encounter
+        // regenerates the TileMap. `resource_changed` also fires on the Startup insert, but render_map
+        // already drew that; the `Changed`-filter first fires the frame the map actually changes.
+        app.add_systems(
+            Update,
+            rerender_map
+                .run_if(resource_changed::<TileMap>)
+                .run_if(in_state(GameState::InRun)),
+        );
 
         // Visual dress-up for logic-spawned entities. Ungated so an entity spawned on the
         // last frame of a state is never missed (Added<T> is relative to the system's last run).

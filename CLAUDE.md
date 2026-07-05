@@ -10,11 +10,12 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
 | `docs/phase6-plan.md` | Phase 6 plan + as-built notes (persistent zones + code-driven ability hooks) |
+| `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -45,7 +46,8 @@ unrelated web project.)
 ## Known tech debt (before you add to it)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
-in §8.7) — each item has an owning phase. Highlights a future session must not "rediscover":
+in §8.7, Phase-6 in §8.8, Phase-7 in §8.9) — each item has an owning phase. Highlights a future
+session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -54,8 +56,15 @@ in §8.7) — each item has an owning phase. Highlights a future session must no
 - ~~Enemy ability/AI framework; enemy scaling; enemy projectiles~~ **DONE (Phase 5, §8.7)** — data
   `EnemyDef` + faction-aware engine + `contact_melee`/ranged caster + data-only scaling. The **AI
   "registry" is a component enum** (`AiBehavior`), not the scaffold trait; the scaffold
-  `enemy/behavior.rs` is deleted. Still open: `ThemeDef`/theme spawning + `Elite`/boss roles + a
-  live scaling driver (Phase 7); boss AI + enemy DoT kits (Phase 9).
+  `enemy/behavior.rs` is deleted.
+- ~~Act graph + themed encounters; `ThemeDef`/theme spawning; `Elite`/boss spawn roles; live enemy
+  scaling driver~~ **DONE (Phase 7, §8.9)** — seeded `build_act_graph` + per-room `world/generator.rs`
+  + the live `run` module (`RunState`/`CurrentEncounter`/`RunPlugin`); a themed depth-scaled encounter
+  spawner drives the Phase-5 curve; `MapBoss` spawn roles; ThroneRoom curse (`RoomModifiers` →
+  `extra_modifiers` for Hostile casts) + Rare-floor kiss; Merchant rest node; a minimal
+  `GameState::MapSelect` keyboard picker. Still open: **multi-phase boss AI + enemy DoT kits + the real
+  per-theme rosters (Phase 9)**; RunState save/resume + merchant ops (Phase 8/9); the visual act-graph
+  map view (UI phase); the player-stat ThroneRoom curses' bespoke consumers.
 - ~~Persistent zones + AMZ projectile-blocking~~ **DONE (Phase 6, §8.8)** — `zone` module live
   (`dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ blocking). New zone abilities via
   `AbilityDef.zone: Option<ZoneSpec>`. Deferred to Phase 9: cross-ability zone buffs, Tree Conduit's
@@ -73,6 +82,6 @@ in §8.7) — each item has an owning phase. Highlights a future session must no
   cooldown-manipulating talent.
 - `HeroDef.base_stats` is data-only — per-hero HP/move-speed application is deferred (the Mage
   currently plays with the Death Knight's stats). Enemy `base_stats`, by contrast, ARE applied
-  (Phase 5); the enemy `scaling` curve has no live depth driver until Phase 7.
+  (Phase 5) and the enemy `scaling` curve is now driven live by encounter depth (Phase 7, §8.9).
 
-When you resolve a register item, update §8.5/§8.6/§8.7 and the CHANGELOG in the same change.
+When you resolve a register item, update §8.5/§8.6/§8.7/§8.8/§8.9 and the CHANGELOG in the same change.

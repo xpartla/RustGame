@@ -1,0 +1,31 @@
+// WORKING NAME: "Warlord" — the Phase-7 placeholder boss (D4).
+//
+// A beefed-up melee bruiser used by every theme's boss_pool / map_boss_pool and by the ActBoss
+// role, so BossRoom / KillMapBoss / ActBoss encounters actually function and are testable end-to-end.
+// `spawn_weight: 0` keeps it out of the ambient weighted spawner — it is only ever placed by the
+// encounter spawner's boss roles (tagged `MapBoss`). Multi-phase boss AI + the real per-theme bosses
+// are Phase 9 content (a data edit — swap the theme pools + add `.enemy.ron` files).
+(
+    id: "warlord",
+    display_name: "Warlord",
+    rarity: MapBoss,
+    base_stats: (
+        max_health: 120.0,
+        move_speed: 12.0,
+        size_radius: 26.0,
+    ),
+    appearance: (
+        shape: Square,
+        color: (0.55, 0.10, 0.45),
+    ),
+    spawn_weight: 0,
+    ai_behavior: "melee_chaser",
+    abilities: ["warlord_smash"],
+    xp_value: 40,
+    drop_table: "boss",
+    scaling: (
+        health_per_depth: 0.20,
+        damage_per_depth: 0.15,
+        xp_per_depth: 0.10,
+    ),
+)

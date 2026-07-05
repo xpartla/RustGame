@@ -1,0 +1,10 @@
+// WORKING NAME: "Forest" — theme #2.
+// Phase 7 (D4): existing enemies for now. Phase 9 → Bear, Wolf, Corrupted Ranger, Hiker; bosses
+// Mad Lumberjack, Dire Wolf, Ent Lord, Corrupted Druid.
+(
+    id: "forest",
+    display_name: "Forest",
+    common_enemy_pool: ["grunt", "runner", "brute"],
+    boss_pool: ["warlord"],
+    map_boss_pool: ["warlord"],
+)

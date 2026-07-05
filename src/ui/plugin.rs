@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 use crate::game::state::GameState;
+use crate::ui::screens::map_select::{despawn_map_select, spawn_map_select};
 use crate::ui::screens::talent_picker::{despawn_picker, render_talent_picker, spawn_picker_root};
 
 pub struct UiPlugin;
@@ -19,5 +20,9 @@ impl Plugin for UiPlugin {
             render_talent_picker.run_if(in_state(GameState::TalentPicker)),
         );
         app.add_systems(OnExit(GameState::TalentPicker), despawn_picker);
+
+        // Map-select branch picker (Phase 7) — a static list spawned on enter, torn down on exit.
+        app.add_systems(OnEnter(GameState::MapSelect), spawn_map_select);
+        app.add_systems(OnExit(GameState::MapSelect), despawn_map_select);
     }
 }

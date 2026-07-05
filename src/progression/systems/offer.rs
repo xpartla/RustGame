@@ -38,8 +38,7 @@ const BDK_CLASS_PASSIVES: &[&str] = &[
     "bdk_passive_blood_boil_spawns_dnd",
 ];
 
-// Emitted by the ThroneRoom encounter (Phase 7); reward handling is not wired yet.
-#[allow(dead_code)]
+// Emitted by the ThroneRoom encounter (Phase 7, run/systems/transitions.rs::load_encounter).
 #[derive(Event, Debug)]
 pub struct ThroneRoomRewardEvent {
     pub owner: Entity,
@@ -128,14 +127,41 @@ pub fn handle_talent_choice(
     flow.owed_choices = flow.owed_choices.saturating_sub(1);
 }
 
-/// TODO(Phase 7): implement — handles ThroneRoom reward trigger (RarityFilter::RareOrAbove).
-/// Not scheduled yet; the ThroneRoom encounter type arrives with the act graph.
-#[allow(dead_code)]
+/// Handles the ThroneRoom kiss (Phase 7F): on entering a ThroneRoom, offer 1 of 3 **Rare-or-better**
+/// talents before the fight. Reuses the level-up TalentPicker flow — generate a `ThroneRoom`-context
+/// offer (Rare rarity floor), owe one choice, and enter the picker (which freezes the InRun world). The
+/// backlog drains through the same `refill_offer` / `handle_talent_choice` pair.
 pub fn handle_throne_room_reward(
-    mut _events: EventReader<ThroneRoomRewardEvent>,
-    mut _flow: ResMut<LevelUpFlowState>,
+    mut events: EventReader<ThroneRoomRewardEvent>,
+    mut flow: ResMut<LevelUpFlowState>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut rng: ResMut<RunRng>,
+    players: Query<(Entity, &AcquiredTalents), With<Player>>,
+    instances: Query<&AbilityInstance>,
+    ability_library: Res<AbilityLibrary>,
+    ability_defs: Res<Assets<AbilityDef>>,
+    talent_defs: Res<Assets<TalentDef>>,
+    talent_library: Res<TalentLibrary>,
 ) {
-    todo!("Phase 7")
+    if events.is_empty() {
+        return;
+    }
+    events.clear();
+    let Ok((player, acquired)) = players.single() else {
+        return;
+    };
+    let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
+    let offer = generate_offer(
+        OfferContext::ThroneRoom,
+        &eligible,
+        acquired,
+        &talent_defs,
+        &talent_library,
+        &mut rng,
+    );
+    flow.pending_offer = Some(offer);
+    flow.owed_choices += 1;
+    next_state.set(GameState::TalentPicker);
 }
 
 /// Builds the union of talent ids the player could currently be offered.

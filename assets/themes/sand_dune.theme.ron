@@ -1,0 +1,13 @@
+// WORKING NAME: "Sand Dune" — theme #1 (act theme, RunRng-assigned).
+//
+// Phase 7 (D4): pools point at the EXISTING enemies (grunt/runner/brute/spitter) + the placeholder
+// `warlord` boss so encounters actually spawn and are testable. Phase 9 swaps these for the designed
+// Sand-Dune roster (Scorpions, Vultures, Tusken, Flame demon, Oil elemental; bosses King Scorpion,
+// Tusken Lord, Flame Cultist, Undead Lord) — a pure data edit, no code change.
+(
+    id: "sand_dune",
+    display_name: "Sand Dune",
+    common_enemy_pool: ["grunt", "runner", "spitter"],
+    boss_pool: ["warlord"],
+    map_boss_pool: ["warlord"],
+)

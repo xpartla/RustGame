@@ -32,6 +32,9 @@ pub enum GameState {
     GameOver,
     /// Level-up talent-choice overlay. Wired in Phase 2.
     TalentPicker,
+    /// Encounter-cleared branch picker (Phase 7). Freezes the InRun world like the TalentPicker
+    /// while the player chooses the next act-graph node.
+    MapSelect,
     /// Merchant interaction overlay. Wired in Phase 9.
     Merchant,
 }

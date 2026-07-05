@@ -409,7 +409,71 @@ regression (a gating bug — an encounter system running without `CurrentEncount
 
 ---
 
-## 9. As-built notes (to be completed on delivery)
+## 9. As-built notes (completed 2026-07-05)
 
-_(Filled in after implementation, mirroring phase5/phase6 §9: which steps (if any) moved the baseline
-and why, the resolved §0 decisions, deviations, final test count, and the §8.1/§8.9 debt updates.)_
+Phase 7 landed as planned across 7A–7G, at **full scope** (D2). **The golden master moved zero times —
+byte-identical at every step, no regeneration** — matching Phases 4–6. The §0 decisions were all
+confirmed with the owner as the recommended defaults:
+
+- **§0 decisions (resolved):** **D1** keep the golden master byte-identical (encounter systems
+  `run_if`-gated on a live run; windowed-only auto-start). **D2** full, sequenced (7A–7F incl.
+  ThroneRoom + Merchant). **D3** minimal `GameState::MapSelect` keyboard picker (1/2/3). **D4** ship
+  all 5 theme files pointing at existing enemies + one placeholder boss `warlord`. **D5**
+  `depth = (current_act − 1)·COLUMNS_PER_ACT + column`.
+
+- **Golden-master neutrality held (the load-bearing constraint).** The campaign uses `Sim::new_arena`,
+  which never calls `start_run` ⇒ no `CurrentEncounter`/`RunState` ⇒ every encounter system is gated
+  off; `auto_start_run` is windowed-only (not in any sim path); `RoomModifiers` is empty outside a
+  ThroneRoom so the `extra_modifiers` thread is byte-identical to the prior `&[]`. The blob port
+  (`generate_map` → `procedural_room_layout`) preserves the exact RunRng draw order, so the Startup map
+  and every downstream draw (band shuffle) are unchanged. Verified byte-identical after every step.
+
+- **Run lifecycle placement.** The three lifecycle systems (`load_encounter` → `check_objective` →
+  `handle_encounter_complete`) are chained in the **`CombatSet::Death` region** (`after(enemy_death)`),
+  the neutral spot Phase 6 established for gated-off combat additions. `load_encounter` is a one-shot
+  (guarded by `CurrentEncounter.spawned`) that also **defers until assets have loaded**, so the
+  windowed async load never spawns an empty roster. `handle_map_select` runs only in the `MapSelect`
+  overlay. The ambient `spawn_enemy_over_time` is gated off while a run is active (the encounter
+  spawner is the sole driver then; neutral for the runless campaign).
+
+- **The spawn-frame race, closed by `armed`.** A kill objective (`KillAll`/`KillMapBoss`) only
+  completes once its targets have been *observed present* (the `armed` flag), so the one-frame gap
+  between spawning the roster via `Commands` and it appearing in the world can never complete an
+  encounter early. `Survive` ticks a countdown; Merchant `Rest` auto-completes on load.
+
+- **Deviations from the plan (small, all improvements).**
+  - `RoomModifierDef` became a **`DefAsset`** (`.roommod.ron`, the 3 curse files renamed) rather than
+    the plan's "small custom loader" — it reuses the established `DefLibrary<T>` pattern (one-line
+    registration) instead of adding a bespoke loader, consistent with every other def type.
+  - `handle_encounter_complete` detects an ActBoss from the **loaded `CurrentEncounter.encounter`**
+    (not a graph re-lookup of `current_node`) — the two agree in real play, but keying off the load is
+    more robust and makes the synthetic-encounter test path exact.
+  - The ThroneRoom curse is applied to **Hostile casts only** (the curse makes the fight harder). The
+    canonical `enemies_deal_double_damage` is exactly a Hostile-cast damage buff and is validated
+    end-to-end; the player-stat curses (`no_regen` overriding D&D regen, `player_slowed` on a
+    non-existent ability `move_speed`) need bespoke consumers and stay inert for now (flagged §7).
+  - `EncounterNode` gained a `column` field (the depth driver / future UI); the encounter enums derive
+    `PartialEq` (determinism assertions).
+  - `execute_ready_abilities` grouped four resources into one tuple `SystemParam` to stay under Bevy's
+    16-param-per-system limit (adding `RoomModifiers` pushed it to 17).
+  - Windowed `auto_start_run` runs in **`PostStartup`** (after the Startup command flush) so it never
+    races the deferred `init_level_flow` insert; `start_run` also tolerates a missing `LevelUpFlowState`.
+
+- **Presentation (never headless, does not gate the golden master).** `rerender_map` redraws the
+  floor/obstacle meshes on a `TileMap` change (per-encounter regeneration); `ui/screens/map_select.rs`
+  lists the reachable branches. Both are verified manually on Windows (WSL has no GPU).
+
+- **Tests: 129 passing** (was 107). +10 unit (act-graph determinism + invariants; the blob-port
+  regression pin + every-layout border/spawn-clear; the depth formula; `warlord` + all-5-themes parse)
+  and +12 golden scenarios (`tests/act_graph.rs` ×2, `tests/encounter.rs` ×10 — roster spawn +
+  determinism, tutorial entry, objective→advance, teardown, survive, kill-map-boss, act transition,
+  depth scaling, ThroneRoom curse + reward, curse doubles enemy damage). Build warning-free.
+
+- **Debt updates (architecture-plan §8.1/§8.5/§8.9).** Resolved: `ThemeDef` loader + theme/encounter
+  spawning + `Elite`/boss spawn roles + the **live scaling driver** (§8.1(7) fully closed — Phase 5's
+  data-only curve is now driven by node depth); the `HeroDef.base_stats` per-hero application is
+  **still** deferred (Mage plays with DK stats — §8.5). Still open from §8.1: shields/absorbs (5),
+  forced movement (6), the full UI phase (9 — Phase 7 ships only the keyboard picker). Deferred from
+  Phase 7 with triggers (§7): RunState serialization/resume (Phase 8), merchant ops (Phase 8/9), the
+  real per-theme rosters + multi-phase boss AI (Phase 9), the visual act-graph map view (UI phase), and
+  the player-stat ThroneRoom curses' bespoke consumers.

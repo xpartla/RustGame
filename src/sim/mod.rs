@@ -34,7 +34,7 @@ use crate::ability::assets::{AbilityDef, AbilityLibrary};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::core::components::{DamageDealtModifier, Facing, Faction, GridPosition, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag};
-use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary};
+use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary};
 use crate::enemy::components::{Enemy, EnemySpawner};
 use crate::enemy::systems::spawner::enemy_bundle;
 use crate::game::state::GameState;
@@ -45,11 +45,14 @@ use crate::pickup::components::PickUpSpawner;
 use crate::player::components::Player;
 use crate::progression::state::LevelUpFlowState;
 use crate::run::rng::RunRng;
+use crate::run::state::{CurrentEncounter, RoomModifiers, RunState};
+use crate::world::graph::{EncounterNode, EncounterType, NodeId};
 use crate::status::assets::{StatusEffectDef, StatusLibrary};
 use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 use crate::talent::assets::{TalentDef, TalentLibrary};
 use crate::talent::components::AcquiredTalents;
 use crate::world::components::TileMap;
+use crate::world::graph::{RoomModifierDef, RoomModifierLibrary};
 use crate::zone::components::{PersistentZone, PlayerZonePresence, ZoneAnchor};
 
 /// Fixed timestep for every simulation frame: 60 updates per simulated second.
@@ -172,11 +175,17 @@ impl Sim {
             let hero_defs = world.resource::<Assets<HeroDef>>();
             let enemy_lib = world.resource::<EnemyLibrary>();
             let enemy_defs = world.resource::<Assets<EnemyDef>>();
+            let theme_lib = world.resource::<ThemeLibrary>();
+            let theme_defs = world.resource::<Assets<ThemeDef>>();
+            let modifier_lib = world.resource::<RoomModifierLibrary>();
+            let modifier_defs = world.resource::<Assets<RoomModifierDef>>();
             ability_lib.defs.values().all(|h| ability_defs.get(h).is_some())
                 && talent_lib.defs.values().all(|h| talent_defs.get(h).is_some())
                 && status_lib.defs.values().all(|h| status_defs.get(h).is_some())
                 && hero_lib.defs.values().all(|h| hero_defs.get(h).is_some())
                 && enemy_lib.defs.values().all(|h| enemy_defs.get(h).is_some())
+                && theme_lib.defs.values().all(|h| theme_defs.get(h).is_some())
+                && modifier_lib.defs.values().all(|h| modifier_defs.get(h).is_some())
         };
         if !libs_ready {
             return false;
@@ -723,5 +732,160 @@ impl Sim {
     /// Direct access to the level-up flow state (band pools, owed choices, pending offer).
     pub fn level_flow(&self) -> &LevelUpFlowState {
         self.app.world().resource::<LevelUpFlowState>()
+    }
+
+    // ---------------------------------------------------------------- run / encounters (Phase 7)
+
+    /// Begins a run from `seed` (reseeds RunRng, builds the Act-1 graph, inserts RunState + the entry
+    /// CurrentEncounter). Step at least once afterward so `load_encounter` generates the room + roster.
+    /// The golden campaign never calls this, so it stays runless (byte-identical).
+    pub fn start_run(&mut self, seed: u64) {
+        crate::run::systems::transitions::start_run(
+            self.app.world_mut(),
+            seed,
+            crate::run::systems::transitions::DEFAULT_RUN_HERO,
+        );
+    }
+
+    /// Whether a run is active (RunState present).
+    pub fn has_run(&self) -> bool {
+        self.app.world().get_resource::<RunState>().is_some()
+    }
+
+    /// The current act (1–3), if a run is active.
+    pub fn current_act(&self) -> Option<u8> {
+        self.app.world().get_resource::<RunState>().map(|r| r.current_act)
+    }
+
+    /// The current graph node id, if a run is active.
+    pub fn current_node(&self) -> Option<NodeId> {
+        self.app.world().get_resource::<RunState>().map(|r| r.current_node)
+    }
+
+    /// The scaling depth of the live encounter (D5), if one is loaded.
+    pub fn current_depth(&self) -> Option<u32> {
+        self.app.world().get_resource::<CurrentEncounter>().map(|c| c.depth)
+    }
+
+    /// Nodes reachable in one step from the current node (the MapSelect branches).
+    pub fn reachable_nodes(&self) -> Vec<NodeId> {
+        self.app
+            .world()
+            .get_resource::<RunState>()
+            .map(|r| r.act_graph.next_nodes(r.current_node))
+            .unwrap_or_default()
+    }
+
+    /// `Debug` string of the live encounter type (e.g. `"Map { objective: KillAll }"`), if loaded.
+    pub fn current_encounter_debug(&self) -> Option<String> {
+        self.app
+            .world()
+            .get_resource::<CurrentEncounter>()
+            .map(|c| format!("{:?}", c.encounter))
+    }
+
+    /// Whether the live encounter has finished spawning its roster.
+    pub fn encounter_spawned(&self) -> bool {
+        self.app
+            .world()
+            .get_resource::<CurrentEncounter>()
+            .map(|c| c.spawned)
+            .unwrap_or(false)
+    }
+
+    /// Overrides the live encounter with a synthetic node (test tool — bypasses the graph, keeps the
+    /// existing RunState). Step once afterward so `load_encounter` builds the room + roster. Use for
+    /// exercising a specific encounter type/objective/curse without seed-hunting the graph.
+    pub fn set_current_encounter(
+        &mut self,
+        encounter: EncounterType,
+        theme: Option<&str>,
+        depth: u32,
+        modifier: Option<&str>,
+    ) {
+        let node = EncounterNode {
+            id: u32::MAX,
+            column: depth as usize,
+            encounter,
+            theme: theme.map(|s| s.to_string()),
+            modifier: modifier.map(|s| s.to_string()),
+        };
+        self.app
+            .world_mut()
+            .insert_resource(CurrentEncounter::for_node(&node, depth));
+    }
+
+    /// Picks reachable branch `i` (0/1/2) in the MapSelect overlay — presses the matching digit for
+    /// one frame (drives `handle_map_select`). The sim must be in `GameState::MapSelect`.
+    pub fn pick_branch(&mut self, i: usize) {
+        let key = match i {
+            0 => KeyCode::Digit1,
+            1 => KeyCode::Digit2,
+            _ => KeyCode::Digit3,
+        };
+        self.tap_key(key);
+    }
+
+    /// Number of tagged `MapBoss` entities alive (for KillMapBoss / boss-room scenarios).
+    pub fn map_boss_count(&mut self) -> usize {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<Entity, With<crate::enemy::components::MapBoss>>();
+        q.iter(world).count()
+    }
+
+    /// Number of active ThroneRoom curse modifiers (0 outside a ThroneRoom).
+    pub fn room_modifier_count(&self) -> usize {
+        self.app
+            .world()
+            .get_resource::<RoomModifiers>()
+            .map(|r| r.0.len())
+            .unwrap_or(0)
+    }
+
+    /// All living `Enemy` entities (pack + bosses).
+    pub fn enemy_entities(&mut self) -> Vec<Entity> {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<Entity, With<Enemy>>();
+        q.iter(world).collect()
+    }
+
+    /// All living tagged `MapBoss` entities.
+    pub fn map_boss_entities(&mut self) -> Vec<Entity> {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<Entity, With<crate::enemy::components::MapBoss>>();
+        q.iter(world).collect()
+    }
+
+    /// The `DamageDealtModifier` on an entity, if any (the Phase-5 depth-scaling damage multiplier).
+    pub fn damage_dealt_modifier(&self, entity: Entity) -> Option<f32> {
+        self.app.world().get::<DamageDealtModifier>(entity).map(|m| m.0)
+    }
+
+    /// Kills every living enemy this frame (lethal DamageEvent to each). Step afterward so
+    /// `apply_damage` → `enemy_death` resolve and `check_objective` sees the cleared roster.
+    pub fn kill_all_enemies(&mut self) {
+        for e in self.enemy_entities() {
+            self.deal_damage(e, 1.0e6);
+        }
+    }
+
+    /// Directly sets the active ThroneRoom curse from a loaded RoomModifierDef id (test tool for the
+    /// curse mechanism, independent of graph placement). Settle assets first.
+    pub fn apply_room_curse(&mut self, id: &str) {
+        let mods = {
+            let world = self.app.world();
+            let handle = world
+                .resource::<RoomModifierLibrary>()
+                .get(id)
+                .unwrap_or_else(|| panic!("unknown room modifier '{id}'"))
+                .clone();
+            world
+                .resource::<Assets<RoomModifierDef>>()
+                .get(&handle)
+                .unwrap_or_else(|| panic!("room modifier '{id}' not loaded yet — settle assets first"))
+                .curse_modifiers
+                .clone()
+        };
+        self.app.world_mut().resource_mut::<RoomModifiers>().0 = mods;
     }
 }

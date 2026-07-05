@@ -116,7 +116,15 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   blocked, and a follow-anchor zone tracks its owner. Plus unit tests: zone RON parse
   (`dnd`/`tree_conduit`/`consecrated_ground`/`amz` + no-zone default) and the `blood_boil_dnd_range`
   hook doubling `radius` only inside D&D.
-- Phase 7: "act graph is seed-deterministic", "objective completion advances the node".
+- Phase 7 (done): `tests/act_graph.rs` — "act graph is seed-deterministic", "graph is connected with
+  one act boss" — and `tests/encounter.rs` — "objective completion advances the node", plus: a themed
+  roster spawns seed-deterministically, the Act-1 entry is a depth-0 KillAll tutorial, a picked branch
+  tears down the previous encounter (player persists), survive-on-timer, kill-map-boss ignores pack
+  adds, the act boss advances the act, node depth deepens boss health + damage (the live scaling
+  driver), and a ThroneRoom applies its curse (doubling enemy damage) + opens the Rare-floor reward.
+  Plus unit tests: `build_act_graph` determinism/invariants, the room-layout blob-port regression pin,
+  the depth formula, and `warlord`/theme RON parse. The golden master stays **byte-identical** (the
+  campaign never starts a run — encounter systems gate on `CurrentEncounter`/`RunState`).
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

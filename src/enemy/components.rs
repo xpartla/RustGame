@@ -5,6 +5,13 @@ use crate::enemy::assets::AiBehaviorId;
 #[derive(Component)]
 pub struct Enemy;
 
+/// Marks the designated map boss of an encounter (Phase 7). The `KillMapBoss` objective completes
+/// when no `MapBoss` entity remains. Tagged onto the boss spawned from a theme's `map_boss_pool`
+/// (Map/KillMapBoss), `boss_pool` (BossRoom), or the act boss (ActBoss); ordinary pack enemies do
+/// not carry it.
+#[derive(Component)]
+pub struct MapBoss;
+
 /// Visual shape for an enemy type (built into a `Mesh2d` at spawn). Sourced from
 /// `EnemyDef.appearance.shape` (Phase 5); `Deserialize` so it parses straight from the RON.
 #[derive(Clone, Copy, Debug, serde::Deserialize)]

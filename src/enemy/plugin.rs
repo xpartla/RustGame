@@ -1,10 +1,10 @@
-use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Timer, TimerMode, Update, in_state};
+use bevy::prelude::{App, IntoScheduleConfigs, Plugin, Timer, TimerMode, Update, in_state, not, resource_exists};
 use crate::core::components::FlowField;
 use crate::core::def_library::DefLibraryAppExt;
 use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::core::systems::flow_field::rebuild_flow_field_from_player;
-use crate::enemy::assets::EnemyDef;
+use crate::enemy::assets::{EnemyDef, ThemeDef};
 use crate::enemy::components::EnemySpawner;
 use crate::enemy::systems::follow_flow_field::enemy_follow_flow_field;
 use crate::enemy::systems::ranged_caster::ranged_caster_ai;
@@ -27,11 +27,21 @@ impl Plugin for EnemyPlugin {
             .init_resource::<FlowField>()
             // EnemyDef asset + `.enemy.ron` loader + EnemyLibrary + Startup populate, in one call.
             .register_def_library::<EnemyDef>()
+            // ThemeDef (Phase 7) — the map-theme enemy pools the encounter spawner draws from.
+            .register_def_library::<ThemeDef>()
             .insert_resource(EnemySpawner {
                 timer: Timer::from_seconds(5.0, TimerMode::Repeating),
                 radius: 10,
             })
-            .add_systems(Update, spawn_enemy_over_time.run_if(in_state(GameState::InRun)))
+            // Ambient spawner: the prototype/campaign driver. During a live run (Phase 7) the
+            // encounter spawner is the sole driver, so gate the ambient one off then. Neutral for the
+            // golden campaign (no CurrentEncounter ⇒ the condition is always true, as before).
+            .add_systems(
+                Update,
+                spawn_enemy_over_time
+                    .run_if(in_state(GameState::InRun))
+                    .run_if(not(resource_exists::<crate::run::state::CurrentEncounter>)),
+            )
             .add_systems(Update, enemy_death.in_set(CombatSet::Death).run_if(in_state(GameState::InRun)))
             .add_systems(
                 Update,

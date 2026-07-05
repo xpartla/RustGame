@@ -17,12 +17,13 @@
 //   systems/
 //     transitions.rs — encounter-complete → next-node selection, act transitions, game-over
 
-// Phase 0 status: only `rng` (RunRng) is compiled and wired in — it is the prerequisite for
-// seeded map generation. `state`, `plugin`, and `systems` remain scaffold-only and are enabled
-// in Phase 7 (act graph / room work), at which point they also pull in the hero/ability/talent/
-// progression modules they reference.
+// Phase 7 status: the whole run module is live — `RunState` + `CurrentEncounter` (in-memory
+// resources; serde is Phase 8), `RunPlugin` (joins `GameLogicPlugin`), and the encounter-lifecycle
+// systems (start/load/objective/advance/select). RunState/CurrentEncounter are inserted only by the
+// run-start flow, so a runless world (the golden campaign) never touches any of it.
 pub mod rng;
-// TODO(Phase 7): enable once the act graph and run flow are implemented.
-// pub mod plugin;
-// pub mod state;
-// pub mod systems;
+pub mod state;
+pub mod plugin;
+pub mod systems;
+
+pub use plugin::RunPlugin;

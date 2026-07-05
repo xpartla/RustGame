@@ -1,0 +1,10 @@
+// WORKING NAME: "Castle Ruins" — theme #3.
+// Phase 7 (D4): existing enemies for now. Phase 9 → Animated Armor, Dancing Sword, Gargoyle,
+// Skeleton, Banshee; bosses The Fallen King, Grand Lich, Gargoyle Lord.
+(
+    id: "castle_ruins",
+    display_name: "Castle Ruins",
+    common_enemy_pool: ["grunt", "brute", "spitter"],
+    boss_pool: ["warlord"],
+    map_boss_pool: ["warlord"],
+)
