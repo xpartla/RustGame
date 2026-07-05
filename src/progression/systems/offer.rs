@@ -26,6 +26,7 @@ use crate::talent::assets::{TalentDef, TalentId, TalentLibrary};
 use crate::talent::components::AcquiredTalents;
 use crate::talent::offer::{generate_offer, OfferContext};
 use crate::talent::systems::apply::TalentAcquiredEvent;
+use crate::talent::systems::merchant::TradeUpRewardEvent;
 
 // PHASE 2 STUB: hardcoded Blood Death Knight class passive pool. These have no TalentDef RON
 // files yet, so they self-filter out of offers; listed here so the pool is faithful once the
@@ -153,6 +154,42 @@ pub fn handle_throne_room_reward(
     let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
     let offer = generate_offer(
         OfferContext::ThroneRoom,
+        &eligible,
+        acquired,
+        &talent_defs,
+        &talent_library,
+        &mut rng,
+    );
+    flow.pending_offer = Some(offer);
+    flow.owed_choices += 1;
+    next_state.set(GameState::TalentPicker);
+}
+
+/// Handles a completed merchant trade-up (Phase 7.5E): opens the TalentPicker with a `min_rarity`
+/// floor computed from the sacrificed talents. Reuses the exact reward flow as the ThroneRoom kiss —
+/// only the `OfferContext` (and thus the rarity floor) differs.
+pub fn handle_tradeup_reward(
+    mut events: EventReader<TradeUpRewardEvent>,
+    mut flow: ResMut<LevelUpFlowState>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut rng: ResMut<RunRng>,
+    players: Query<(Entity, &AcquiredTalents), With<Player>>,
+    instances: Query<&AbilityInstance>,
+    ability_library: Res<AbilityLibrary>,
+    ability_defs: Res<Assets<AbilityDef>>,
+    talent_defs: Res<Assets<TalentDef>>,
+    talent_library: Res<TalentLibrary>,
+) {
+    let min_rarity = match events.read().last() {
+        Some(ev) => ev.min_rarity.clone(),
+        None => return,
+    };
+    let Ok((player, acquired)) = players.single() else {
+        return;
+    };
+    let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
+    let offer = generate_offer(
+        OfferContext::MerchantTradeUp { min_rarity },
         &eligible,
         acquired,
         &talent_defs,

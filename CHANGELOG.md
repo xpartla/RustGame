@@ -763,6 +763,92 @@ See `docs/phase7-plan.md` §9 for the as-built notes.
   `map_boss_entities`/`enemy_entities`/`kill_all_enemies`/`damage_dealt_modifier`/`room_modifier_count`/
   `apply_room_curse`. Build warning-free; **golden baseline unchanged (no regeneration)**.
 
+### Phase 7.5 — UI Layer & Presentation Backlog (complete)
+Brings the whole user-facing surface online: an in-run HUD, the game-over/pause flows, a main menu +
+character select (the windowed game now boots to a menu instead of auto-starting a run), a visual
+act-graph map view, a working merchant (remove + 3-for-1 trade), the ThroneRoom curse banner, zone
+discs, and the cast-VFX bus (Blood Boil's nova flash). Collects every UI-and-presentation item that
+Phases 2–7 deferred "to the UI phase". Delivered in the plan's sub-steps 7.5A–G. **The golden master
+did NOT move at any step — byte-identical, no regeneration** — because the whole UI lives in
+`PresentationPlugin` (the headless sim never builds it) and every logic touchpoint (death→GameOver,
+the Esc pause, the merchant rewire, the menu boot, the cast-VFX write) is inert on the campaign path
+(the bot never dies, pauses, opens a menu, or visits a merchant; the cast-VFX write mutates no snapshot
+field). All five §0 decisions were confirmed with the owner as the recommended defaults: **D1**
+boot-to-menu; **D2** merchant ops pulled forward; **D3** scoreboard deferred to Phase 8; **D4**
+keyboard-first input; **D5** player bar → HUD, enemy gizmo bars stay, bosses get a HUD bar. See
+`docs/phase7.5-ui-plan.md` §9.
+
+- **Shared UI theme (7.5A, neutral).** `ui/theme.rs`: one palette (rarity colors, overlay/panel chrome,
+  bar colors, font sizes) + spawn helpers (`overlay_root`, `panel`, `text`). Every screen builds on it;
+  `talent_picker.rs` was refactored onto it (options are now rarity-colored — visual only).
+- **In-run HUD (7.5A, presentation-only).** `ui/screens/hud.rs` — spawned `OnEnter(InRun)`, despawned
+  `OnExit(InRun)`, updated by change-detection queries over existing logic state: player health + XP/level
+  bars, a stance indicator, a **class-resource slot** (revealed only when a `ClassResource` is present —
+  inert until Phase-9 frost charges), the player status row, **ability slots** with cooldown veils and
+  slot labels (LMB/RMB/Shift resolved from the active stance, AUTO for auto-cast passives), the **objective
+  tracker** (hidden when there is no `CurrentEncounter` — the HUD never requires a run), and a top-center
+  **boss bar** for any living `MapBoss`. `draw_health_bars` now skips the player (D5); enemy gizmo bars remain.
+- **Game-over + pause (7.5B).** `player_death` now captures a `GameOverSummary` (hero / level / act /
+  node — read *before* the despawn) and enters `GameState::GameOver` instead of leaving a dead world
+  running — **a declared behavior change** (the campaign never dies ⇒ baseline unaffected;
+  `player_despawns_on_death` gained a `GameOver` assertion). An Act-3 clear captures a victory summary
+  the same way. New `run/systems/reset.rs`: the **run-reset primitive** (`reset_and_start_run` — tears
+  down every run-scoped entity *including the dead player's orphaned `AbilityInstance` entities*,
+  respawns a fresh level-1 player as the chosen hero, reseeds `RunRng`, re-inits the level flow, and
+  starts a new run) shared by the death screen's R (restart) and character-select, both routed through a
+  single `StartRunRequest` event consumed by an exclusive `apply_start_run_request` (gated `on_event`).
+  Esc toggles `InRun ⇄ Paused` (`game/pause.rs`, gated on an Esc press so the campaign — which never
+  presses Esc — stays byte-identical); the pause screen doubles as a build inspector (unlocked abilities
+  + acquired talents with stack counts). In-flight combat events survive the pause freeze (the existing
+  `add_gameplay_event` contract, now covered for `Paused` by `game_flow.rs`).
+- **Main menu + character select (7.5C, D1).** `GamePlugin` swaps Phase-7's `auto_start_run` for
+  `enter_main_menu` — **the windowed game now boots Menu → CharacterSelect → run** (windowed-only; the
+  headless sim never runs `enter_main_menu`, so `Sim::new_arena` stays in `InRun` and the campaign is
+  byte-identical). `main_menu.rs` (New Run · Resume/Scoreboard greyed for Phase 8 · Esc quit) +
+  `character_select.rs` (one card per `HeroDef::MANIFEST` entry — display name, stance pair / "no stance",
+  resource model, level-1 ability display names). Picking a hero emits `StartRunRequest` through the
+  shared reset path; a stance hero starts in its `stance_a`. This makes the Mage reachable without the
+  debug `M` key (which stays, debug-only). `auto_start_run` was removed.
+- **Visual act-graph map view + curse banner (7.5D, presentation-only).** `map_select.rs` upgraded from
+  the flat Phase-7 text list to a Slay-the-Spire **column view** of `RunState.act_graph` (nodes laid out
+  by their `column`, encounter-type glyph + label + theme, the current node highlighted, past columns
+  dimmed, reachable nodes numbered to match the 1/2/3 selection keys) — the `handle_map_select` input
+  contract is unchanged, so this is neutral. A ThroneRoom **curse banner** (in the HUD module) shows the
+  node's `RoomModifierDef` name + description on entering a cursed ThroneRoom.
+- **Merchant overlay + ops (7.5E, D2).** The Merchant node no longer auto-completes — **declared**:
+  `ObjectiveProgress::Rest` no longer completes via the objective path; `enter_merchant` opens
+  `GameState::Merchant` once the (empty) room loads, and the shop is left directly to MapSelect. The two
+  Phase-2-scaffold ops are filled: **remove** (`MerchantRemoveRequest` → `TalentRemovedEvent` → the
+  existing `uninstall_removed_talent`, which pops the ActiveHook) and **3-for-1 trade**
+  (`MerchantTradeRequest` → 3 removals + a `TradeUpRewardEvent` → `handle_tradeup_reward` opens a picker
+  floored one rarity above the highest sacrificed, reusing the ThroneRoom-kiss machinery).
+  `ui/screens/merchant.rs` lists the acquired talents (re-rendered on change).
+- **Presentation backlog (7.5F).** **Zone discs** — `attach_zone_visuals` (`Added<PersistentZone>`)
+  dresses each zone with a translucent disc colored by type (D&D red / Consecrated gold / AMZ blue /
+  Tree green), radius from the zone — closing the Phase-6 zone-visuals deferral. **Cast-VFX bus** —
+  `CastVfxEvent` (a plain, presentation-consumed event) is *written* by `execute_ready_abilities`
+  (write-only: no state, no RNG, no spawns ⇒ the campaign trace is byte-identical — **verified
+  specifically**, since the campaign casts Blood Boil); the presentation side (`game/vfx.rs`) draws a
+  fading, expanding **Blood Boil nova ring** (gizmo-based). This closes the §8.5 nova-flash item. The
+  existing logic-side cone-flash path is left untouched (migrating it would delete logic-spawned entities
+  and risk the baseline for zero gain — deferred to the next deliberate regen). Per-encounter map
+  re-render was already delivered by Phase 7 (`rerender_map`).
+- **Debt closed (architecture-plan §8.1(9), §8.5, §8.10).** §8.1(9) "UI phase" is closed except items
+  explicitly deferred to Phase 8 (scoreboard + score formula; Resume Run; hero unlock/greying; Log-In
+  profile; moving player/map spawn from `Startup` to `OnEnter(InRun)`). §8.5's Blood Boil nova-flash row
+  is resolved. `HeroDef.base_stats` per-hero application remains the last open §8.5 row (deferred — the
+  Mage still plays with the DK's HP/speed).
+- **Sim helpers.** `enter_menu`, `select_hero_index`, `request_start_run`, `ability_instance_entities`,
+  `entity_exists`, `game_over_victory`, `active_hooks`, `merchant_remove`, `merchant_trade`,
+  `pending_offer_ids`, `talent_rarity`.
+- **Tests: 136 passing** (was 129). +5 `tests/game_flow.rs` (death→GameOver; restart boots a fresh
+  deterministic run with a clean entity census; Esc pause preserves in-flight combat events; pause
+  freezes the world; character-select starts the chosen hero) and +2 `tests/merchant.rs` (remove
+  uninstalls the talent + its hook; a 3-for-1 trade offers a Rare-or-above pick).
+  `tests/combat.rs::player_despawns_on_death` gained a `GameOver` assertion. Build warning-free;
+  **golden baseline unchanged (no regeneration)**. The screens themselves (all presentation) are
+  verified manually on the Windows build (WSL has no GPU).
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -867,7 +953,13 @@ yet:
   serialization/resume, merchant ops, the real per-theme rosters + multi-phase boss AI, the visual
   act-graph map view, and the player-stat ThroneRoom curses' bespoke consumers — see
   architecture-plan §8.9)
+- ~~UI layer (HUD, menus, character select, game-over/pause, visual map view, merchant screen) —
+  Phase 7.5~~ **done** (full scope: in-run HUD + boot-to-menu → character select + game-over/pause +
+  restart + visual act-graph map view + ThroneRoom curse banner + working merchant remove/trade + zone
+  discs + the cast-VFX bus / Blood Boil nova flash. Deferred to Phase 8: scoreboard + score formula,
+  Resume Run, hero unlock greying, Log-In profile, moving player/map spawn out of `Startup` — see
+  architecture-plan §8.10)
 - Persistence (save/load RunState, MetaState) — Phase 8
 - Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9
-- All UI beyond a debug health bar gizmo + talent + map-select pickers (no HUD, character select,
-  or menus)
+- Scoreboard + score formula, Settings screen, damage numbers / minimap / tooltips, gamepad,
+  art/audio — later (see phase7.5-ui-plan §7)

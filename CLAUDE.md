@@ -10,12 +10,13 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
 | `docs/phase6-plan.md` | Phase 6 plan + as-built notes (persistent zones + code-driven ability hooks) |
 | `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
+| `docs/phase7.5-ui-plan.md` | Phase 7.5 plan + as-built notes (UI layer: HUD, menus, game-over/pause, map view, merchant, VFX bus) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -46,8 +47,8 @@ unrelated web project.)
 ## Known tech debt (before you add to it)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
-in §8.7, Phase-6 in §8.8, Phase-7 in §8.9) — each item has an owning phase. Highlights a future
-session must not "rediscover":
+in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10) — each item has an owning phase.
+Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -63,8 +64,16 @@ session must not "rediscover":
   spawner drives the Phase-5 curve; `MapBoss` spawn roles; ThroneRoom curse (`RoomModifiers` →
   `extra_modifiers` for Hostile casts) + Rare-floor kiss; Merchant rest node; a minimal
   `GameState::MapSelect` keyboard picker. Still open: **multi-phase boss AI + enemy DoT kits + the real
-  per-theme rosters (Phase 9)**; RunState save/resume + merchant ops (Phase 8/9); the visual act-graph
-  map view (UI phase); the player-stat ThroneRoom curses' bespoke consumers.
+  per-theme rosters (Phase 9)**; RunState save/resume (Phase 8); the player-stat ThroneRoom curses'
+  bespoke consumers. (Merchant ops + the visual act-graph map view landed in Phase 7.5, §8.10.)
+- ~~UI layer: HUD, menus, character select, game-over/pause, visual map view, merchant screen~~
+  **DONE (Phase 7.5, §8.10)** — full UI surface: `ui/theme.rs` + `ui/screens/*` (hud, main_menu,
+  character_select, game_over, pause, map_select visual view, merchant); death → `GameState::GameOver`
+  + `run/systems/reset.rs` restart; windowed boot Menu → CharacterSelect → run (`enter_main_menu`
+  replaced `auto_start_run`); merchant remove/trade ops; zone discs + the cast-VFX bus (nova flash).
+  Every screen is presentation-only (verified on Windows); its logic is headless-tested. Deferred to
+  Phase 8: scoreboard + score formula, Resume Run, hero unlock greying, Log-In, moving player/map
+  spawn to `OnEnter(InRun)`.
 - ~~Persistent zones + AMZ projectile-blocking~~ **DONE (Phase 6, §8.8)** — `zone` module live
   (`dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ blocking). New zone abilities via
   `AbilityDef.zone: Option<ZoneSpec>`. Deferred to Phase 9: cross-ability zone buffs, Tree Conduit's
@@ -73,9 +82,10 @@ session must not "rediscover":
   `ability/hooks.rs` (`HookRegistry`/`AbilityHook`); execute interleaves Pre/Post hooks gated on
   `ActiveHooks` + registration. First hook: `blood_boil_dnd_range`. `bone_shield` stays inert until
   the shield/absorb system (§8.1(5)) lands — its Post-hook plumbing now exists.
-- Projectile/status **visuals**: sprites + status tints **done (Phase 4)**; the **Blood Boil nova
-  flash is still open** — needs a presentation-only cast-VFX bus (a logic-path spawn would move the
-  golden baseline).
+- ~~Projectile/status **visuals** + the Blood Boil nova flash~~ **DONE (Phase 4 + 7.5)** — sprites +
+  status tints (Phase 4); the nova flash landed Phase 7.5 via the **cast-VFX bus** (`CastVfxEvent`,
+  write-only from `execute_ready_abilities` → drawn by `game/vfx.rs`), plus zone discs. The logic-side
+  cone flash stays on gizmos (migrating it earns nothing, risks the baseline).
 - Projectiles fly through walls — **accepted by the project owner (2026-07-05) for now**;
   revisit during Mage playtesting, not before.
 - `resolved_cd > 0` guard ignores an Override(0) cooldown talent — fix with the first
@@ -84,4 +94,4 @@ session must not "rediscover":
   currently plays with the Death Knight's stats). Enemy `base_stats`, by contrast, ARE applied
   (Phase 5) and the enemy `scaling` curve is now driven live by encounter depth (Phase 7, §8.9).
 
-When you resolve a register item, update §8.5/§8.6/§8.7/§8.8/§8.9 and the CHANGELOG in the same change.
+When you resolve a register item, update §8.5/§8.6/§8.7/§8.8/§8.9/§8.10 and the CHANGELOG in the same change.

@@ -20,7 +20,7 @@
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation, HookPhase, ZoneAnchorKind, ZoneSpec};
 use crate::ability::behavior::{AbilityContext, BehaviorRegistry, ResolvedParams, Target, VfxShape};
-use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent};
+use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, CastVfxKind, TriggerAbilityEvent};
 use crate::ability::effects::{apply_resolved_effects, resolve_effects};
 use crate::ability::hooks::{HookContext, HookRegistry};
 use crate::core::components::{AbilitiesSuppressed, Facing, Faction, WorldPosition};
@@ -82,6 +82,7 @@ pub fn execute_ready_abilities(
     mut damage_events: EventWriter<DamageEvent>,
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
+    mut cast_vfx: EventWriter<CastVfxEvent>,
     // Grouped into one tuple SystemParam to stay under Bevy's 16-param-per-system limit.
     (registry, hook_registry, zone_presence, room_mods): (
         Res<BehaviorRegistry>,
@@ -224,6 +225,22 @@ pub fn execute_ready_abilities(
                 outcome.primary,
                 &resolved,
             );
+
+            // Cast-VFX bus (Phase 7.5F): announce the committed cast for the presentation layer to
+            // flash. Write-only — no state/RNG/spawn — so the golden campaign trace is unchanged.
+            // Self-novas (Blood Boil) carry their resolved radius for a fading ring; every other cast
+            // is `Other` (its VFX still comes from the existing gizmo paths).
+            let vfx_kind = if def.behavior == "self_nova" {
+                CastVfxKind::Nova { radius: params.get("radius") }
+            } else {
+                CastVfxKind::Other
+            };
+            cast_vfx.write(CastVfxEvent {
+                caster: trigger.owner,
+                ability_id: instance.def_id.clone(),
+                origin: outcome.origin,
+                kind: vfx_kind,
+            });
 
             // Shape VFX (melee cone flash), reusing the prototype's gizmo entity path.
             if let Some(VfxShape::Cone { radius, half_angle, forward, lifetime }) = outcome.vfx {

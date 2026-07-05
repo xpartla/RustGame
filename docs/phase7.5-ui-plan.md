@@ -357,8 +357,77 @@ Consecrated / AMZ; Blood Boil nova flash. Screenshot pass into the phase §9 not
 
 ---
 
-## 9. As-built notes (to be completed on delivery)
+## 9. As-built notes (completed 2026-07-05)
 
-_(Filled in after implementation, mirroring phase6/phase7 §9: resolved §0 decisions, which steps
-(if any) moved the baseline and why, deviations from §2, what Phase 7's as-built actually left to
-7.5D/E/F, final test count, and the §8.1(9)/§8.5 closures in architecture-plan.)_
+Phase 7.5 landed as planned across 7.5A–7.5G, at **full scope**. **The golden master moved zero times —
+byte-identical at every step, no regeneration** — matching Phases 4–7. The whole UI lives in
+`PresentationPlugin` (which the headless sim never builds), and every logic touchpoint is inert on the
+campaign path. The §0 decisions were all confirmed with the owner as the recommended defaults.
+
+- **§0 decisions (resolved).** **D1** boot to a real main menu (windowed-only: `GamePlugin` swaps
+  `auto_start_run` → `enter_main_menu`). **D2** merchant ops pulled forward (remove + 3-for-1 trade).
+  **D3** scoreboard deferred to Phase 8 (menu button greyed). **D4** keyboard-first everywhere (logic-side
+  input systems; no mouse handlers this phase). **D5** player health/XP moved into the HUD, enemy gizmo
+  bars stay, bosses get a top-center HUD bar.
+
+- **What Phase 7 had already delivered (absorbed, not re-built).** Two inventory items were already done
+  by Phase 7: **item 12 (per-encounter map re-render)** — `rerender_map` was live in `PresentationPlugin`
+  — and a **minimal `MapSelect` text overlay**. So 7.5D became a *visual upgrade* of the existing overlay
+  (keeping Phase 7's `handle_map_select` input contract), not new plumbing, and item 12 needed no work.
+  `EncounterNode.column` already existed, so the map view needed no data addition. The act boss is a
+  `warlord` tagged `MapBoss` (there is no separate `ActBoss` marker), so the boss bar keys off `MapBoss`
+  alone.
+
+- **Golden-master neutrality held (the load-bearing constraint).** The headless sim builds
+  `GameLogicPlugin` only; every screen is registered under `PresentationPlugin`, so no UI runs headless.
+  The logic touchpoints are individually inert in the campaign: death→GameOver never fires (the bot never
+  dies), the Esc pause is gated on an Esc press the bot never sends, the merchant systems gate on their
+  state / request events the campaign never reaches, the menu boot is windowed-only, and the cast-VFX
+  write is write-only (no state/RNG/spawn) so it does not move the trace even though the campaign casts
+  Blood Boil through it. Verified byte-identical after every step; the cast-VFX write (7.5F, the one
+  campaign-reachable logic edit) was verified with extra care.
+
+- **Run-reset placement (7.5B).** The reset is an exclusive `&mut World` fn (`reset_and_start_run`) that
+  reuses the real Startup systems via `run_system_once` (`spawn_player`, `init_level_flow`) so a restart
+  reproduces the boot path exactly. Both the death screen's R and character-select route through one
+  `StartRunRequest` event → `apply_start_run_request` (gated `on_event`, so it never runs — or perturbs —
+  the campaign). Teardown despawns every run-scoped entity class **including the separate
+  `AbilityInstance` entities** (nothing else cleans a dead player's or a despawned enemy's), asserted by a
+  captured-entity census in `restart_after_death_boots_a_fresh_run`.
+
+- **Merchant flow (7.5E).** Phase 7's Merchant node auto-completed as a `Rest` objective; 7.5E rewired it:
+  `ObjectiveProgress::Rest` no longer completes via the objective path, `enter_merchant` opens
+  `GameState::Merchant` once the empty room loads, and the shop is left **directly to MapSelect** (not
+  back through InRun) so `enter_merchant` cannot re-fire and race the completion. The trade-up reuses the
+  ThroneRoom-kiss picker via a new `TradeUpRewardEvent` (defined in `talent`, consumed in `progression` —
+  keeping the dependency one-directional, `progression → talent`).
+
+- **Deviations from the plan (small).**
+  - The curse banner reads `CurrentEncounter.modifier` → `RoomModifierDef` (name + description), not the
+    `RoomModifiers` resource (which holds only the stat modifiers, no text). It lives in the HUD module so
+    it is torn down with the HUD on `OnExit(InRun)`.
+  - The nova flash is drawn with **gizmos** (an expanding, fading ring), mirroring the existing debug
+    hitbox-gizmo path — no mesh assets, and it despawns itself on a timer. The bus (`CastVfxEvent`) carries
+    a `CastVfxKind` (`Nova{radius}` / `Other`); only `Nova` is consumed for now (other casts keep their
+    existing gizmo VFX).
+  - HUD internals (marker components + update systems) are all private to `hud.rs`; the module exposes a
+    single `pub fn plugin(app)` so it leaks no internal types into the crate API.
+  - `NextState` transitions apply on the *next* frame, so the sim helpers/tests step once after a key tap
+    before asserting the new state (documented in the pause/menu tests).
+
+- **Presentation (never headless, does not gate the golden master).** HUD, all overlays (menu, character
+  select, game-over, pause, merchant, the visual map view), the curse banner, zone discs, and the nova
+  flash are verified manually on the Windows build (WSL has no GPU). Only their *logic* (state flows,
+  reset, ops, VFX-event emission) is asserted headless.
+
+- **Tests: 136 passing** (was 129). +5 golden scenarios in `tests/game_flow.rs` (death→GameOver;
+  restart→fresh deterministic run with a clean census; Esc-pause preserves in-flight combat events; pause
+  freezes the world; character-select starts the chosen hero) and +2 in `tests/merchant.rs` (remove
+  uninstalls talent + hook; trade offers a higher rarity). `tests/combat.rs::player_despawns_on_death`
+  gained a `GameOver` assertion. Build warning-free.
+
+- **Debt updates (architecture-plan §8.1(9)/§8.5/§8.10).** §8.1(9) "UI phase" is **closed** except the
+  Phase-8 carve-outs (scoreboard + score formula, Resume Run, hero unlock greying, Log-In profile, moving
+  player/map spawn out of `Startup`). §8.5's **Blood Boil nova-flash** row is **resolved** (the cast-VFX
+  bus). `HeroDef.base_stats` per-hero application remains the last open §8.5 row (deferred — the Mage
+  still plays with the DK's HP/speed). New §8.10 records the delivered summary.

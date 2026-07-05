@@ -12,7 +12,7 @@
 // TODO(Phase 2): push/pop `TalentPicker` from the level-up flow.
 // TODO(Phase 9): push/pop `Merchant` from merchant nodes.
 
-use bevy::prelude::States;
+use bevy::prelude::*;
 
 // Most variants are reserved for later phases (menus, pause, overlays) and are not yet
 // constructed — the app only ever sits in `InRun` today. Allow until those flows land.
@@ -37,4 +37,19 @@ pub enum GameState {
     MapSelect,
     /// Merchant interaction overlay. Wired in Phase 9.
     Merchant,
+}
+
+/// A snapshot of a finished run, captured the moment it ends (the player dies, or Act 3 is cleared)
+/// — before the run's entities/resources are torn down, so the game-over screen can render it even
+/// though the live run no longer exists. Written by `player_death` (defeat) and
+/// `handle_encounter_complete` (Act-3 victory); read by `ui/screens/game_over.rs`. Cleared by the
+/// run-reset primitive (Phase 7.5B) when a new run begins. `act`/`node_column` are `None` for a death
+/// in a runless world (e.g. a headless arena scenario), which has no `RunState`.
+#[derive(Resource, Debug, Clone)]
+pub struct GameOverSummary {
+    pub victory: bool,
+    pub hero_id: String,
+    pub level: u32,
+    pub act: Option<u8>,
+    pub node_column: Option<usize>,
 }

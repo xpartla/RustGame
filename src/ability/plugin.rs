@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
 use crate::ability::behavior::{BehaviorRegistry, ContactMelee, DroppedZone, MeleeCone, ProjectileBehavior, SelfNova};
 use crate::ability::hooks::{BloodBoilDndRange, HookRegistry};
-use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
 use crate::core::def_library::DefLibraryAppExt;
 use crate::core::sets::CombatSet;
@@ -32,7 +32,8 @@ impl Plugin for AbilityPlugin {
         // call (see core/def_library.rs — the generic that replaced the per-type boilerplate).
         app.register_def_library::<AbilityDef>()
             .add_event::<TriggerAbilityEvent>()
-            .add_event::<UnlockAbilityEvent>();
+            .add_event::<UnlockAbilityEvent>()
+            .add_event::<CastVfxEvent>();
 
         // Built-in behaviors. melee_cone (Phase 1), projectile/self_nova (Phase 3), contact_melee
         // (Phase 5), dropped_zone (Phase 6). orbit/summon/leap/channel register in their own phases;

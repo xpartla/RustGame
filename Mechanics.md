@@ -342,17 +342,31 @@ Big picture:
     Throne Room curses are live for enemy-stat effects (e.g. "enemies deal double damage"); the
     player-stat curses (no-regen / slow) get their consumers as those mechanics land. Merchant
     remove/trade **ops**, run save/resume, and the visual act-graph map screen are later phases._
-* User Flow (screens)  
-  * Log in  
-  * Main menu  
-    * Start new run  
-      * Character selection  
-        * Character hero cards with sample abilities, talents, CTA button  
-        * Unlocked characters colorful, locked characters grayed out  
-    * Resume run  
-    * Heroes  
-    * Scoreboard  
-    * Settings  
-    * Exit Game  
+  * _Phase 7.5 (implemented): the **visual act-graph map screen** is live — a Slay-the-Spire column
+    view showing each node's encounter type + theme, with the reachable branches numbered (the player
+    sees the encounter type and map theme before choosing, as designed). The **Merchant remove/trade
+    ops** are live (remove a talent; sacrifice 3 for 1 higher-rarity pick). Run **save/resume** is
+    still Phase 8._
+* User Flow (screens)
+  _Phase 7.5 status: the windowed game now boots to a **Main menu** → **Character selection** → run;
+  **Game over** (death/victory) with restart, **Pause** (Esc, a build inspector), the in-run **HUD**,
+  the visual **map** screen, the **Merchant** shop, and the **Throne Room curse banner** are all live.
+  Deferred to Phase 8: **Log in** (local profile), **Resume run**, the **Scoreboard** (+ score
+  formula), hero lock/unlock greying. Not scheduled: a separate **Heroes** gallery (character select
+  covers it) and **Settings** (nothing to configure yet). Every screen is keyboard-driven; mouse is a
+  later polish pass._
+  * Log in _(Phase 8)_
+  * Main menu _(live — New Run active; Resume / Scoreboard greyed)_
+    * Start new run _(live)_
+      * Character selection _(live)_
+        * Character hero cards with sample abilities, talents, CTA button _(live — cards show name,
+          stance, resource, level-1 abilities)_
+        * Unlocked characters colorful, locked characters grayed out _(Phase 8 — all heroes unlocked
+          for now; needs persistent MetaState)_
+    * Resume run _(Phase 8)_
+    * Heroes _(folded into character select for now)_
+    * Scoreboard _(Phase 8)_
+    * Settings _(later — nothing to configure yet)_
+    * Exit Game _(live)_  
 * 
 

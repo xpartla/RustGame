@@ -13,9 +13,11 @@ use crate::game::state::GameState;
 use crate::player::systems::experience::gain_experience;
 use crate::progression::systems::level_up::{handle_level_up, init_level_flow};
 use crate::progression::systems::offer::{
-    handle_talent_choice, handle_throne_room_reward, refill_offer, ThroneRoomRewardEvent,
+    handle_talent_choice, handle_throne_room_reward, handle_tradeup_reward, refill_offer,
+    ThroneRoomRewardEvent,
 };
 use crate::talent::systems::apply::install_acquired_talent;
+use crate::talent::systems::merchant::TradeUpRewardEvent;
 use crate::world::systems::generate_map::generate_map;
 
 pub struct ProgressionPlugin;
@@ -23,6 +25,7 @@ pub struct ProgressionPlugin;
 impl Plugin for ProgressionPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<ThroneRoomRewardEvent>();
+        app.add_event::<TradeUpRewardEvent>();
 
         // Ordered after generate_map: both Startup systems draw from RunRng, and without an
         // explicit constraint the executor may run them in either order — meaning the same
@@ -41,6 +44,14 @@ impl Plugin for ProgressionPlugin {
         app.add_systems(
             Update,
             handle_throne_room_reward.run_if(in_state(GameState::InRun)),
+        );
+
+        // Merchant trade-up (Phase 7.5E): consumes TradeUpRewardEvent (emitted by a completed trade in
+        // the Merchant state) and opens a rarity-floored picker. Gated on the event so it runs
+        // regardless of state (the trade is initiated from GameState::Merchant).
+        app.add_systems(
+            Update,
+            handle_tradeup_reward.run_if(on_event::<TradeUpRewardEvent>),
         );
 
         // Ordered after install_acquired_talent: when the backlog holds several owed choices,

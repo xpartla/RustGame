@@ -23,7 +23,7 @@ use crate::core::components::{GridPosition, Health, WorldPosition};
 use crate::enemy::assets::{EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary, THEME_IDS};
 use crate::enemy::components::{Enemy, MapBoss};
 use crate::enemy::systems::spawner::spawn_enemy_from_def;
-use crate::game::state::GameState;
+use crate::game::state::{GameOverSummary, GameState};
 use crate::pickup::components::PickUp;
 use crate::player::components::{Experience, Player};
 use crate::projectile::components::Projectile;
@@ -88,13 +88,6 @@ pub fn start_run(world: &mut World, seed: u64, hero_id: &str) {
 
     let depth = node_depth(1, entry.column);
     world.insert_resource(CurrentEncounter::for_node(&entry, depth));
-}
-
-/// Windowed-only Startup auto-start (D1): boot the windowed game into an Act-1 encounter with a fresh
-/// entropy seed. Added by `GamePlugin` (NOT `GameLogicPlugin`), so the headless sim never auto-starts
-/// — Sim::start_run drives runs there — and the golden campaign stays runless.
-pub fn auto_start_run(world: &mut World) {
-    start_run(world, rand::random::<u64>(), DEFAULT_RUN_HERO);
 }
 
 // ── Encounter load ───────────────────────────────────────────────────────────────────────────
@@ -310,10 +303,25 @@ pub fn check_objective(
             timer.tick(time.delta());
             timer.finished()
         }
-        ObjectiveProgress::Rest => true,
+        // A Merchant `Rest` no longer auto-completes (Phase 7.5E): `enter_merchant` opens the shop
+        // overlay, and the player leaves it directly to MapSelect. So it never completes via the
+        // objective path.
+        ObjectiveProgress::Rest => false,
     };
     if finished {
         complete.write(EncounterCompleteEvent);
+    }
+}
+
+/// Opens the merchant shop when a Merchant node has loaded (Phase 7.5E). Transitions InRun → Merchant
+/// once the (empty) room is spawned; the shop overlay's input leaves directly to MapSelect, so this
+/// never re-fires for the same node (it is InRun-gated and the node is left via MapSelect, not InRun).
+pub fn enter_merchant(
+    current: Res<CurrentEncounter>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if current.spawned && matches!(current.objective, ObjectiveProgress::Rest) {
+        next_state.set(GameState::Merchant);
     }
 }
 
@@ -355,7 +363,15 @@ pub fn handle_encounter_complete(
         despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups);
         room_mods.0.clear();
         if run_state.current_act >= 3 {
-            // Run complete — tear the run down; Phase 8 records the score / RunRecord.
+            // Run complete (Act-3 boss down) — a victory. Capture the summary before teardown so the
+            // game-over screen can render it (Phase 7.5B); Phase 8 also records the score / RunRecord.
+            commands.insert_resource(GameOverSummary {
+                victory: true,
+                hero_id: run_state.hero_id.clone(),
+                level: run_state.player_level,
+                act: Some(run_state.current_act),
+                node_column: run_state.act_graph.node(run_state.current_node).map(|n| n.column),
+            });
             commands.remove_resource::<CurrentEncounter>();
             commands.remove_resource::<RunState>();
             next_state.set(GameState::GameOver);

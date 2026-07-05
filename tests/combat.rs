@@ -6,6 +6,7 @@
 // first hit immediate), kill credit → XP, and player death.
 
 use bevy::math::Vec2;
+use rust_game::game::state::GameState;
 use rust_game::player::components::Experience;
 use rust_game::sim::Sim;
 
@@ -103,4 +104,6 @@ fn player_despawns_on_death() {
     sim.deal_damage(player, 150.0);
     sim.step(2);
     assert!(sim.try_player().is_none(), "player despawned at 0 hp");
+    // Phase 7.5B: death now freezes into GameOver instead of leaving a dead world running.
+    assert_eq!(sim.game_state(), GameState::GameOver, "death enters GameOver");
 }

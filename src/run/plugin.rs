@@ -13,9 +13,13 @@ use crate::core::sets::CombatSet;
 use crate::enemy::systems::death::enemy_death;
 use crate::game::state::GameState;
 use crate::run::state::{CurrentEncounter, RoomModifiers, RunState};
+use crate::run::systems::menu::{handle_character_select_input, handle_main_menu_input};
+use crate::run::systems::reset::{
+    apply_start_run_request, handle_game_over_input, StartRunRequest,
+};
 use crate::run::systems::select::handle_map_select;
 use crate::run::systems::transitions::{
-    check_objective, handle_encounter_complete, load_encounter, EncounterCompleteEvent,
+    check_objective, enter_merchant, handle_encounter_complete, load_encounter, EncounterCompleteEvent,
 };
 use crate::world::graph::RoomModifierDef;
 
@@ -26,14 +30,15 @@ impl Plugin for RunPlugin {
         app.init_resource::<RoomModifiers>()
             // ThroneRoom curse defs (`.roommod.ron`) — loaded but inert until a ThroneRoom is entered.
             .register_def_library::<RoomModifierDef>()
-            .add_event::<EncounterCompleteEvent>();
+            .add_event::<EncounterCompleteEvent>()
+            .add_event::<StartRunRequest>();
 
         // Encounter lifecycle — in the CombatSet::Death region (after enemy_death, so a killed boss
         // is despawned before the objective is counted). Gated on a live run so the golden campaign,
         // which never inserts CurrentEncounter, leaves every system inert (neutral by construction).
         app.add_systems(
             Update,
-            (load_encounter, check_objective, handle_encounter_complete)
+            (load_encounter, check_objective, handle_encounter_complete, enter_merchant)
                 .chain()
                 .in_set(CombatSet::Death)
                 .after(enemy_death)
@@ -47,6 +52,30 @@ impl Plugin for RunPlugin {
             handle_map_select
                 .run_if(in_state(GameState::MapSelect))
                 .run_if(resource_exists::<RunState>),
+        );
+
+        // Run reset / restart (Phase 7.5B). `handle_game_over_input` reads R/M on the death screen;
+        // `apply_start_run_request` performs the exclusive-world reset only on a frame carrying a
+        // request (so it is inert — and neutral — in the runless campaign).
+        app.add_systems(
+            Update,
+            handle_game_over_input.run_if(in_state(GameState::GameOver)),
+        );
+        app.add_systems(
+            Update,
+            apply_start_run_request.run_if(on_event::<StartRunRequest>),
+        );
+
+        // Main menu + character select (Phase 7.5C). Each is gated on its own state; the campaign
+        // never enters Menu/CharacterSelect ⇒ both are inert there. Selecting a hero emits a
+        // StartRunRequest, handled by the shared reset path above.
+        app.add_systems(
+            Update,
+            handle_main_menu_input.run_if(in_state(GameState::Menu)),
+        );
+        app.add_systems(
+            Update,
+            handle_character_select_input.run_if(in_state(GameState::CharacterSelect)),
         );
     }
 }

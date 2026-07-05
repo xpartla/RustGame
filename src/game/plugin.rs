@@ -10,9 +10,11 @@
 // The windowed game (src/main.rs) adds GamePlugin = logic + presentation. Behavior is
 // unchanged from before the split.
 
+use bevy::input::common_conditions::input_just_pressed;
 use bevy::prelude::*;
 use crate::ability::AbilityPlugin;
 use crate::core::CorePlugin;
+use crate::game::pause::toggle_pause;
 use crate::enemy::EnemyPlugin;
 use crate::game::presentation::PresentationPlugin;
 use crate::game::state::GameState;
@@ -23,7 +25,7 @@ use crate::progression::plugin::ProgressionPlugin;
 use crate::projectile::ProjectilePlugin;
 use crate::run::rng::RunRng;
 use crate::run::RunPlugin;
-use crate::run::systems::transitions::auto_start_run;
+use crate::run::systems::menu::enter_main_menu;
 use crate::status::plugin::StatusPlugin;
 use crate::talent::plugin::TalentPlugin;
 use crate::world::WorldPlugin;
@@ -63,6 +65,10 @@ impl Plugin for GameLogicPlugin {
             // with no run active — the headless sim's default, and the golden campaign — they are inert.
             RunPlugin,
         ));
+
+        // Pause toggle (Phase 7.5B). Only runs on a frame where Esc is pressed; the golden campaign
+        // never presses Esc, so it is byte-identical there.
+        app.add_systems(Update, toggle_pause.run_if(input_just_pressed(KeyCode::Escape)));
     }
 }
 
@@ -73,10 +79,10 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(GameLogicPlugin);
         app.add_plugins(PresentationPlugin);
-        // Windowed-only auto-start (D1): boot into an Act-1 encounter with a fresh entropy seed. Added
-        // by GamePlugin (windowed), NOT GameLogicPlugin — the headless sim never auto-starts
-        // (Sim::start_run drives runs there), so the golden campaign stays runless and byte-identical.
-        // PostStartup so the player, map, and LevelUpFlowState (all inserted in Startup) already exist.
-        app.add_systems(PostStartup, auto_start_run);
+        // Windowed-only boot to the main menu (Phase 7.5C, D1): replaces Phase 7's auto-start-run.
+        // The game now boots Menu → CharacterSelect → run. Added by GamePlugin (windowed), NOT
+        // GameLogicPlugin — the headless sim never runs it (Sim stays InRun), so the golden campaign
+        // is byte-identical. Startup so the Menu transition applies before the first gated Update.
+        app.add_systems(Startup, enter_main_menu);
     }
 }

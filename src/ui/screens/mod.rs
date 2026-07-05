@@ -1,2 +1,8 @@
 pub mod talent_picker;
 pub mod map_select;
+pub mod hud;
+pub mod game_over;
+pub mod pause;
+pub mod main_menu;
+pub mod character_select;
+pub mod merchant;

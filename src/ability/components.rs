@@ -79,3 +79,25 @@ pub struct UnlockAbilityEvent {
     pub ability_id: AbilityId,
     pub owner: Entity,
 }
+
+/// Presentation-only cast-VFX bus (Phase 7.5F). `execute_ready_abilities` *emits* this the moment a
+/// cast commits — write-only, no state mutation / RNG / spawns — so the golden campaign trace is
+/// byte-identical (a VFX touches no snapshot field). A presentation system (game/vfx.rs) consumes it
+/// to draw the flash, so logic never spawns a VFX entity (which would move the baseline). This is the
+/// bus the §8.5 "Blood Boil nova flash" item needed. Plain `add_event` — a missed frame is harmless.
+#[derive(Event, Debug, Clone)]
+pub struct CastVfxEvent {
+    pub caster: Entity,
+    pub ability_id: AbilityId,
+    pub origin: Vec2,
+    pub kind: CastVfxKind,
+}
+
+/// What flash a cast wants drawn. `Nova` (self-centred novas — Blood Boil / Consecrated Ground)
+/// carries the resolved radius; every other cast is `Other` (currently drawn by the existing gizmo
+/// paths, so the bus ignores it for now).
+#[derive(Debug, Clone, Copy)]
+pub enum CastVfxKind {
+    Nova { radius: f32 },
+    Other,
+}

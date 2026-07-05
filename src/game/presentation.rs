@@ -21,7 +21,9 @@ use crate::core::systems::render_sync::{apply_facing_rotation, sync_transform};
 use crate::enemy::systems::debug::draw_enemy_attack_flash;
 use crate::enemy::systems::visuals::attach_enemy_visuals;
 use crate::game::state::GameState;
+use crate::game::vfx::{draw_cast_vfx, spawn_cast_vfx};
 use crate::pickup::systems::visuals::attach_pickup_visuals;
+use crate::zone::systems::visuals::attach_zone_visuals;
 use crate::player::systems::debug::draw_player_facing;
 use crate::player::systems::visuals::attach_player_visuals;
 use crate::projectile::systems::debug::{draw_arc_attack_gizmos, draw_circle_attack_gizmos};
@@ -58,8 +60,13 @@ impl Plugin for PresentationPlugin {
                 attach_enemy_visuals,
                 attach_pickup_visuals,
                 attach_projectile_visuals,
+                attach_zone_visuals,
             ),
         );
+
+        // Cast-VFX bus (Phase 7.5F): spawn nova rings from CastVfxEvent, then animate/draw them.
+        // Ungated so an in-flight flash finishes (and despawns) even across a state change.
+        app.add_systems(Update, (spawn_cast_vfx, draw_cast_vfx).chain());
 
         // Status tinting: recolor enemies by their active status effect (Phase 4).
         app.add_systems(Update, tint_status_effects.run_if(in_state(GameState::InRun)));

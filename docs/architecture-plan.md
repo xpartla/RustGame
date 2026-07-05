@@ -922,15 +922,31 @@ the golden master stayed byte-identical; see §8.9, docs/phase7-plan.md)_
    branch pick → teardown → load next; ActBoss advances the act. Plus the **live scaling driver** (D5
    depth), spawn roles (`MapBoss`), the ThroneRoom curse + Rare-floor kiss, and a Merchant rest node.
 
+**Phase 7.5 — UI layer & presentation backlog** _(complete 2026-07-05 — full scope; the golden master
+stayed byte-identical; see §8.10, docs/phase7.5-ui-plan.md)_
+1. ✅ In-run HUD (health/XP/cooldowns/stance/class-resource slot/status/objective/boss bar) + shared
+   `ui/theme.rs`; `draw_health_bars` skips the player (D5).
+2. ✅ Game-over + pause flows (death → `GameState::GameOver` + summary + restart; Esc ⇄ Paused) and the
+   `run/systems/reset.rs` run-reset primitive.
+3. ✅ Main menu + character select (D1: windowed boot Menu → CharacterSelect → run, replacing
+   `auto_start_run`); the Mage is reachable without the debug key.
+4. ✅ Visual act-graph map view (over Phase 7's picker) + ThroneRoom curse banner.
+5. ✅ Merchant screen + ops (D2: remove + 3-for-1 trade), reusing the Phase-2 uninstall path + the
+   kiss picker machinery.
+6. ✅ Presentation backlog: zone discs + the cast-VFX bus (Blood Boil nova flash) — closes §8.5's
+   nova row + the Phase-6 zone-visuals deferral.
+
 **Phase 8 — Persistence + meta**
 1. Implement `RunState` serialization (save on node complete, load on resume).
-2. Implement `MetaState` with hero unlocks and scoreboard.
-3. Wire "Resume Run" and "Start New Run" from main menu.
+2. Implement `MetaState` with hero unlocks and scoreboard (+ the score formula, §8.1(10)); enable the
+   greyed-out main-menu buttons (Resume / Scoreboard) + hero unlock/greying on character select.
+3. Wire "Resume Run" from the main menu (the menu + "Start New Run" + character select shipped in
+   Phase 7.5); move player/map spawn from `Startup` to `OnEnter(InRun)` (the `game/state.rs` TODO).
 
 **Phase 9 — Remaining classes + content pass**
 1. Add remaining heroes (each is one RON file + ability/talent RONs).
-2. Fill in enemy ability kits per theme.
-3. Merchant screen, boss room encounters, act boss fights.
+2. Fill in enemy ability kits per theme + the real per-theme rosters.
+3. Multi-phase boss AI for boss rooms + act boss fights (the merchant screen shipped in Phase 7.5).
 
 ---
 
@@ -965,11 +981,15 @@ rather than discovered mid-phase.
    Phase 5; also the prerequisite for meaningful balance testing.
 8. **Enemy projectiles + AMZ blocking** — Phase 5's ranged_caster presupposes projectile
    motion/collision; AMZ's projectile-blocking zone is unscheduled.
-9. **UI phase missing entirely** — §2 lists a ui/ module, but no phase builds the HUD
-   (health/cooldowns/XP/stance), menus, character select, act-graph map view, merchant screen,
-   scoreboard, settings, or the game-over/pause flow (GameState variants exist, transitions
-   unwired: player death is still a bare despawn). Phase 2 delivered only the talent-picker
-   overlay. → New phase between 7 and 8.
+9. ~~**UI phase missing entirely**~~ **DONE (Phase 7.5, §8.10).** §2's ui/ module now carries the
+   in-run HUD (health/XP/cooldowns/stance/objective/boss bar), the main menu + character select
+   (windowed boot Menu → CharacterSelect → run), the game-over + pause flows (death now enters
+   `GameState::GameOver` with a summary + restart, not a bare despawn), the visual act-graph map view +
+   ThroneRoom curse banner, and a working merchant screen (remove / 3-for-1 trade). Plus the
+   presentation backlog: zone discs + the cast-VFX bus (Blood Boil nova flash). **Still deferred to
+   Phase 8:** scoreboard + score formula, Resume Run, hero unlock/greying, Log-In profile, and moving
+   player/map spawn from `Startup` to `OnEnter(InRun)`. All keyboard-first (headless-testable); the
+   screens are verified on Windows.
 10. **Smaller unspecified items** — talent-offer rarity weighting; "special events" beyond
     ThroneRoom; `EnemyRarity::Elite` spawn logic; score computation for the scoreboard;
     multi-phase boss design (the plan itself marks the "boss" AI hook TBD — realistically its
@@ -1028,7 +1048,7 @@ phase that should absorb each item:
 | ~~`execute_ready_abilities` mixes trigger validation, faction gather, param resolution, effect application, VFX/projectile spawning, whiff/suppress gates, and cooldown bookkeeping — split around the hook points~~ **RESOLVED (Phase 6).** The first code-driven hook (`blood_boil_dnd_range`) landed; `execute_ready_abilities` now interleaves Pre hooks (resolve→behavior boundary) and Post hooks (after apply), each gated on `ActiveHooks` + registration. `ability/hooks.rs` = `AbilityHook`/`HookContext`/`HookRegistry`. Byte-identical (no registered hook is active on a campaign cast). | — | Done |
 | `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent |
 | ~~`suppress_abilities` is parsed but neither resolved into a component nor consumed~~ **RESOLVED (Phase 5).** `resolve_actor_status` folds it into a new `AbilitiesSuppressed` marker; `auto_cast_abilities`, `execute_ready_abilities`, and the hero input/stance systems skip a suppressed caster. Neutral (no shipped content applies stun). | — | Done |
-| ~~Travelling projectiles / Blood Boil have no visuals~~ **PARTLY RESOLVED (Phase 4).** Projectile sprites (`attach_projectile_visuals`, `Added<ProjectileMotion>`, element-tinted) + status tints (`tint_status_effects`) landed as pure presentation. **Still open:** the Blood Boil **nova flash** — the cone-flash path is logic-side, so a nova flash spawned the same way would move the golden baseline; it needs a presentation-only cast-VFX event bus | Nova flash: when the cast-VFX bus lands (or a baseline regen for it is accepted) |
+| ~~Travelling projectiles / Blood Boil have no visuals~~ **RESOLVED (Phase 4 + 7.5).** Projectile sprites (`attach_projectile_visuals`) + status tints (`tint_status_effects`) landed Phase 4. The Blood Boil **nova flash** landed Phase 7.5 via the **cast-VFX bus** (`CastVfxEvent`, write-only from `execute_ready_abilities` — byte-identical; drawn as a gizmo ring by `game/vfx.rs`). Zone discs (`attach_zone_visuals`) landed too. **Done** — the logic-side cone-flash path is left on gizmos (migrating it earns nothing and risks the baseline). | — |
 | Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if Mage playtesting makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Mage playtesting |
 | Per-hero **base-stat application** — `HeroDef.base_stats` (max_health, move_speed) is data-only; `spawn_player` still uses the shared constants, so the Mage plays with the Death Knight's HP/speed | No class HP/speed differentiation is needed for the stance mechanic; keeping it out kept Phase 4 baseline-neutral | When class HP/speed differentiation matters (feel/balance) |
 | String ids (`AbilityId`/`StatusEffectId`/`TalentId` = `String`) are cloned per event/frame in hot-ish loops | Scale is tiny; determinism unaffected | Only if profiling ever says so (interning/`Arc<str>`) |
@@ -1164,6 +1184,39 @@ boss AI (Phase 9 content — a data edit + boss design); the **visual act-graph 
 the **player-stat ThroneRoom curses'** bespoke consumers (as each mechanic lands). §8.5: the
 `HeroDef.base_stats` per-hero application remains the last open row (the Mage still plays with the DK's
 HP/speed).
+
+### 8.10 Phase 7.5 delivered (2026-07-05)
+
+The **UI layer & presentation backlog**, shipped at **full scope** with a **byte-identical golden
+master** (no regeneration, like Phases 4–7). See `docs/phase7.5-ui-plan.md` §9 and the CHANGELOG
+"Phase 7.5" section. Delivered across 7.5A–7.5G:
+- **The whole user-facing surface is live.** `ui/theme.rs` (shared palette + spawn helpers, the
+  talent picker refactored onto it) underpins: the **in-run HUD** (`hud.rs` — health/XP bars, stance,
+  a `ClassResource` slot, status row, ability slots with cooldown veils + slot labels, objective
+  tracker hidden when runless, a `MapBoss` boss bar); the **main menu + character select** (windowed
+  boot Menu → CharacterSelect → run, D1 — `GamePlugin` swaps `auto_start_run` → `enter_main_menu`);
+  the **game-over + pause** flows; the **visual act-graph map view** (`map_select.rs` upgraded to a
+  Slay-the-Spire column view, same input contract) + **ThroneRoom curse banner**; and the **merchant
+  screen** (`merchant.rs`).
+- **Death → GameOver + restart (was a bare despawn).** `player_death` captures a `GameOverSummary` and
+  enters `GameState::GameOver`; `run/systems/reset.rs::reset_and_start_run` is the shared run-reset
+  primitive (full teardown incl. orphaned `AbilityInstance` entities → fresh player → reseed → new
+  run), driven by a `StartRunRequest` event from the death screen (R) and character-select. Esc toggles
+  `InRun ⇄ Paused`.
+- **Merchant ops (D2).** The Merchant node opens `GameState::Merchant` instead of auto-completing;
+  **remove** reuses the Phase-2 `uninstall_removed_talent`, **3-for-1 trade** removes three and opens a
+  rarity-floored picker (reusing the ThroneRoom-kiss machinery via `TradeUpRewardEvent`).
+- **Presentation backlog.** Zone discs (`attach_zone_visuals`) + the **cast-VFX bus** (`CastVfxEvent`,
+  write-only from `execute_ready_abilities` — byte-identical; the Blood Boil **nova flash** drawn by
+  `game/vfx.rs`). Closes the §8.5 nova-flash + Phase-6 zone-visuals deferrals.
+
+§8.1 status after Phase 7.5: **(9) UI phase is done** except the Phase-8 carve-outs below. Still open
+from §8.1: shields/absorbs (5), forced movement (6). Deferred from Phase 7.5 with triggers
+(phase7.5-plan §7): **scoreboard + score formula**, **Resume Run**, **hero unlock/greying**, **Log-In
+profile**, and **moving player/map spawn from `Startup` to `OnEnter(InRun)`** — all Phase 8; mouse-input
+handlers, damage numbers / minimap / tooltips, and a settings screen — later UX/art. §8.5: the
+`HeroDef.base_stats` per-hero application is now the **last** open register row (the Mage still plays
+with the DK's HP/speed — Phase 8/9).
 
 ---
 

@@ -585,6 +585,61 @@ impl Sim {
         def.base_params.insert(key.to_string(), value);
     }
 
+    /// The `ActiveHooks` currently installed on the player (one per Behavior talent acquired). Used
+    /// to assert a merchant remove pops the hook.
+    pub fn active_hooks(&mut self) -> Vec<String> {
+        let player = self.player();
+        self.app
+            .world()
+            .get::<crate::talent::components::ActiveHooks>(player)
+            .map(|h| h.hooks.clone())
+            .unwrap_or_default()
+    }
+
+    /// Emits a `MerchantRemoveRequest` for the player (the merchant remove op). Step once afterward so
+    /// the handler + `uninstall_removed_talent` run.
+    pub fn merchant_remove(&mut self, talent_id: &str) {
+        let owner = self.player();
+        self.app.world_mut().send_event(
+            crate::talent::systems::merchant::MerchantRemoveRequest {
+                owner,
+                talent_id: talent_id.to_string(),
+            },
+        );
+    }
+
+    /// Emits a `MerchantTradeRequest` sacrificing three talents (the 3-for-1 trade op). Step
+    /// afterward so the trade → TradeUpRewardEvent → Rare-floored picker chain runs.
+    pub fn merchant_trade(&mut self, sacrifice: [&str; 3]) {
+        let owner = self.player();
+        self.app.world_mut().send_event(
+            crate::talent::systems::merchant::MerchantTradeRequest {
+                owner,
+                sacrifice: [sacrifice[0].to_string(), sacrifice[1].to_string(), sacrifice[2].to_string()],
+            },
+        );
+    }
+
+    /// The talent ids currently in the pending offer (the TalentPicker options), for asserting a
+    /// trade-up's rarity floor.
+    pub fn pending_offer_ids(&self) -> Vec<String> {
+        self.app
+            .world()
+            .get_resource::<LevelUpFlowState>()
+            .and_then(|f| f.pending_offer.as_ref().map(|o| o.options.clone()))
+            .unwrap_or_default()
+    }
+
+    /// The rarity of a loaded talent def (`"Common"`/`"Rare"`/`"Epic"`), for offer-floor assertions.
+    pub fn talent_rarity(&self, talent_id: &str) -> Option<String> {
+        let world = self.app.world();
+        let handle = world.resource::<TalentLibrary>().get(talent_id)?.clone();
+        world
+            .resource::<Assets<TalentDef>>()
+            .get(&handle)
+            .map(|d| format!("{:?}", d.rarity))
+    }
+
     /// Installs a talent on the player through the real TalentAcquiredEvent path (adds to
     /// AcquiredTalents; a `Behavior` talent also installs its `ActiveHook`). Step once afterward so
     /// `install_acquired_talent` runs. Hands a talent to the player without an offer — e.g. the
@@ -752,6 +807,44 @@ impl Sim {
         self.app.world().get_resource::<RunState>().is_some()
     }
 
+    /// Emits a `StartRunRequest` (the death-screen R / character-select path). Step at least once
+    /// afterward so `apply_start_run_request` runs the reset and `start_run` boots the fresh run.
+    pub fn request_start_run(&mut self, hero_id: &str, seed: u64) {
+        self.app.world_mut().send_event(
+            crate::run::systems::reset::StartRunRequest { hero_id: hero_id.to_string(), seed },
+        );
+    }
+
+    /// Total `AbilityInstance` entities in the world (they are separate top-level entities). Used to
+    /// assert a clean teardown on restart (a dead player's / despawned enemy's instances are gone).
+    pub fn ability_instance_count(&mut self) -> usize {
+        let world = self.app.world_mut();
+        let mut q = world.query::<&AbilityInstance>();
+        q.iter(world).count()
+    }
+
+    /// Every `AbilityInstance` entity. Capture this before a restart, then assert none survive after
+    /// (a run reset must despawn all of them — the fresh run spawns brand-new instance entities).
+    pub fn ability_instance_entities(&mut self) -> Vec<Entity> {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<Entity, With<AbilityInstance>>();
+        q.iter(world).collect()
+    }
+
+    /// Whether an entity is still alive (a despawned entity's handle never matches a reused index —
+    /// generations differ — so this is a safe post-teardown liveness check).
+    pub fn entity_exists(&self, entity: Entity) -> bool {
+        self.app.world().get_entity(entity).is_ok()
+    }
+
+    /// The current `GameOverSummary`, if a run has ended (victory flag + captured hero/level).
+    pub fn game_over_victory(&self) -> Option<bool> {
+        self.app
+            .world()
+            .get_resource::<crate::game::state::GameOverSummary>()
+            .map(|s| s.victory)
+    }
+
     /// The current act (1–3), if a run is active.
     pub fn current_act(&self) -> Option<u8> {
         self.app.world().get_resource::<RunState>().map(|r| r.current_act)
@@ -813,6 +906,29 @@ impl Sim {
         self.app
             .world_mut()
             .insert_resource(CurrentEncounter::for_node(&node, depth));
+    }
+
+    /// Drives the sim to `GameState::Menu` (the windowed boot state — the headless sim defaults to
+    /// InRun, which never runs `enter_main_menu`). Steps once so the transition applies.
+    pub fn enter_menu(&mut self) {
+        self.app
+            .world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Menu);
+        self.step(1);
+    }
+
+    /// Picks hero `i` (0-based, `HeroDef::MANIFEST` order) on the character-select screen — presses
+    /// the matching digit for one frame (drives `handle_character_select_input`). The sim must be in
+    /// `GameState::CharacterSelect`.
+    pub fn select_hero_index(&mut self, i: usize) {
+        let key = match i {
+            0 => KeyCode::Digit1,
+            1 => KeyCode::Digit2,
+            2 => KeyCode::Digit3,
+            _ => KeyCode::Digit4,
+        };
+        self.tap_key(key);
     }
 
     /// Picks reachable branch `i` (0/1/2) in the MapSelect overlay — presses the matching digit for

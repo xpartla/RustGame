@@ -125,6 +125,17 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   Plus unit tests: `build_act_graph` determinism/invariants, the room-layout blob-port regression pin,
   the depth formula, and `warlord`/theme RON parse. The golden master stays **byte-identical** (the
   campaign never starts a run — encounter systems gate on `CurrentEncounter`/`RunState`).
+- Phase 7.5 (done): the UI is presentation-only (never headless), so these drive its **logic** — the
+  state flows, the run-reset primitive, and the merchant ops — through the real input paths.
+  `tests/game_flow.rs` — "player death enters GameOver" (the declared death behavior change),
+  "restart after death boots a fresh run" (a clean entity census incl. the dead player's ability
+  instances; deterministic under a fixed seed), "Esc toggles pause and preserves combat events" (the
+  freeze contract, now for `Paused`), "pause does not tick the world", "character-select starts the
+  chosen hero" (Menu → CharacterSelect → Mage → the entry encounter). `tests/merchant.rs` — "merchant
+  remove uninstalls talent and hook", "merchant trade offers higher rarity". `tests/combat.rs::
+  player_despawns_on_death` gained a `GameOver` assertion. The golden master stays **byte-identical**
+  (the whole UI is in `PresentationPlugin`; every logic touchpoint is inert on the campaign path).
+  Screens themselves are verified manually on Windows (WSL has no GPU).
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

@@ -7,11 +7,13 @@
 // screen re-renders whenever that state changes.
 //
 // Structure: a full-screen root holds a static title, an OptionsContainer (whose children are
-// rebuilt on each offer change), and a static footer hint.
+// rebuilt on each offer change), and a static footer hint. Chrome + rarity colors come from
+// ui/theme.rs (Phase 7.5A) so it matches every other screen.
 
 use bevy::prelude::*;
 use crate::progression::state::LevelUpFlowState;
 use crate::talent::assets::{TalentDef, TalentLibrary};
+use crate::ui::theme::{self, text};
 
 /// Root overlay node. Despawned on exit (recursively removes the whole subtree).
 #[derive(Component)]
@@ -28,26 +30,9 @@ pub struct OptionRow;
 /// Spawns the static overlay chrome on entering the TalentPicker state.
 pub fn spawn_picker_root(mut commands: Commands) {
     commands
-        .spawn((
-            TalentPickerRoot,
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(18.0),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.78)),
-        ))
+        .spawn((TalentPickerRoot, theme::overlay_root(), BackgroundColor(theme::OVERLAY_BG)))
         .with_children(|root| {
-            root.spawn((
-                Text::new("LEVEL UP  —  Choose a Talent"),
-                TextFont { font_size: 40.0, ..default() },
-                TextColor(Color::srgb(0.92, 0.85, 0.55)),
-            ));
+            root.spawn(text("LEVEL UP  —  Choose a Talent", theme::FS_TITLE, theme::ACCENT));
             root.spawn((
                 OptionsContainer,
                 Node {
@@ -57,11 +42,7 @@ pub fn spawn_picker_root(mut commands: Commands) {
                     ..default()
                 },
             ));
-            root.spawn((
-                Text::new("1 / 2 / 3 to choose      ·      Esc to skip"),
-                TextFont { font_size: 22.0, ..default() },
-                TextColor(Color::srgb(0.65, 0.65, 0.7)),
-            ));
+            root.spawn(text("1 / 2 / 3 to choose      ·      Esc to skip", theme::FS_HINT, theme::HINT));
         });
 }
 
@@ -94,24 +75,18 @@ pub fn render_talent_picker(
         if offer.options.is_empty() {
             parent.spawn((
                 OptionRow,
-                Text::new("(no eligible talents — press Esc to skip)"),
-                TextFont { font_size: 24.0, ..default() },
-                TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                text("(no eligible talents — press Esc to skip)", theme::FS_BODY, theme::DIM),
             ));
             return;
         }
         for (i, id) in offer.options.iter().enumerate() {
-            let (name, rarity) = library
-                .get(id)
-                .and_then(|h| defs.get(h))
-                .map(|d| (d.display_name.clone(), format!("{:?}", d.rarity)))
-                .unwrap_or_else(|| (id.clone(), "?".to_string()));
-            parent.spawn((
-                OptionRow,
-                Text::new(format!("{}.   {}   [{}]", i + 1, name, rarity)),
-                TextFont { font_size: 28.0, ..default() },
-                TextColor(Color::srgb(0.9, 0.9, 0.95)),
-            ));
+            let resolved = library.get(id).and_then(|h| defs.get(h));
+            let color = resolved.map(|d| theme::rarity_color(&d.rarity)).unwrap_or(theme::TEXT);
+            let label = match resolved {
+                Some(d) => format!("{}.   {}   [{:?}]", i + 1, d.display_name, d.rarity),
+                None => format!("{}.   {}   [?]", i + 1, id),
+            };
+            parent.spawn((OptionRow, text(label, theme::FS_BODY, color)));
         }
     });
 }
