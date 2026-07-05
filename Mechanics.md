@@ -146,7 +146,9 @@ Fire form \- DoTs, spreading damage, big AoE
 
 * Stance swap \- Q (active, no cooldown) (Unlocked at level 1\)  
   * Fire \-\> Ice \- gain ice barrier absorbing the next attack / projectile  
+    * _Phase 4 (implemented): Ice Barrier is a **\-40% damage-taken buff for 3s** (a status), a stand-in for the true next-hit absorb — the absorb/shield system is deferred (architecture-plan §8.6)._  
   * Ice \-\> Fire, \- gain boots of fire, increase movement speed by Y% for X sec  
+    * _Phase 4 (implemented): Boots of Fire is **\+30% movement speed for 3s** (a status). Values are tunable placeholders._  
 * Fireblast \- fire basic attack (X second cooldown) (Unlocked at level 1\)  
   * Shoot a projectile, dealing X damage, setting enemy hit ablaze  
     * (common, unique) Projectile explodes on impact, dealing X damage to nearby enemies  

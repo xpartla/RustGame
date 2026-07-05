@@ -22,10 +22,9 @@
 //   - status/systems/resolve.rs (Phase 3C): folds move/damage/immobilize into actor modifiers.
 //   - ability/systems/execute.rs: EffectSpec::ApplyStatus emits ApplyStatusEvent.
 
-use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
-use std::collections::HashMap;
 use crate::ability::assets::HookId;
+use crate::core::def_library::{DefAsset, DefLibrary};
 use crate::core::events::DamageTag;
 
 pub type StatusEffectId = String;
@@ -87,44 +86,24 @@ pub enum StackingRule {
     StackUnlimited,
 }
 
-/// Asset loader for `*.status.ron`. Registered in `StatusPlugin::build`. A distinct extension
-/// (mirroring `*.ability.ron` / `*.talent.ron`) so the loaders never collide on plain `.ron`.
-#[derive(Default)]
-pub struct StatusEffectDefLoader;
+/// Resource mapping StatusEffectId → Handle<StatusEffectDef>. A `DefLibrary<StatusEffectDef>`
+/// (see core/def_library.rs); populated at startup from `StatusEffectDef::MANIFEST`, read by the
+/// status systems. The `.status.ron` extension keeps the loader from colliding on plain `.ron`.
+pub type StatusLibrary = DefLibrary<StatusEffectDef>;
 
-impl AssetLoader for StatusEffectDefLoader {
-    type Asset = StatusEffectDef;
-    type Settings = ();
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
-    async fn load(
-        &self,
-        reader: &mut dyn Reader,
-        _settings: &(),
-        _load_context: &mut LoadContext<'_>,
-    ) -> Result<StatusEffectDef, Self::Error> {
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).await?;
-        let def = ron::de::from_bytes::<StatusEffectDef>(&bytes)?;
-        Ok(def)
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["status.ron"]
-    }
-}
-
-/// Resource: maps a StatusEffectId to the handle of its loaded StatusEffectDef.
-/// Populated at startup (`load_status_defs`); read by the status systems.
-#[derive(Resource, Default)]
-pub struct StatusLibrary {
-    pub defs: HashMap<StatusEffectId, Handle<StatusEffectDef>>,
-}
-
-impl StatusLibrary {
-    pub fn get(&self, id: &str) -> Option<&Handle<StatusEffectDef>> {
-        self.defs.get(id)
-    }
+impl DefAsset for StatusEffectDef {
+    const EXTENSIONS: &'static [&'static str] = &["status.ron"];
+    const MANIFEST: &'static [(&'static str, &'static str)] = &[
+        ("bleed", "status_effects/bleed.status.ron"),
+        ("blaze", "status_effects/blaze.status.ron"),
+        ("frostbite", "status_effects/frostbite.status.ron"),
+        ("holy_mark", "status_effects/holy_mark.status.ron"),
+        ("root", "status_effects/root.status.ron"),
+        ("stun", "status_effects/stun.status.ron"),
+        // Phase 4 — Mage stance-swap effects (self-applied on entering a stance).
+        ("boots_of_fire", "status_effects/boots_of_fire.status.ron"),
+        ("ice_barrier", "status_effects/ice_barrier.status.ron"),
+    ];
 }
 
 #[cfg(test)]

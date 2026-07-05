@@ -22,10 +22,9 @@
 //   - TalentLibrary (below) maps TalentId → Handle<TalentDef> so runtime systems can
 //     resolve an acquired talent's string id to the loaded asset (mirrors AbilityLibrary).
 
-use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
-use std::collections::HashMap;
 use crate::ability::assets::{AbilityId, HookId, StatId};
+use crate::core::def_library::{DefAsset, DefLibrary};
 
 pub type TalentId = String;
 
@@ -91,44 +90,21 @@ pub enum ModOp {
     Override(f32),
 }
 
-/// Asset loader for `*.talent.ron`. Registered in `TalentPlugin::build`.
-#[derive(Default)]
-pub struct TalentDefLoader;
+/// Resource mapping TalentId → Handle<TalentDef>. A `DefLibrary<TalentDef>` (see
+/// core/def_library.rs); populated at startup from `TalentDef::MANIFEST`, read by resolve_params
+/// (modifier stack) and the offer generator to resolve an acquired/eligible talent id to the
+/// actual `TalentDef`.
+pub type TalentLibrary = DefLibrary<TalentDef>;
 
-impl AssetLoader for TalentDefLoader {
-    type Asset = TalentDef;
-    type Settings = ();
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
-    async fn load(
-        &self,
-        reader: &mut dyn Reader,
-        _settings: &(),
-        _load_context: &mut LoadContext<'_>,
-    ) -> Result<TalentDef, Self::Error> {
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).await?;
-        let def = ron::de::from_bytes::<TalentDef>(&bytes)?;
-        Ok(def)
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["talent.ron"]
-    }
-}
-
-/// Resource: maps a TalentId to the handle of its loaded TalentDef asset.
-/// Populated at startup (`load_talent_defs`); read by resolve_params (modifier stack) and the
-/// offer generator to resolve an acquired/eligible talent id to the actual `TalentDef`.
-#[derive(Resource, Default)]
-pub struct TalentLibrary {
-    pub defs: HashMap<TalentId, Handle<TalentDef>>,
-}
-
-impl TalentLibrary {
-    pub fn get(&self, id: &str) -> Option<&Handle<TalentDef>> {
-        self.defs.get(id)
-    }
+impl DefAsset for TalentDef {
+    const EXTENSIONS: &'static [&'static str] = &["talent.ron"];
+    const MANIFEST: &'static [(&'static str, &'static str)] = &[
+        ("death_strike_leech_common", "talents/death_strike_leech_common.talent.ron"),
+        ("death_strike_range_common", "talents/death_strike_range_common.talent.ron"),
+        ("death_strike_damage_common", "talents/death_strike_damage_common.talent.ron"),
+        ("death_strike_bone_shield_epic", "talents/death_strike_bone_shield_epic.talent.ron"),
+        ("blood_boil_dnd_range_rare", "talents/blood_boil_dnd_range_rare.talent.ron"),
+    ];
 }
 
 #[cfg(test)]

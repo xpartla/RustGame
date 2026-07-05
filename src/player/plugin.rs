@@ -3,7 +3,6 @@ use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
-use crate::player::systems::ability_input::player_ability_input;
 use crate::player::systems::update_player_facing::update_player_facing;
 use crate::player::systems::death::player_death;
 use crate::player::systems::experience::{apply_level_up_reward, gain_experience};
@@ -22,9 +21,8 @@ impl Plugin for PlayerPlugin {
             (
                 player_input.in_set(MovementSet::Intent),
                 update_player_facing.before(CombatSet::Damage),
-                // Input → ability trigger. Fires before CombatSet::Damage so the ability
-                // system (also in that set) can act on the event the same frame.
-                player_ability_input.after(update_player_facing).before(CombatSet::Damage),
+                // Input → ability trigger now lives in the hero indirection layer
+                // (hero/systems/input_slot.rs, wired by HeroPlugin), which reads ActiveStance.
                 player_death.in_set(CombatSet::Death),
                 // XP lands the same frame as a kill: enemy_death emits GainXpEvent in
                 // CombatSet::Death, so consume it after that set runs.

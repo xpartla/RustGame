@@ -11,23 +11,25 @@
 //
 // All runtime systems run in InState(GameState::InRun). Execution runs in CombatSet::Damage.
 
-use bevy::asset::AssetApp;
 use bevy::prelude::*;
-use crate::ability::assets::{AbilityDef, AbilityDefLoader, AbilityId, AbilityLibrary};
+use crate::ability::assets::{AbilityDef, AbilityId};
 use crate::ability::behavior::{BehaviorRegistry, MeleeCone, ProjectileBehavior, SelfNova};
-use crate::ability::components::{AbilityCooldown, AbilityInstance, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
+use crate::core::def_library::DefLibraryAppExt;
 use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
+use crate::hero::assets::{HeroDef, HeroLibrary};
+use crate::hero::components::HeroIdentity;
 use crate::player::components::Player;
 
 pub struct AbilityPlugin;
 
 impl Plugin for AbilityPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<AbilityDef>()
-            .register_asset_loader(AbilityDefLoader)
-            .init_resource::<AbilityLibrary>()
+        // AbilityDef asset + RON loader + AbilityLibrary + the Startup populate system, in one
+        // call (see core/def_library.rs — the generic that replaced the per-type boilerplate).
+        app.register_def_library::<AbilityDef>()
             .add_event::<TriggerAbilityEvent>()
             .add_event::<UnlockAbilityEvent>();
 
@@ -39,7 +41,6 @@ impl Plugin for AbilityPlugin {
         behaviors.register("self_nova", SelfNova);
         app.insert_resource(behaviors);
 
-        app.add_systems(Startup, load_ability_defs);
         // Ungated by GameState: when several level-ups land in one frame and cross from the
         // AbilityUnlock band into TalentChoices, the UnlockAbilityEvents are written the same
         // frame the state flips to TalentPicker. A reader gated on InRun would skip that frame
@@ -59,40 +60,28 @@ impl Plugin for AbilityPlugin {
     }
 }
 
-/// Loads each ability RON into the AbilityLibrary, keyed by its id.
-/// Phase 1 loads a fixed list; a later phase can scan the `abilities/` folder.
-fn load_ability_defs(asset_server: Res<AssetServer>, mut library: ResMut<AbilityLibrary>) {
-    const ABILITIES: &[(&str, &str)] = &[
-        ("death_strike", "abilities/death_strike.ability.ron"),
-        ("dnd", "abilities/dnd.ability.ron"),
-        // Phase 3 demonstrators (not yet class/stance-bound — Phase 4 wires them to the Mage/Druid).
-        ("fireblast", "abilities/fireblast.ability.ron"),
-        ("frostbolt", "abilities/frostbolt.ability.ron"),
-        ("scratch", "abilities/scratch.ability.ron"),
-        // Blood Boil: BDK L2/3 band ability, now live as an auto-cast self-nova (Phase 3).
-        ("blood_boil", "abilities/blood_boil.ability.ron"),
-    ];
-    for (id, path) in ABILITIES {
-        library.defs.insert((*id).to_string(), asset_server.load(*path));
-    }
-}
-
-/// PHASE 2 STUB: grants the Blood Death Knight's level-1 abilities to a freshly spawned player
-/// by emitting an UnlockAbilityEvent for each. Phase 4 sources this list from
-/// HeroDef.level_1_abilities instead of hardcoding it. The band abilities unlocked at L2–L6 flow
-/// through the same UnlockAbilityEvent path from progression/systems/level_up.rs.
+/// Grants a hero's level-1 abilities by emitting an UnlockAbilityEvent for each id in
+/// `HeroDef.level_1_abilities` (Phase 4 — was a hardcoded stub). Deferred rather than run on
+/// `Added<Player>` because the HeroDef asset loads asynchronously; the `Level1Granted` marker
+/// makes it fire exactly once per player, the frame its HeroDef becomes available. Band abilities
+/// (L2–L6) flow through the same UnlockAbilityEvent path from progression/systems/level_up.rs.
 ///
-/// Only `death_strike` has a registered behavior in Phase 2; `dnd`/`companion` become inert
-/// AbilityInstances (no behavior, no input binding, no auto-cast yet) until their phases land.
+/// Abilities whose behavior isn't registered yet (e.g. `dnd`/`companion`) become inert
+/// AbilityInstances (no behavior, no input binding, no auto-cast) until their phases land.
 fn grant_level_1_abilities(
+    mut commands: Commands,
     mut unlocks: EventWriter<UnlockAbilityEvent>,
-    players: Query<Entity, Added<Player>>,
+    hero_library: Res<HeroLibrary>,
+    hero_defs: Res<Assets<HeroDef>>,
+    players: Query<(Entity, &HeroIdentity), (With<Player>, Without<Level1Granted>)>,
 ) {
-    const LEVEL_1: &[&str] = &["death_strike", "dnd", "companion"];
-    for owner in &players {
-        for id in LEVEL_1 {
-            unlocks.write(UnlockAbilityEvent { ability_id: (*id).to_string(), owner });
+    for (owner, hero_id) in &players {
+        let Some(handle) = hero_library.get(&hero_id.0) else { continue };
+        let Some(hero_def) = hero_defs.get(handle) else { continue };
+        for id in &hero_def.level_1_abilities {
+            unlocks.write(UnlockAbilityEvent { ability_id: id.clone(), owner });
         }
+        commands.entity(owner).insert(Level1Granted);
     }
 }
 

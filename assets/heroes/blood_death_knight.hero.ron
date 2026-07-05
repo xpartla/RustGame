@@ -39,6 +39,7 @@
             basic: Some("death_strike"),
             special: Some("dnd"),
             movement: None,
+            swap_effect: None,
         ),
     ],
 )

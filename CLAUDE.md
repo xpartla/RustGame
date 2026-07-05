@@ -10,8 +10,9 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register** |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
+| `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -41,18 +42,22 @@ unrelated web project.)
 
 ## Known tech debt (before you add to it)
 
-The maintained register is **`docs/architecture-plan.md` §8.5** — each item has an owning
-phase. Highlights a future session must not "rediscover":
+The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6) —
+each item has an owning phase. Highlights a future session must not "rediscover":
 
-- Library triplication (`AbilityLibrary`/`TalentLibrary`/`StatusLibrary`): build a generic
-  `DefLibrary<T>` at **Phase 4 start**, before `HeroDef` adds a fourth copy.
-- `execute_ready_abilities` needs splitting when ability hooks land (Phase 4).
+- ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
+  the three libraries are type aliases; add new def types via `register_def_library::<T>()`.
+- `execute_ready_abilities` split — **not triggered in Phase 4** (the focused slice landed no
+  code-driven hook); do it with the **first code-driven ability/status hook**.
 - `suppress_abilities` is parsed but not resolved/consumed — Phase 5 must wire it.
-- Travelling projectiles and Blood Boil have **no visuals** — Phase 4 class binding must
-  include a presentation pass.
+- Projectile/status **visuals**: sprites + status tints **done (Phase 4)**; the **Blood Boil nova
+  flash is still open** — needs a presentation-only cast-VFX bus (a logic-path spawn would move the
+  golden baseline).
 - Projectiles fly through walls — **accepted by the project owner (2026-07-05) for now**;
-  revisit during Phase 4 playtesting, not before.
+  revisit during Mage playtesting, not before.
 - `resolved_cd > 0` guard ignores an Override(0) cooldown talent — fix with the first
   cooldown-manipulating talent.
+- `HeroDef.base_stats` is data-only — per-hero HP/move-speed application is deferred (the Mage
+  currently plays with the Death Knight's stats).
 
-When you resolve a register item, update §8.5 and the CHANGELOG in the same change.
+When you resolve a register item, update §8.5/§8.6 and the CHANGELOG in the same change.

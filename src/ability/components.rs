@@ -58,6 +58,11 @@ pub struct StanceGate(pub String); // StanceId
 #[derive(Component, Debug, Default)]
 pub struct AbilityHookState(pub std::collections::HashMap<String, f32>);
 
+/// Marker inserted on a player once its HeroDef.level_1_abilities have been granted, so the
+/// deferred grant (which waits for the HeroDef asset to load) fires exactly once per player.
+#[derive(Component, Debug)]
+pub struct Level1Granted;
+
 /// Event emitted by hero/systems/input_slot.rs when the player presses an input slot.
 /// The ability execution system listens for this and fires the matching AbilityInstance.
 #[derive(Event, Debug)]

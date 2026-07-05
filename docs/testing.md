@@ -100,7 +100,10 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
 - Phase 3 (done): `tests/status.rs`, `tests/projectile.rs`, `tests/autocast.rs` — bleed cadence,
   frostbite slow/amp, root/stun, fire↔frost cancellation, DoT kill credit, projectile
   travel-then-hit, status-on-impact, Blood Boil auto-cast, the per-behavior aim gate.
-- Phase 4: "stance swap remaps LMB", "second class basic attack fires through input slots".
+- Phase 4 (done): `tests/hero_stance.rs` — "stance swap remaps LMB", "second class basic attack
+  fires through input slots", plus DK LMB regression, swap-effect applied (Ice Barrier / Boots of
+  Fire), non-stance Q no-op, and the debug (M) hero swap. Plus unit tests: `DefLibrary::get`,
+  `HeroDef` RON parse (DK + Mage), and the pure `resolve_slot` (stance → InputSlot → AbilityId).
 - Phase 5: "EnemyDef RON spawns an enemy with the declared stats".
 - Phase 6: "D&D zone doubles Blood Boil range inside it".
 - Phase 7: "act graph is seed-deterministic", "objective completion advances the node".

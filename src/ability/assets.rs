@@ -19,9 +19,9 @@
 //   - AbilityLibrary (below) maps AbilityId → Handle<AbilityDef> so runtime systems can
 //     resolve an AbilityInstance's string id to the loaded asset.
 
-use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
 use std::collections::HashMap;
+use crate::core::def_library::{DefAsset, DefLibrary};
 use crate::core::events::DamageTag;
 
 /// Internal identifier — stable across renames. Use snake_case. Referenced from HeroDef,
@@ -130,44 +130,25 @@ pub enum HookPhase {
     Post, // fires after the base behavior (receives hit results in ctx)
 }
 
-/// Asset loader for `*.ability.ron`. Registered in `AbilityPlugin::build`.
-#[derive(Default)]
-pub struct AbilityDefLoader;
-
-impl AssetLoader for AbilityDefLoader {
-    type Asset = AbilityDef;
-    type Settings = ();
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
-    async fn load(
-        &self,
-        reader: &mut dyn Reader,
-        _settings: &(),
-        _load_context: &mut LoadContext<'_>,
-    ) -> Result<AbilityDef, Self::Error> {
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).await?;
-        let def = ron::de::from_bytes::<AbilityDef>(&bytes)?;
-        Ok(def)
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["ability.ron"]
-    }
-}
-
-/// Resource: maps an AbilityId to the handle of its loaded AbilityDef asset.
-/// Populated at startup (`load_ability_defs`); read by the execution system to resolve an
+/// Resource mapping AbilityId → Handle<AbilityDef>. A `DefLibrary<AbilityDef>` (see
+/// core/def_library.rs); populated at startup from `AbilityDef::MANIFEST` via
+/// `register_def_library::<AbilityDef>()`, read by the execution system to resolve an
 /// `AbilityInstance.def_id` string to the actual `AbilityDef`.
-#[derive(Resource, Default)]
-pub struct AbilityLibrary {
-    pub defs: HashMap<AbilityId, Handle<AbilityDef>>,
-}
+pub type AbilityLibrary = DefLibrary<AbilityDef>;
 
-impl AbilityLibrary {
-    pub fn get(&self, id: &str) -> Option<&Handle<AbilityDef>> {
-        self.defs.get(id)
-    }
+impl DefAsset for AbilityDef {
+    const EXTENSIONS: &'static [&'static str] = &["ability.ron"];
+    const MANIFEST: &'static [(&'static str, &'static str)] = &[
+        ("death_strike", "abilities/death_strike.ability.ron"),
+        ("dnd", "abilities/dnd.ability.ron"),
+        // Phase 3 demonstrators. Fireblast/Frostbolt are bound to the Mage's Fire/Ice stances
+        // in Phase 4; Scratch stays an unbound demonstrator until the Druid (later phase).
+        ("fireblast", "abilities/fireblast.ability.ron"),
+        ("frostbolt", "abilities/frostbolt.ability.ron"),
+        ("scratch", "abilities/scratch.ability.ron"),
+        // Blood Boil: BDK L2/3 band ability, live as an auto-cast self-nova (Phase 3).
+        ("blood_boil", "abilities/blood_boil.ability.ron"),
+    ];
 }
 
 #[cfg(test)]

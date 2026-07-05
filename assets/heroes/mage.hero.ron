@@ -1,0 +1,47 @@
+// WORKING NAME: "Mage" — Phase 4 second class (focused vertical slice).
+// Internal id is stable; display_name can change freely.
+//
+// Stance: Fire / Ice (has_stance = true). Q swaps stance; entering a stance applies its
+// swap_effect status to the caster (handled by hero/systems/stance.rs).
+// Resource model: None — the frost-charge class resource is deferred (see architecture §8.5).
+//
+// Level 1: fireblast (fire basic) + frostbolt (ice basic), both owned so either stance's LMB
+// works immediately. Band/passive pools are intentionally empty this slice — full Mage
+// progression content (Blaze, Flamewrath, Frostbite, Frost charge, …) is deferred. The Special
+// slot (Flamestrike / Frost Impale) and Movement slot (dash) are unbound this slice.
+(
+    id: "mage",
+    display_name: "Mage",
+    base_stats: (
+        // Not yet applied to the runtime Health/move-speed (spawn uses the shared constants);
+        // per-hero base-stat application is deferred (see architecture §8.5).
+        max_health: 120.0,
+        move_speed: 40.0,
+    ),
+    resource_model: None,
+    has_stance: true,
+    stance_a: Some("fire"),
+    stance_b: Some("ice"),
+    level_1_abilities: ["fireblast", "frostbolt"],
+    band_2_3_pool: [],
+    band_4_6_pool: [],
+    class_passive_pool: [],
+    stance_slots: [
+        (
+            stance: "fire",
+            basic: Some("fireblast"),
+            special: None,
+            movement: None,
+            // Ice -> Fire grants Boots of Fire (move-speed buff).
+            swap_effect: Some("boots_of_fire"),
+        ),
+        (
+            stance: "ice",
+            basic: Some("frostbolt"),
+            special: None,
+            movement: None,
+            // Fire -> Ice grants Ice Barrier (damage reduction; stands in for the deferred absorb).
+            swap_effect: Some("ice_barrier"),
+        ),
+    ],
+)

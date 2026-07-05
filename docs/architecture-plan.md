@@ -882,9 +882,11 @@ A suggested sequence that keeps the game playable at each step and avoids large-
 2. Implement cross-interaction removal via `DamageTag`.
 3. Add bleed (Druid) and blaze/frostbite (Mage) definitions.
 
-**Phase 4 — Stance system + second class**
-1. Implement `HeroDef` RON loader, stance component, input slot → ability resolution.
-2. Add Druid or Mage as a second playable class to exercise the stance swap path.
+**Phase 4 — Stance system + second class** _(complete 2026-07-05 — focused vertical slice; see §8.6, docs/phase4-plan.md)_
+1. ✅ Implemented `HeroDef` RON loader (via the generic `DefLibrary<T>`), `HeroIdentity` +
+   `ActiveStance` components, and input-slot → ability resolution (`HeroPlugin`).
+2. ✅ Added **Mage** (chosen per §8.2 — least extra machinery) with Fire/Ice stances + Q swap;
+   Death Knight formalized as the default `HeroDef`. Heavier Mage subsystems deferred (§8.6).
 
 **Phase 5 — Enemy ability system + AI registry**
 1. Implement `EnemyDef` RON loader. Port existing 3 placeholder archetypes to RON.
@@ -1004,13 +1006,37 @@ phase that should absorb each item:
 
 | Debt | Why it can wait | Absorb in |
 |---|---|---|
-| `Def`-library triplication — `AbilityLibrary`/`TalentLibrary`/`StatusLibrary` are three near-identical (resource + loader + hardcoded Startup path list) copies | Three copies are tolerable; a fourth is not | **Phase 4 start**: introduce a generic `DefLibrary<T>` / shared loader-registration helper *before* adding `HeroDef`, then port the three existing ones |
-| `execute_ready_abilities` is a 12-param system mixing trigger validation, param resolution, effect application, VFX + projectile spawning, cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway | **Phase 4**, when ability hooks land: split into resolve/apply helpers around the hook points |
-| `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent (Phase 4) |
+| ~~`Def`-library triplication~~ **RESOLVED (Phase 4).** Generic `DefLibrary<T>` + `DefAsset` + `RonDefLoader<T>` + `register_def_library` in `core/def_library.rs`; the three libraries are now type aliases and `HeroDef` reuses the same path. | — | Done |
+| `execute_ready_abilities` is a 12-param system mixing trigger validation, param resolution, effect application, VFX + projectile spawning, cooldown bookkeeping | Cohesive enough today; hooks will force a split anyway. **Not triggered in Phase 4** — the focused slice landed no code-driven hook | First code-driven hook: split into resolve/apply helpers around the hook points |
+| `resolved_cd > 0.0` guard in execute.rs ignores a talent that Overrides cooldown to 0 (Phase 2 note) | No such talent exists; a 0-cd ability would fire every frame and needs a design decision anyway | First cooldown-manipulating talent |
 | `suppress_abilities` is parsed but neither resolved into a component nor consumed | Nothing can stun the player yet; enemies have no casts | **Phase 5** (enemy abilities): resolve in `resolve_actor_status` + gate `auto_cast_abilities`/`execute_ready_abilities` |
-| Travelling projectiles and Blood Boil's nova have **no visuals** — logic-only entities; unbound Mage abilities are invisible if hand-bound | WSL cannot render; demonstrators are not player-facing yet | **Phase 4** (class binding) must include a presentation pass: projectile sprite/mesh dress-up (`Added<ProjectileMotion>`), nova flash VFX, status tints |
-| Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if playtesting Mage content (Phase 4) makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Phase 4 playtesting |
+| ~~Travelling projectiles / Blood Boil have no visuals~~ **PARTLY RESOLVED (Phase 4).** Projectile sprites (`attach_projectile_visuals`, `Added<ProjectileMotion>`, element-tinted) + status tints (`tint_status_effects`) landed as pure presentation. **Still open:** the Blood Boil **nova flash** — the cone-flash path is logic-side, so a nova flash spawned the same way would move the golden baseline; it needs a presentation-only cast-VFX event bus | Nova flash: when the cast-VFX bus lands (or a baseline regen for it is accepted) |
+| Projectiles ignore walls (no TileMap collision) — a Fireblast shoots through obstacles | **Decided 2026-07-05 (project owner): acceptable for now.** Revisit only if Mage playtesting makes it feel wrong; a fix would be a per-ability `blocked_by_walls` flag + a TileMap check in `move_projectiles` (declared behavior change → baseline regen) | Accepted; revisit during Mage playtesting |
+| Per-hero **base-stat application** — `HeroDef.base_stats` (max_health, move_speed) is data-only; `spawn_player` still uses the shared constants, so the Mage plays with the Death Knight's HP/speed | No class HP/speed differentiation is needed for the stance mechanic; keeping it out kept Phase 4 baseline-neutral | When class HP/speed differentiation matters (feel/balance) |
 | String ids (`AbilityId`/`StatusEffectId`/`TalentId` = `String`) are cloned per event/frame in hot-ish loops | Scale is tiny; determinism unaffected | Only if profiling ever says so (interning/`Arc<str>`) |
+
+### 8.6 Phase 4 delivered (2026-07-05)
+
+Hero / stance system + Mage shipped as a **focused vertical slice** (owner decision). See
+`docs/phase4-plan.md` for the full plan + as-built notes and the CHANGELOG "Phase 4" section for
+detail. Delivered:
+- **Hero indirection** — `HeroDef` loader (via the new generic `DefLibrary<T>`), `HeroIdentity` +
+  `ActiveStance` on the player, `HeroPlugin` resolving input slots (LMB→Basic, RMB→Special) through
+  `HeroDef.stance_slots`; the Phase-1 hardcoded LMB→death_strike stub is deleted.
+- **Second class = Mage** (§8.2's recommendation) — Fire/Ice stances binding the Phase-3 Fireblast/
+  Frostbolt demonstrators; Q swaps stances and applies the entered stance's swap effect (Boots of
+  Fire / Ice Barrier, modeled as statuses). Death Knight formalized as the default `HeroDef`;
+  baseline unchanged.
+- **Def-library debt paid** (§8.5, was owed "at Phase 4 start") and a **presentation pass**
+  (projectile sprites + status tints; nova flash re-filed to §8.5).
+
+Deferred from the full Phase-4 vision, each with a revival trigger (phase4-plan §7): frost-charge
+class resource + UI bar, Frost Impale + `channel_while_moving`, dash / movement ability, real
+absorb/shield system, code-driven status/ability hooks + the `execute_ready_abilities` split,
+`Override(0)` cooldown semantics, per-hero base-stat application, the Blood Boil nova flash,
+character-select UI, and full Mage progression content (Blaze, Flamewrath, Frostbite, Frost charge,
+Flamestrike, talents — Phase 9 content pass). §8.1 gaps still open: shields/absorbs (5), forced
+movement (6), enemy scaling (7), enemy projectiles/AMZ (8), UI (9).
 
 ---
 

@@ -25,6 +25,8 @@ use crate::pickup::systems::visuals::attach_pickup_visuals;
 use crate::player::systems::debug::draw_player_facing;
 use crate::player::systems::visuals::attach_player_visuals;
 use crate::projectile::systems::debug::{draw_arc_attack_gizmos, draw_circle_attack_gizmos};
+use crate::projectile::systems::visuals::attach_projectile_visuals;
+use crate::status::systems::visuals::tint_status_effects;
 use crate::ui::UiPlugin;
 use crate::world::systems::generate_map::generate_map;
 use crate::world::systems::render_map::render_map;
@@ -41,8 +43,16 @@ impl Plugin for PresentationPlugin {
         // last frame of a state is never missed (Added<T> is relative to the system's last run).
         app.add_systems(
             Update,
-            (attach_player_visuals, attach_enemy_visuals, attach_pickup_visuals),
+            (
+                attach_player_visuals,
+                attach_enemy_visuals,
+                attach_pickup_visuals,
+                attach_projectile_visuals,
+            ),
         );
+
+        // Status tinting: recolor enemies by their active status effect (Phase 4).
+        app.add_systems(Update, tint_status_effects.run_if(in_state(GameState::InRun)));
 
         // Logical position/facing → Transform. Same ordering + gating they had in CorePlugin.
         app.add_systems(

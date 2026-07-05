@@ -17,13 +17,15 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::AbilityId;
+use crate::core::def_library::{DefAsset, DefLibrary};
+use crate::status::assets::StatusEffectId;
 use crate::talent::assets::TalentId;
 
 pub type HeroId = String;
 pub type StanceId = String;
 
-/// Loaded from assets/heroes/<id>.ron.
-#[derive(Asset, TypePath, Debug, Clone)]
+/// Loaded from assets/heroes/<id>.hero.ron.
+#[derive(Asset, TypePath, Debug, Clone, serde::Deserialize)]
 pub struct HeroDef {
     pub id: HeroId,
     pub display_name: String,
@@ -47,14 +49,14 @@ pub struct HeroDef {
     pub stance_slots: Vec<StanceSlotMapping>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct HeroBaseStats {
     pub max_health: f32,
     pub move_speed: f32,
 }
 
 /// How the class interacts with resources (mana, health, charges).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub enum ResourceModel {
     /// No secondary resource bar. Standard health-only class (Druid, Mage, Paladin prototype).
     None,
@@ -65,11 +67,87 @@ pub enum ResourceModel {
 
 /// Binds InputSlots to AbilityIds for one stance.
 /// Slots without an ability (e.g. StanceSwap for non-stance heroes) are absent from the map.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct StanceSlotMapping {
     pub stance: StanceId,
     pub basic: Option<AbilityId>,
     pub special: Option<AbilityId>,
     pub movement: Option<AbilityId>,
     // StanceSwap is handled separately by hero/systems/stance.rs, not as a normal ability.
+    /// Status effect applied to the caster when *entering* this stance (Phase 4). For the Mage:
+    /// entering Fire grants "boots_of_fire" (move-speed buff); entering Ice grants "ice_barrier"
+    /// (damage-reduction). `None` for stances with no on-swap effect (e.g. the "default" stance).
+    #[serde(default)]
+    pub swap_effect: Option<StatusEffectId>,
+}
+
+/// Resource mapping HeroId → Handle<HeroDef>. A `DefLibrary<HeroDef>` (see core/def_library.rs);
+/// populated at startup from `HeroDef::MANIFEST` via `register_def_library::<HeroDef>()`. Read by
+/// the hero input/stance systems and the deferred level-1 ability grant.
+pub type HeroLibrary = DefLibrary<HeroDef>;
+
+impl DefAsset for HeroDef {
+    // Compound `.hero.ron` extension so the loader never collides with plain `.ron` (mirrors
+    // `.ability.ron` / `.talent.ron` / `.status.ron`).
+    const EXTENSIONS: &'static [&'static str] = &["hero.ron"];
+    const MANIFEST: &'static [(&'static str, &'static str)] = &[
+        ("blood_death_knight", "heroes/blood_death_knight.hero.ron"),
+        ("mage", "heroes/mage.hero.ron"),
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    //! Parse the real HeroDef RON files through the same `ron::de` path the AssetLoader uses.
+    //! Headless — runs under `cargo test` without a window/GPU.
+    use super::*;
+
+    fn load(rel_path: &str) -> HeroDef {
+        let full = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), rel_path);
+        let bytes = std::fs::read(&full).unwrap_or_else(|e| panic!("read {full}: {e}"));
+        ron::de::from_bytes::<HeroDef>(&bytes)
+            .unwrap_or_else(|e| panic!("parse {rel_path}: {e}"))
+    }
+
+    #[test]
+    fn blood_death_knight_parses_as_non_stance_hero() {
+        let def = load("assets/heroes/blood_death_knight.hero.ron");
+        assert_eq!(def.id, "blood_death_knight");
+        assert!(!def.has_stance, "Death Knight has no Q stance swap");
+        assert!(def.stance_a.is_none());
+        assert!(def.stance_b.is_none());
+        assert!(matches!(def.resource_model, ResourceModel::HealthBased));
+        assert_eq!(def.base_stats.max_health, 200.0);
+        // Level-1 grant list — must match ability/plugin.rs's previous hardcoded stub exactly.
+        assert_eq!(def.level_1_abilities, vec!["death_strike", "dnd", "companion"]);
+        // Single "default" stance mapping: LMB→death_strike, RMB→dnd, no swap effect.
+        assert_eq!(def.stance_slots.len(), 1);
+        let slot = &def.stance_slots[0];
+        assert_eq!(slot.stance, "default");
+        assert_eq!(slot.basic.as_deref(), Some("death_strike"));
+        assert_eq!(slot.special.as_deref(), Some("dnd"));
+        assert!(slot.movement.is_none());
+        assert!(slot.swap_effect.is_none());
+    }
+
+    #[test]
+    fn mage_parses_as_two_stance_hero() {
+        let def = load("assets/heroes/mage.hero.ron");
+        assert_eq!(def.id, "mage");
+        assert!(def.has_stance, "Mage swaps Fire/Ice with Q");
+        assert_eq!(def.stance_a.as_deref(), Some("fire"));
+        assert_eq!(def.stance_b.as_deref(), Some("ice"));
+        assert!(matches!(def.resource_model, ResourceModel::None));
+        // Both basics are level-1 so either stance's LMB works immediately.
+        assert_eq!(def.level_1_abilities, vec!["fireblast", "frostbolt"]);
+        assert_eq!(def.stance_slots.len(), 2);
+
+        let fire = def.stance_slots.iter().find(|m| m.stance == "fire").expect("fire stance");
+        assert_eq!(fire.basic.as_deref(), Some("fireblast"));
+        assert_eq!(fire.swap_effect.as_deref(), Some("boots_of_fire"));
+
+        let ice = def.stance_slots.iter().find(|m| m.stance == "ice").expect("ice stance");
+        assert_eq!(ice.basic.as_deref(), Some("frostbolt"));
+        assert_eq!(ice.swap_effect.as_deref(), Some("ice_barrier"));
+    }
 }

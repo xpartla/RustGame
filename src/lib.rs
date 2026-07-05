@@ -3,9 +3,9 @@
 //   - integration tests (tests/) can drive the game headlessly through src/sim/,
 //   - future tooling (balance arena binary) can reuse the same plugins.
 //
-// Scaffold modules not yet wired into the build (hero, status, zone, meta, and most of run/)
-// are intentionally NOT declared here — same as before the lib split. They join the crate in
-// their own phases.
+// Scaffold modules not yet wired into the build (zone, meta, and most of run/) are intentionally
+// NOT declared here — same as before the lib split. They join the crate in their own phases.
+// (hero joined in Phase 4.)
 
 pub mod constants;
 pub mod camera;
@@ -20,6 +20,7 @@ pub mod run;
 pub mod ability;
 pub mod status;
 pub mod talent;
+pub mod hero;
 pub mod progression;
 pub mod ui;
 pub mod sim;

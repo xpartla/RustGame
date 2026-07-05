@@ -16,6 +16,7 @@ use crate::core::CorePlugin;
 use crate::enemy::EnemyPlugin;
 use crate::game::presentation::PresentationPlugin;
 use crate::game::state::GameState;
+use crate::hero::HeroPlugin;
 use crate::pickup::PickUpPlugin;
 use crate::player::PlayerPlugin;
 use crate::progression::plugin::ProgressionPlugin;
@@ -46,6 +47,7 @@ impl Plugin for GameLogicPlugin {
             CorePlugin,
             WorldPlugin,
             PlayerPlugin,
+            HeroPlugin,
             AbilityPlugin,
             StatusPlugin,
             TalentPlugin,

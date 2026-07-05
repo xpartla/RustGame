@@ -1,17 +1,19 @@
-// Phase 4: Hero / class identity and stance system.
+// Phase 4: Hero / class identity and stance system. Wired into GameLogicPlugin via HeroPlugin.
 //
-// NOT yet wired into main.rs or GamePlugin. Add in Phase 4.
-// Phase 1 uses a hardcoded stub (single default stance, DK abilities) so the ability
-// system can be exercised before HeroDef assets are loaded.
+// The hero indirection replaces the Phase-1 hardcoded LMB → death_strike stub: HeroDef defines
+// each class's level-1 abilities, band pools, and per-stance InputSlot → AbilityId bindings; the
+// player carries HeroIdentity + ActiveStance; HeroPlugin resolves input through them.
 //
 // Module map:
-//   assets.rs    — HeroDef RON asset (one file per class, assets/heroes/*.ron)
-//   components.rs — HeroId, ActiveStance, ClassResource on the player entity
+//   assets.rs     — HeroDef RON asset (one file per class, assets/heroes/*.hero.ron) + HeroLibrary
+//   components.rs — HeroIdentity, ActiveStance, InputSlot, ClassResource (on the player entity)
 //   systems/
-//     input_slot.rs — translates InputSlot + ActiveStance → AbilityId, emits TriggerAbility
-//     stance.rs     — handles Q press: swaps ActiveStance, fires the stance-swap ability
+//     input_slot.rs — translates InputSlot + ActiveStance → AbilityId, emits TriggerAbilityEvent
+//     stance.rs     — handles Q press: swaps ActiveStance, applies the entered stance's swap effect
 
 pub mod assets;
 pub mod components;
 pub mod plugin;
 pub mod systems;
+
+pub use plugin::HeroPlugin;

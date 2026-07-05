@@ -2,8 +2,8 @@
 
 ---
 
-## [Unreleased] — Architecture, Scaffold, Phases 0–3 & Testing Infrastructure
-_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2) → `884a406` (test suite) → `7004259` (phase 3) → phase 3.1 hardening_
+## [Unreleased] — Architecture, Scaffold, Phases 0–4 & Testing Infrastructure
+_2026-07-04/05 — commits `5067dfb` (scaffold) → `2963e56` (phase 0) → `894452d` (phase 1) → `87b24ae` (docs) → `bc9d1d2` (phase 2) → testing infrastructure (stages 0–2) → `884a406` (test suite) → `7004259` (phase 3) → `be8e6ba` (phase 3.1) → phase 4 (hero/stance + Mage)_
 
 ### Architecture
 - Wrote `docs/architecture-plan.md` — full foundational architecture covering all 9 subsystems:
@@ -426,6 +426,77 @@ passes against the unchanged committed baseline).
   owner, 2026-07-05); revisit during Phase 4 playtesting.
 - **Tests: 73 passing** (was 66). Build remains warning-free.
 
+### Phase 4 — Hero / stance system + Mage (focused vertical slice) (complete)
+Brought the hero/class-identity + stance system online end-to-end and added the **Mage** as a
+second playable class (Fire/Ice stances, Q swap). `HeroPlugin` joins `GameLogicPlugin`; the player
+now carries `HeroIdentity` + `ActiveStance`, and input is resolved through the hero indirection
+instead of the Phase-1 hardcoded LMB→Death-Strike stub. Scope was a deliberate **focused vertical
+slice** (owner decision): the heavier Mage subsystems (frost-charge resource, Frost Impale, dash,
+real absorb shields, code-driven hooks) are deferred with explicit revival triggers
+(architecture-plan §8.6 / phase4-plan §7). See `docs/phase4-plan.md` for the full plan + as-built
+notes. **The golden baseline did NOT move** — the Death Knight stays the default hero and the
+campaign bot bypasses the input layer (verified: `campaign_matches_golden_baseline` passes against
+the unchanged committed baseline; no regeneration).
+
+- **Architecture: generic `DefLibrary<T>` (pays the §8.5 "Def-library triplication" debt, done at
+  Phase 4 start).** `AbilityLibrary`/`TalentLibrary`/`StatusLibrary` were three near-identical
+  copies (resource + `AssetLoader` + hardcoded Startup path list). New `core/def_library.rs`: a
+  generic `DefLibrary<T>` resource, a `DefAsset` trait carrying each type's RON extension + load
+  manifest, one `RonDefLoader<T>`, and an `App::register_def_library::<T>()` that wires
+  asset+loader+resource+Startup-populate in one call. The three concrete libraries became type
+  aliases (`pub type AbilityLibrary = DefLibrary<AbilityDef>;` …) so every call site and sim
+  accessor compiled unchanged; `HeroDef` is registered the same one-line way instead of becoming a
+  fourth copy. Pure refactor — baseline byte-identical.
+- **Hero module live.** `HeroDef` gained `serde::Deserialize` (the scaffold omitted it) + `impl
+  DefAsset` with the `hero.ron` compound extension; `assets/heroes/blood_death_knight.ron` renamed
+  to `.hero.ron`. `HeroPlugin` (`hero/plugin.rs`) registers `HeroDef` and runs
+  `resolve_input_to_ability` + `handle_stance_swap` before `CombatSet::Damage`, InRun-gated.
+- **Input indirection replaces the Phase-1 stub.** `hero/systems/input_slot.rs::
+  resolve_input_to_ability` reads `(HeroIdentity, ActiveStance)`, resolves the pressed slot via
+  `HeroDef.stance_slots` (pure, unit-tested `resolve_slot`) — **LMB→Basic, RMB→Special** — and
+  emits `TriggerAbilityEvent`. `player/systems/ability_input.rs` (the hardcoded LMB→death_strike
+  stub) is deleted; `spawn_player` now inserts `HeroIdentity("blood_death_knight")` +
+  `ActiveStance("default")`.
+- **Stance swap (Q).** `hero/systems/stance.rs::handle_stance_swap` toggles `ActiveStance` between
+  the hero's `stance_a`/`stance_b` and applies the *entered* stance's `swap_effect` status to the
+  caster (new `#[serde(default)] swap_effect: Option<StatusEffectId>` field on `StanceSlotMapping`).
+  No-op for non-stance heroes (`has_stance == false` — Death Knight).
+- **HeroDef-sourced, deferred level-1 grant.** `grant_level_1_abilities` now reads
+  `HeroDef.level_1_abilities` instead of a hardcoded array. Because the asset loads asynchronously,
+  it is deferred: it fires once the player's `HeroDef` resolves and marks the player
+  `Level1Granted` (new component). `sim::settle_assets`/`assets_loaded` wait for both the
+  `HeroLibrary` handles and the grant, so `new_arena` returns with abilities in place. For the
+  Death Knight this grants the identical `death_strike, dnd, companion` → baseline-neutral.
+- **Mage content.** `assets/heroes/mage.hero.ron` (Fire/Ice, `resource_model: None`,
+  `level_1_abilities: [fireblast, frostbolt]`); the existing Phase-3 demonstrators Fireblast/
+  Frostbolt are now bound as the Fire/Ice **Basic** abilities. Stance-swap effects reuse the status
+  system (no new machinery): `boots_of_fire.status.ron` (Ice→Fire, `move_speed_mult 1.3`, 3s) and
+  `ice_barrier.status.ron` (Fire→Ice, `damage_taken_mult 0.6`, 3s — a damage-reduction stand-in for
+  the deferred next-hit absorb).
+- **Debug hotkey (M).** `hero/systems/debug.rs::debug_swap_to_mage` (`#[cfg(debug_assertions)]`,
+  mirrors `debug_force_level_up`) re-identifies the live player as the Mage for Windows
+  playtesting — no character-select screen yet. The campaign bot never presses M, so the baseline
+  is untouched.
+- **Presentation pass (§8.5, pure presentation — never runs headless).** `projectile/systems/
+  visuals.rs::attach_projectile_visuals` (`Added<ProjectileMotion>`) dresses travelling projectiles
+  (previously invisible) with an element-tinted circle; `status/systems/visuals.rs::
+  tint_status_effects` recolors enemies by their active status (frostbite blue, blaze orange, bleed
+  red, root/stun yellow). Registered in `PresentationPlugin` only, so headless tests and the
+  baseline are unaffected. **Deferred:** the Blood Boil nova flash — the cone-flash path is
+  logic-side, so a nova flash the same way would spawn entities in the DK campaign and move the
+  baseline; it needs a presentation-only cast-VFX bus (§8.6).
+- **Deferred with revival triggers** (phase4-plan §7 / architecture-plan §8.6): frost-charge class
+  resource + UI bar, Frost Impale + `channel_while_moving`, dash/movement ability, real absorb
+  shields, code-driven status/ability hooks + the `execute_ready_abilities` split (no hook landed
+  this slice), `Override(0)` cooldown semantics, per-hero base-stat application, character-select
+  UI, and full Mage progression content.
+- **Sim helpers.** `set_hero(entity, id, stance)`, `hero_id()`, `active_stance()`, `tap_mouse()`;
+  `assets_loaded` extended to await `HeroLibrary` + the deferred grant.
+- **Tests: 84 passing** (was 73): +5 unit (`DefLibrary::get`; `HeroDef` parse ×2 across DK/Mage;
+  `resolve_slot` ×2) and +6 golden scenarios (`tests/hero_stance.rs`: DK LMB regression, Mage basic
+  through input slots, stance-swap-remaps-LMB, swap-effect applied, non-stance Q no-op, debug
+  hotkey). Build remains warning-free.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -507,13 +578,14 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–3 (foundation, ability system, talent system, status effects) are complete. The
-following are designed and scaffolded but have zero implementation yet:
+Phases 0–4 (foundation, ability system, talent system, status effects, hero/stance system + Mage)
+are complete. The following are designed and scaffolded but have zero implementation yet:
 
-- Hero / stance system (HeroDef asset, Q swap) — Phase 4
+- ~~Hero / stance system (HeroDef asset, Q swap) — Phase 4~~ **done** (focused vertical slice —
+  Death Knight + Mage; heavier Mage subsystems deferred, see architecture-plan §8.6)
 - Enemy ability kits and AI registry — Phase 5
 - Persistent zones (D&D, Consecrated Ground, Tree Conduit) — Phase 6
 - Act graph, room types, encounter lifecycle — Phase 7
 - Persistence (save/load RunState, MetaState) — Phase 8
-- Full class content (Druid, Mage, Paladin; all enemies and bosses) — Phase 9
-- All UI beyond a debug health bar gizmo
+- Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9
+- All UI beyond a debug health bar gizmo + talent picker (no HUD, character select, or menus)

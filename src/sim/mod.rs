@@ -31,13 +31,15 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
-use crate::ability::components::{AbilityInstance, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::ability::components::{AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::core::components::{Facing, GridPosition, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag};
 use crate::enemy::archetypes::{archetypes, EnemyArchetype};
 use crate::enemy::components::{Enemy, EnemySpawner};
 use crate::game::state::GameState;
 use crate::game::GameLogicPlugin;
+use crate::hero::assets::{HeroDef, HeroLibrary};
+use crate::hero::components::{ActiveStance, HeroIdentity};
 use crate::pickup::components::PickUpSpawner;
 use crate::player::components::Player;
 use crate::progression::state::LevelUpFlowState;
@@ -141,8 +143,9 @@ impl Sim {
         self.step((secs / SIM_DT).ceil() as usize);
     }
 
-    /// Pumps frames until every id in AbilityLibrary and TalentLibrary resolves to a loaded
-    /// asset. Panics after `max_frames` (an asset failed to load — check the RON).
+    /// Pumps frames until every def library resolves to loaded assets AND the hero-driven
+    /// level-1 grant has run for every spawned player. Panics after `max_frames` (an asset failed
+    /// to load — check the RON).
     pub fn settle_assets(&mut self, max_frames: usize) {
         for _ in 0..max_frames {
             if self.assets_loaded() {
@@ -154,17 +157,32 @@ impl Sim {
         panic!("assets did not finish loading within {max_frames} frames — RON parse error?");
     }
 
-    fn assets_loaded(&self) -> bool {
-        let world = self.app.world();
-        let ability_lib = world.resource::<AbilityLibrary>();
-        let ability_defs = world.resource::<Assets<AbilityDef>>();
-        let talent_lib = world.resource::<TalentLibrary>();
-        let talent_defs = world.resource::<Assets<TalentDef>>();
-        let status_lib = world.resource::<StatusLibrary>();
-        let status_defs = world.resource::<Assets<StatusEffectDef>>();
-        ability_lib.defs.values().all(|h| ability_defs.get(h).is_some())
-            && talent_lib.defs.values().all(|h| talent_defs.get(h).is_some())
-            && status_lib.defs.values().all(|h| status_defs.get(h).is_some())
+    fn assets_loaded(&mut self) -> bool {
+        let libs_ready = {
+            let world = self.app.world();
+            let ability_lib = world.resource::<AbilityLibrary>();
+            let ability_defs = world.resource::<Assets<AbilityDef>>();
+            let talent_lib = world.resource::<TalentLibrary>();
+            let talent_defs = world.resource::<Assets<TalentDef>>();
+            let status_lib = world.resource::<StatusLibrary>();
+            let status_defs = world.resource::<Assets<StatusEffectDef>>();
+            let hero_lib = world.resource::<HeroLibrary>();
+            let hero_defs = world.resource::<Assets<HeroDef>>();
+            ability_lib.defs.values().all(|h| ability_defs.get(h).is_some())
+                && talent_lib.defs.values().all(|h| talent_defs.get(h).is_some())
+                && status_lib.defs.values().all(|h| status_defs.get(h).is_some())
+                && hero_lib.defs.values().all(|h| hero_defs.get(h).is_some())
+        };
+        if !libs_ready {
+            return false;
+        }
+        // The hero-driven level-1 grant is deferred until the HeroDef asset loads
+        // (ability/plugin.rs::grant_level_1_abilities). Keep pumping until no player is still
+        // awaiting its grant, so new_arena(...) returns with starting abilities in place.
+        let world = self.app.world_mut();
+        let mut ungranted =
+            world.query_filtered::<Entity, (With<Player>, Without<Level1Granted>)>();
+        ungranted.iter(world).next().is_none()
     }
 
     // ---------------------------------------------------------------- world access
@@ -252,6 +270,42 @@ impl Sim {
             .collect()
     }
 
+    // ---------------------------------------------------------------- hero / stance
+
+    /// Re-identifies an entity as `hero_id` in `stance` and clears the Level1Granted marker so the
+    /// deferred grant re-runs for the new class. Step at least once afterward so the grant fires
+    /// (fireblast/frostbolt for the Mage) — mirrors what the debug hotkey does at runtime.
+    pub fn set_hero(&mut self, entity: Entity, hero_id: &str, stance: &str) {
+        let world = self.app.world_mut();
+        if let Some(mut id) = world.get_mut::<HeroIdentity>(entity) {
+            id.0 = hero_id.to_string();
+        }
+        if let Some(mut st) = world.get_mut::<ActiveStance>(entity) {
+            st.0 = stance.to_string();
+        }
+        world.entity_mut(entity).remove::<Level1Granted>();
+    }
+
+    /// The player's current hero id (HeroIdentity).
+    pub fn hero_id(&mut self) -> String {
+        let player = self.player();
+        self.app
+            .world()
+            .get::<HeroIdentity>(player)
+            .map(|h| h.0.clone())
+            .unwrap_or_default()
+    }
+
+    /// The player's current active stance (ActiveStance).
+    pub fn active_stance(&mut self) -> String {
+        let player = self.player();
+        self.app
+            .world()
+            .get::<ActiveStance>(player)
+            .map(|s| s.0.clone())
+            .unwrap_or_default()
+    }
+
     // ---------------------------------------------------------------- input
 
     /// Holds a key down (visible as just_pressed for exactly the next frame, pressed until
@@ -289,6 +343,14 @@ impl Sim {
             .world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .release(button);
+    }
+
+    /// Press + one frame + release: a single mouse-button tap (mirrors `tap_key`). The press is
+    /// visible as `just_pressed` for exactly the stepped frame, so input-driven casts fire once.
+    pub fn tap_mouse(&mut self, button: MouseButton) {
+        self.press_mouse(button);
+        self.step(1);
+        self.release_mouse(button);
     }
 
     /// Fires an ability directly through the pipeline (bypasses the mouse-input stub).

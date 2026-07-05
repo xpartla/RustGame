@@ -1,0 +1,12 @@
+// Boots of Fire — Mage stance-swap buff (Phase 4). Applied to the caster when entering Fire form
+// (Ice -> Fire). A pure move-speed buff delivered through the existing status system — no new
+// machinery (move_speed_mult 1.3 = +30%, folded into the actor's MoveSpeedModifier by
+// resolve_actor_status, exactly like frostbite's slow).
+// Mechanics.md: "gain boots of fire, increase movement speed by Y% for X sec."
+(
+    id: "boots_of_fire",
+    display_name: "Boots of Fire",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 3.0,
+    move_speed_mult: 1.3,
+)

@@ -1,6 +1,5 @@
 pub mod input;
 pub mod spawn_player;
-pub mod ability_input;
 pub mod update_player_facing;
 pub mod death;
 pub mod debug;

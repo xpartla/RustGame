@@ -11,6 +11,10 @@
 use bevy::prelude::*;
 use crate::hero::assets::{HeroId, StanceId};
 
+/// The class the player spawns as by default (until a character-select flow exists — later
+/// phase). The Death Knight keeps the prototype's kit, so the golden-master baseline is stable.
+pub const DEFAULT_HERO_ID: &str = "blood_death_knight";
+
 /// Which hero class this player entity represents. Immutable for the run's lifetime.
 #[derive(Component, Debug, Clone)]
 pub struct HeroIdentity(pub HeroId);

@@ -11,12 +11,12 @@
 // The set chain (Damage → Apply → Tick → CrossInteract → Death) is configured in CorePlugin.
 // All systems run in InState(GameState::InRun): status ticks freeze with the world behind overlays.
 
-use bevy::asset::AssetApp;
 use bevy::prelude::*;
+use crate::core::def_library::DefLibraryAppExt;
 use crate::core::events::AddGameplayEventExt;
 use crate::core::sets::StatusSet;
 use crate::game::state::GameState;
-use crate::status::assets::{StatusEffectDef, StatusEffectDefLoader, StatusLibrary};
+use crate::status::assets::StatusEffectDef;
 use crate::status::components::{ApplyStatusEvent, RemoveStatusEvent};
 use crate::status::systems::apply::apply_status_effects;
 use crate::status::systems::cross_interact::apply_cross_interactions;
@@ -28,14 +28,11 @@ pub struct StatusPlugin;
 
 impl Plugin for StatusPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<StatusEffectDef>()
-            .register_asset_loader(StatusEffectDefLoader)
-            .init_resource::<StatusLibrary>()
+        // StatusEffectDef asset + `.status.ron` loader + StatusLibrary + Startup populate.
+        app.register_def_library::<StatusEffectDef>()
             // Combat-resolution events: preserved across overlay states (see AddGameplayEventExt).
             .add_gameplay_event::<ApplyStatusEvent>()
             .add_gameplay_event::<RemoveStatusEvent>();
-
-        app.add_systems(Startup, load_status_defs);
 
         app.add_systems(
             Update,
@@ -51,20 +48,5 @@ impl Plugin for StatusPlugin {
                 .in_set(StatusSet::CrossInteract)
                 .run_if(in_state(GameState::InRun)),
         );
-    }
-}
-
-/// Loads each status effect RON into the StatusLibrary, keyed by its id.
-fn load_status_defs(asset_server: Res<AssetServer>, mut library: ResMut<StatusLibrary>) {
-    const STATUS_EFFECTS: &[(&str, &str)] = &[
-        ("bleed", "status_effects/bleed.status.ron"),
-        ("blaze", "status_effects/blaze.status.ron"),
-        ("frostbite", "status_effects/frostbite.status.ron"),
-        ("holy_mark", "status_effects/holy_mark.status.ron"),
-        ("root", "status_effects/root.status.ron"),
-        ("stun", "status_effects/stun.status.ron"),
-    ];
-    for (id, path) in STATUS_EFFECTS {
-        library.defs.insert((*id).to_string(), asset_server.load(*path));
     }
 }
