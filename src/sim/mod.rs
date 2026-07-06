@@ -1004,4 +1004,58 @@ impl Sim {
         };
         self.app.world_mut().resource_mut::<RoomModifiers>().0 = mods;
     }
+
+    // ---------------------------------------------------------------- persistence / meta (Phase 8)
+
+    /// Direct read access to the live `RunState`, if a run is active. All fields are `pub`, so
+    /// scenarios can assert `unlocked_abilities`/`acquired_talents`/`elapsed_secs`/etc. directly.
+    pub fn run_state(&self) -> Option<&RunState> {
+        self.app.world().get_resource::<RunState>()
+    }
+
+    /// Direct read access to the always-present `MetaState` (unlocked heroes, run history, the
+    /// saved in-progress run). All fields are `pub`.
+    pub fn meta(&self) -> &crate::meta::state::MetaState {
+        self.app.world().resource::<crate::meta::state::MetaState>()
+    }
+
+    /// Test-only: locks a hero (removes it from `MetaState.unlocked_heroes`) to exercise the
+    /// locked-pick-refused path — no hero is actually locked by default (D3, all unlocked).
+    pub fn lock_hero(&mut self, hero_id: &str) {
+        self.app
+            .world_mut()
+            .resource_mut::<crate::meta::state::MetaState>()
+            .unlocked_heroes
+            .remove(hero_id);
+    }
+
+    /// Emits a `ResumeRunRequest` (the main-menu Resume input). Step at least once afterward so
+    /// `apply_resume_request` runs the hydration.
+    pub fn request_resume_run(&mut self) {
+        self.app
+            .world_mut()
+            .send_event(crate::run::systems::persistence::ResumeRunRequest);
+    }
+
+    /// Drives the sim to `GameState::Login` (the windowed boot state ahead of Menu — the headless
+    /// sim defaults to InRun, which never runs `enter_login`). Steps once so the transition applies.
+    pub fn enter_login(&mut self) {
+        self.app
+            .world_mut()
+            .resource_mut::<NextState<GameState>>()
+            .set(GameState::Login);
+        self.step(1);
+    }
+
+    /// A deterministic per-enemy signature (grid position + exact max-health bit pattern), sorted —
+    /// there is no stable per-enemy-def id component, but position + health is enough to prove "the
+    /// same roster spawned" across two independently-driven sims (the D1 resume-determinism test).
+    pub fn enemy_roster_signature(&mut self) -> Vec<(i32, i32, u32)> {
+        let world = self.app.world_mut();
+        let mut q = world.query_filtered::<(&GridPosition, &Health), With<Enemy>>();
+        let mut sig: Vec<(i32, i32, u32)> =
+            q.iter(world).map(|(g, h)| (g.x, g.y, h.max.to_bits())).collect();
+        sig.sort();
+        sig
+    }
 }

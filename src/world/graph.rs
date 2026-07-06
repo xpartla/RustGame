@@ -44,7 +44,7 @@ pub const COLUMNS_PER_ACT: usize = 15;
 pub const THRONE_MODIFIERS: &[&str] = &["no_regen", "enemies_deal_double_damage", "player_slowed"];
 
 /// The full graph for one act. Stored in RunState.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ActGraph {
     pub nodes: HashMap<NodeId, EncounterNode>,
     /// Directed edges: (from, to). A node may have multiple outgoing edges (branching). Sorted +
@@ -68,7 +68,7 @@ impl ActGraph {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EncounterNode {
     pub id: NodeId,
     /// Which column (0..COLUMNS_PER_ACT) this node sits in — feeds the depth/scaling driver (D5).
@@ -81,7 +81,7 @@ pub struct EncounterNode {
     pub modifier: Option<ModifierId>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EncounterType {
     /// Standard fight room. Objective type determines win condition.
     Map { objective: ObjectiveType },
@@ -98,7 +98,7 @@ pub enum EncounterType {
     Merchant,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ObjectiveType {
     Survive { duration_secs: f32 },
     KillAll,

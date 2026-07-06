@@ -936,12 +936,15 @@ stayed byte-identical; see §8.10, docs/phase7.5-ui-plan.md)_
 6. ✅ Presentation backlog: zone discs + the cast-VFX bus (Blood Boil nova flash) — closes §8.5's
    nova row + the Phase-6 zone-visuals deferral.
 
-**Phase 8 — Persistence + meta**
-1. Implement `RunState` serialization (save on node complete, load on resume).
-2. Implement `MetaState` with hero unlocks and scoreboard (+ the score formula, §8.1(10)); enable the
-   greyed-out main-menu buttons (Resume / Scoreboard) + hero unlock/greying on character select.
-3. Wire "Resume Run" from the main menu (the menu + "Start New Run" + character select shipped in
-   Phase 7.5); move player/map spawn from `Startup` to `OnEnter(InRun)` (the `game/state.rs` TODO).
+**Phase 8 — Persistence + meta** _(complete 2026-07-06 — full scope incl. the `RunRng` → `ChaCha8Rng`
+switch (the phase's one declared golden regen) + Log-In; see §8.11, docs/phase8-plan.md)_
+1. ✅ `RunState` serialization (save at every node boundary; load on Resume Run, bit-exact via the
+   restored RNG stream).
+2. ✅ `MetaState` with hero unlocks (mechanism only — every hero ships unlocked, D3) and scoreboard
+   (+ the score formula, §8.1(10)); the main-menu Resume/Scoreboard buttons are live + hero
+   unlock/greying is wired on character select.
+3. ✅ "Resume Run" from the main menu; player/map spawn moved from `Startup` to `OnEnter(InRun)` (the
+   `game/state.rs` TODO), guarded so it seeds the world exactly once.
 
 **Phase 9 — Remaining classes + content pass**
 1. Add remaining heroes (each is one RON file + ability/talent RONs).
@@ -1007,7 +1010,10 @@ rather than discovered mid-phase.
 - **Phase 7**: `ActGraph` data exists but no generation function does, even as a stub.
 - **Phase 8**: rand 0.8's `SmallRng` does not implement serde — §3.11's "save the RNG state"
   needs either seed + draw-count replay or a switch to `rand_chacha` (serde feature). The
-  whole RunState object graph also still lacks serde derives.
+  whole RunState object graph also still lacks serde derives. **Resolved (§8.11, D1):** switched to
+  `rand_chacha::ChaCha8Rng`, hand-implementing `Serialize`/`Deserialize` (not the crate's own
+  `serde1` feature — its wire format's `u128` word-position can't round-trip through `ron` 0.8). One
+  declared golden-master regeneration; the whole object graph gained serde derives in the same phase.
 - **Phase 9**: split into content pass (classes/enemies per theme) vs. boss design.
 
 ### 8.3 Testing infrastructure (inserted, stages 0–2 complete 2026-07-05)
@@ -1222,6 +1228,62 @@ profile**, and **moving player/map spawn from `Startup` to `OnEnter(InRun)`** �
 handlers, damage numbers / minimap / tooltips, and a settings screen — later UX/art. §8.5: the
 `HeroDef.base_stats` per-hero application is now the **last** open register row (the Mage still plays
 with the DK's HP/speed — Phase 8/9).
+
+### 8.11 Phase 8 delivered (2026-07-06)
+
+Persistence + meta, shipped at **full scope** with **one declared golden-master regeneration** (D1 —
+the `RunRng` algorithm switch; every other step verified byte-identical against the new baseline,
+like Phases 4–7.5 verified against the original). See `docs/phase8-plan.md` §11 and the CHANGELOG
+"Phase 8" section. Delivered across 8A–8H:
+
+- **The RNG switch (8A, D1 — the one declared regen).** `RunRng` moved from `rand::rngs::SmallRng`
+  (no serde support, explicitly not version/platform-stable) to `rand_chacha::ChaCha8Rng` (a
+  value-stable, hand-serialized seed+stream+word-position). The golden-master campaign baseline was
+  regenerated exactly once for this; `campaign_is_reproducible_within_a_build` stayed green
+  throughout (no leaked nondeterminism), and this is now also a **stronger** portability guarantee
+  than `SmallRng` gave (docs/testing.md).
+- **RunState/MetaState become serializable (8B/8C).** Serde derives across the whole `RunState`
+  object graph (`ActGraph`, `LevelUpFlowState`, `TalentOffer`, `StatModifier`/`ModOp`/rarity enums —
+  plain data, no manual impls) plus a new `elapsed_secs: f32` run clock (D2). `MetaState`/`RunRecord`
+  gained the same; `in_progress_run` became a nested `SavedRun { run, rng }` (human-inspectable RON,
+  not opaque bytes). `meta` joined the crate and `GameLogicPlugin` (via `MetaPlugin`, sim-safe —
+  in-memory default only); `meta/persistence.rs` is the pure serialize/deserialize + save-path
+  resolution layer, with a thin disk-I/O layer that only `GamePlugin` (windowed) touches — the sim
+  never sees a filesystem, matching the project's logic/presentation split (§2 architecture rule,
+  now applied to persistence).
+- **Save cadence + scoring (8D).** `sync_run_state` (run/systems/persistence.rs) closes the gap the
+  Phase-7 `RunState` mirror always had — `unlocked_abilities`/`acquired_talents` were never written
+  after run-start. It runs at every node boundary (`handle_encounter_complete`'s three exits) and on
+  defeat (`player_death`); the non-terminal exits also snapshot `SavedRun` into
+  `MetaState.in_progress_run`, and both terminal exits call `record_run_end` (the score formula, D2:
+  progress by act/node/level/victory + a never-negative speed bonus against a par time).
+- **Resume Run (8E).** `resume_run` mirrors `reset.rs::reset_and_start_run` — teardown, restore the
+  exact `RunRng` stream position, respawn, re-grant abilities/talents through the existing idempotent
+  event paths, rebuild `CurrentEncounter` from the saved graph position, resume `InRun`. Because the
+  RNG stream is exact, the next room's roster is byte-identical to an uninterrupted continuation —
+  the D1 payoff, proven by `tests/persistence.rs::resume_continues_the_rng_stream_exactly`. Found and
+  fixed along the way: a same-frame talent re-install onto a freshly respawned player could race (or
+  be clobbered by) `attach_talent_components`'s own unordered Update turn — `resume_run` now attaches
+  those components synchronously, and `attach_talent_components` gained a `Without<AcquiredTalents>`
+  guard so it can never overwrite them.
+- **MetaState surfaces (8F) + Log-In (8G).** `hero_is_unlocked` (every `HeroDef::MANIFEST` id starts
+  unlocked, D3 — the mechanism only) gates character-select greying and pick refusal; a new
+  `GameState::Scoreboard` lists `run_history` sorted by score. A new `GameState::Login` splash (D4:
+  local-profile only, per §6 Q3) sits ahead of Menu in the windowed boot order.
+- **Cleanups (8H).** `spawn_player`/`generate_map`/`init_level_flow` moved `Startup` →
+  `OnEnter(GameState::InRun)`, guarded `not(any_with_component::<Player>)` so the one-time boot seed
+  doesn't refire on every later re-entry into `InRun` (verified against the TalentPicker↔InRun
+  round-trips the golden campaign itself exercises). The orphaned-`AbilityInstance` register row
+  (§8.5) is resolved: `enemy_death` and `despawn_encounter_entities` now reap them. Found and fixed
+  along the way: `enter_merchant`'s bare `Res<CurrentEncounter>` panicked on the Act-3 victory path
+  (Bevy auto-inserts a sync point in the `.chain()`, so `handle_encounter_complete`'s
+  `remove_resource` had already applied) — a **pre-existing crash bug**, never exercised before this
+  phase added Act-3-victory test coverage; fixed via `Option<Res<_>>`.
+
+§8.1 status after Phase 8: unchanged (5, 6 remain open — no Phase-8 scope touched them). §8.5: the
+orphaned-`AbilityInstance` row is **resolved**; `HeroDef.base_stats` per-hero application remains the
+**last** open register row (deferred out of Phase 8 by D4-OUT — a second golden regen + a balance
+call, → Phase 9). §7 Phase 8's three bullets are now ✅ done, mirroring Phases 4–7.5's flip.
 
 ---
 

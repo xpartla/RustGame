@@ -4,13 +4,13 @@
 // are gated on `in_state(GameState::InRun)` so that entering any other state freezes the world
 // without having to touch each system individually.
 //
-// For now the app boots straight into `InRun` (the default) so there is no visible change from
-// the prototype — there is no menu yet.
-//
-// TODO(Phase 8): default to `Menu` once the main-menu / character-select flow exists, and move
-//                entity spawning (player, map) from `Startup` to `OnEnter(GameState::InRun)`.
-// TODO(Phase 2): push/pop `TalentPicker` from the level-up flow.
-// TODO(Phase 9): push/pop `Merchant` from merchant nodes.
+// `InRun` stays the `#[default]` variant deliberately (Phase 8, D1/D4): the headless sim boots
+// straight into it (no Login/Menu/CharacterSelect detour needed for the ~150 sim-driven tests),
+// while the windowed boot (`GamePlugin`) immediately drives Login → Menu → CharacterSelect → run
+// via a `Startup` system (`run/systems/menu.rs::enter_login`) — mirroring how `enter_main_menu`
+// worked pre-Login. Player/map/level-flow spawn moved from `Startup` to `OnEnter(InRun)` in Phase
+// 8 (§5 of docs/phase8-plan.md), guarded so the one-time boot seed doesn't refire on every
+// overlay round-trip back into InRun.
 
 use bevy::prelude::*;
 
@@ -19,24 +19,28 @@ use bevy::prelude::*;
 #[allow(dead_code)]
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
-    /// Main menu. Not yet implemented.
+    /// Local-profile splash before the main menu (Phase 8, D4). Windowed boot only.
+    Login,
+    /// Main menu.
     Menu,
-    /// Hero selection before a run starts. Not yet implemented.
+    /// Hero selection before a run starts.
     CharacterSelect,
     /// Active gameplay — the only state the current systems run in.
     #[default]
     InRun,
-    /// Gameplay frozen, world preserved. Not yet implemented.
+    /// Gameplay frozen, world preserved.
     Paused,
-    /// Run ended (death or act-3 clear). Not yet implemented.
+    /// Run ended (death or act-3 clear).
     GameOver,
     /// Level-up talent-choice overlay. Wired in Phase 2.
     TalentPicker,
     /// Encounter-cleared branch picker (Phase 7). Freezes the InRun world like the TalentPicker
     /// while the player chooses the next act-graph node.
     MapSelect,
-    /// Merchant interaction overlay. Wired in Phase 9.
+    /// Merchant interaction overlay. Wired in Phase 7.5E.
     Merchant,
+    /// Read-only run-history list, sorted by score (Phase 8).
+    Scoreboard,
 }
 
 /// A snapshot of a finished run, captured the moment it ends (the player dies, or Act 3 is cleared)

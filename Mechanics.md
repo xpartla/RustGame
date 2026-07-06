@@ -347,25 +347,33 @@ Big picture:
     sees the encounter type and map theme before choosing, as designed). The **Merchant remove/trade
     ops** are live (remove a talent; sacrifice 3 for 1 higher-rarity pick). Run **save/resume** is
     still Phase 8._
+  * _Phase 8 (implemented): **run save/resume** is live — a run is snapshotted (RunState + the exact
+    RunRng stream position) into `MetaState.in_progress_run` at every node boundary (an encounter
+    clearing, or an act advance); **Resume Run** from the main menu tears down and rehydrates that
+    snapshot into a live run byte-for-byte, including the RNG stream — a resumed encounter's roster
+    is identical to what an uninterrupted run would have rolled at that point._
 * User Flow (screens)
-  _Phase 7.5 status: the windowed game now boots to a **Main menu** → **Character selection** → run;
-  **Game over** (death/victory) with restart, **Pause** (Esc, a build inspector), the in-run **HUD**,
-  the visual **map** screen, the **Merchant** shop, and the **Throne Room curse banner** are all live.
-  Deferred to Phase 8: **Log in** (local profile), **Resume run**, the **Scoreboard** (+ score
-  formula), hero lock/unlock greying. Not scheduled: a separate **Heroes** gallery (character select
-  covers it) and **Settings** (nothing to configure yet). Every screen is keyboard-driven; mouse is a
-  later polish pass._
-  * Log in _(Phase 8)_
-  * Main menu _(live — New Run active; Resume / Scoreboard greyed)_
+  _Phase 8 status: the windowed game now boots to **Log in** → **Main menu** → **Character
+  selection** → run; **Game over** (death/victory) with restart, **Pause** (Esc, a build inspector),
+  the in-run **HUD**, the visual **map** screen, the **Merchant** shop, the **Throne Room curse
+  banner**, **Resume Run**, and the **Scoreboard** (+ score formula) are all live. Hero lock/unlock
+  greying is wired end-to-end (character select greys a locked hero and refuses its pick) but every
+  defined hero ships unlocked for now — concrete unlock triggers arrive with the Phase-9 roster. Not
+  scheduled: a separate **Heroes** gallery (character select covers it) and **Settings** (nothing to
+  configure yet). Every screen is keyboard-driven; mouse is a later polish pass._
+  * Log in _(live — a local-profile splash; no credentials/multi-profile, see architecture-plan §6 Q3)_
+  * Main menu _(live — New Run / Resume Run (greyed with no save) / Scoreboard)_
     * Start new run _(live)_
       * Character selection _(live)_
         * Character hero cards with sample abilities, talents, CTA button _(live — cards show name,
           stance, resource, level-1 abilities)_
-        * Unlocked characters colorful, locked characters grayed out _(Phase 8 — all heroes unlocked
-          for now; needs persistent MetaState)_
-    * Resume run _(Phase 8)_
+        * Unlocked characters colorful, locked characters grayed out _(live — every hero ships
+          unlocked for now; the greying + locked-pick refusal is tested against a deliberately-locked
+          hero, since none are locked by default yet)_
+    * Resume run _(live — only enabled when a save exists; rehydrates the exact saved run)_
     * Heroes _(folded into character select for now)_
-    * Scoreboard _(Phase 8)_
+    * Scoreboard _(live — run history sorted by score: act/node depth + level + a victory bonus +
+      a faster-clear speed bonus)_
     * Settings _(later — nothing to configure yet)_
     * Exit Game _(live)_  
 * 

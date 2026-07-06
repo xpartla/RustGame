@@ -15,10 +15,12 @@ use crate::game::state::GameState;
 use crate::ui::screens::character_select::{despawn_character_select, spawn_character_select};
 use crate::ui::screens::game_over::{despawn_game_over, spawn_game_over};
 use crate::ui::screens::hud;
+use crate::ui::screens::login::{despawn_login, spawn_login};
 use crate::ui::screens::main_menu::{despawn_main_menu, spawn_main_menu};
 use crate::ui::screens::map_select::{despawn_map_select, spawn_map_select};
 use crate::ui::screens::merchant::{despawn_merchant, render_merchant, spawn_merchant};
 use crate::ui::screens::pause::{despawn_pause, spawn_pause};
+use crate::ui::screens::scoreboard::{despawn_scoreboard, spawn_scoreboard};
 use crate::ui::screens::talent_picker::{despawn_picker, render_talent_picker, spawn_picker_root};
 
 pub struct UiPlugin;
@@ -50,11 +52,17 @@ impl Plugin for UiPlugin {
         app.add_systems(OnEnter(GameState::Paused), spawn_pause);
         app.add_systems(OnExit(GameState::Paused), despawn_pause);
 
-        // Main menu + character select (Phase 7.5C).
+        // Login (Phase 8, D4) + main menu + character select (Phase 7.5C).
+        app.add_systems(OnEnter(GameState::Login), spawn_login);
+        app.add_systems(OnExit(GameState::Login), despawn_login);
         app.add_systems(OnEnter(GameState::Menu), spawn_main_menu);
         app.add_systems(OnExit(GameState::Menu), despawn_main_menu);
         app.add_systems(OnEnter(GameState::CharacterSelect), spawn_character_select);
         app.add_systems(OnExit(GameState::CharacterSelect), despawn_character_select);
+
+        // Scoreboard (Phase 8) — read-only run-history list, reached from the main menu.
+        app.add_systems(OnEnter(GameState::Scoreboard), spawn_scoreboard);
+        app.add_systems(OnExit(GameState::Scoreboard), despawn_scoreboard);
 
         // Merchant shop (Phase 7.5E) — re-rendered when the talent set changes (after a remove).
         app.add_systems(OnEnter(GameState::Merchant), spawn_merchant);

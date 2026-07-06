@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
+use crate::player::components::Player;
 use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::update_player_facing::update_player_facing;
@@ -15,7 +16,18 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_player);
+        // Phase 8, §5: moved from Startup to OnEnter(InRun) — the "seed the initial world" moment
+        // for a game that (windowed) now sits in Login/Menu at boot with no live player underneath.
+        // `OnEnter(InRun)` still fires once unconditionally at the very start (GameState::InRun is
+        // the app's default state), so this still seeds the world exactly like the old Startup
+        // registration did — it just also fires on every *later* re-entry into InRun (every overlay
+        // round-trip, every real run-start/restart/resume). The guard makes those re-entries inert:
+        // by the time any of them applies, a Player already exists (spawned by this same system at
+        // boot, or freshly respawned by reset_and_start_run/resume_run before they set the state).
+        app.add_systems(
+            OnEnter(GameState::InRun),
+            spawn_player.run_if(not(any_with_component::<Player>)),
+        );
         app.add_systems(
             Update,
             (

@@ -24,26 +24,26 @@ use bevy::asset::Assets;
 use rand::seq::SliceRandom;
 
 /// A single talent offer presented to the player.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TalentOffer {
     /// Up to 3 options. Fewer than 3 if the eligible pool is exhausted.
     pub options: Vec<TalentId>,
-    /// Origin of the offer. Carried for the UI to theme the screen and for merchant/ThroneRoom
-    /// flows; only `LevelUp` is produced in Phase 2, so it is not yet read.
-    #[allow(dead_code)]
+    /// Origin of the offer. Carried for the UI to theme the screen, for merchant/ThroneRoom
+    /// flows, and serialized as part of `LevelUpFlowState` (Phase 8 — a save mid-offer restores
+    /// the exact offer on resume rather than re-rolling it).
     pub context: OfferContext,
 }
 
 /// Where the offer came from — displayed differently in the UI, and sets the rarity floor.
-/// Non-`LevelUp` variants are produced by the ThroneRoom (Phase 7) and merchant (Phase 8) flows.
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OfferContext {
     /// Normal level-up after all core abilities are unlocked. Any rarity.
     LevelUp,
     /// ThroneRoom reward: always Rare or better.
     ThroneRoom,
-    /// Post-special-event: Rare or Epic only.
+    /// Post-special-event: Rare or Epic only. No special-event flow exists yet (architecture-plan
+    /// §8.1(10)) — kept for the offer-context shape; never constructed until one lands.
+    #[allow(dead_code)]
     SpecialEvent,
     /// Merchant 3-for-1 trade: higher rarity than the traded-in set.
     MerchantTradeUp { min_rarity: TalentRarity },

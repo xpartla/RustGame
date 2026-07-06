@@ -319,3 +319,94 @@ against that new baseline.
 - Multi-profile Login / any networked/cloud save (§6 Q3: local, single profile, serde-swappable).
 - Settings screen (nothing to configure), a separate Heroes gallery (character select covers it),
   mouse input, damage numbers / minimap / tooltips (later UX/art).
+
+---
+
+## 11. As-built notes (completed 2026-07-06)
+
+Phase 8 landed as planned across 8A–8H, at **full scope**. **The golden master moved exactly once**
+(8A, the declared RNG-algorithm regeneration) — every step from 8B onward re-verified byte-identical
+against the new baseline, and `campaign_is_reproducible_within_a_build` stayed green throughout (no
+leaked nondeterminism from any Phase-8 system). See the CHANGELOG "Phase 8" section and
+architecture-plan §8.11.
+
+- **§0 decisions (resolved as planned).** **D1** exact resume via `rand_chacha::ChaCha8Rng`,
+  hand-serialized. **D2** progress+speed scoreboard formula, with the run timer added to
+  `RunState`. **D3** every `HeroDef::MANIFEST` hero ships unlocked; the lock/unlock mechanism and
+  its UI/refusal path are fully wired and unit/scenario-tested against a *deliberately* locked hero
+  (`Sim::lock_hero`), since no hero is locked by default. **D4** Log-In + the orphan-`AbilityInstance`
+  fix landed in-scope; per-hero `base_stats` stayed out.
+
+- **Deviation: hand-rolled `RunRng` serde, not `rand_chacha`'s `serde1` feature.** The plan's §1.1
+  sketch suggested `rand_chacha = { features = ["serde1"] }`. That feature's `Serialize` impl encodes
+  the word-position as a `u128`, and `ron` 0.8 cannot serialize `u128`/`i128` at all ("u128 is not
+  supported") — discovered while implementing 8A. `run/rng.rs` instead implements `Serialize`/
+  `Deserialize` by hand against `ChaCha8Rng`'s public `get_seed`/`get_stream`/`get_word_pos`/
+  `set_stream`/`set_word_pos` accessors, splitting the 128-bit word position into two `u64` halves.
+  No `rand_chacha` feature flags are needed. Pinned to `0.3.1` (unversioned in the plan's sketch;
+  `Cargo.lock` already resolved it as a transitive dependency of `rand` 0.8.6).
+
+- **Deviation: the `OnEnter(InRun)` guard covers the whole boot trio, not just `spawn_player`.** §5's
+  plan text described "guarded 'spawn only if absent'" specifically for `spawn_player`. Implementing
+  it surfaced a correctness hazard the plan's own risk table (§9) had flagged from the other
+  direction: the golden campaign's scripted bot crosses in and out of `GameState::TalentPicker`
+  several times over its 30 simulated seconds (via the XP-surge script), so `OnEnter(InRun)` fires
+  repeatedly *inside the campaign itself* — a live, exercised, non-hypothetical case, not just an
+  overlay-round-trip risk in the abstract. A guard scoped only to `spawn_player` would have let
+  `generate_map`/`init_level_flow` re-fire on every one of those re-entries, silently rerolling the
+  arena layout (burning extra `RunRng` draws) and resetting `LevelUpFlowState` (wiping band-pool
+  progress) mid-campaign — a severe, hard-to-diagnose regression. The fix: all three systems
+  (`spawn_player` in `PlayerPlugin`, `generate_map` in `WorldPlugin`, `init_level_flow` in
+  `ProgressionPlugin`) share the identical run condition, `not(any_with_component::<Player>)`.
+  Because `Commands` are deferred, every one of the three still sees "no player yet" on the true
+  first boot (so all three run, exactly as before), and "a player already exists" on every later
+  re-entry (real run-starts/restarts/resumes spawn their own fresh player *before* setting
+  `NextState::InRun`; every overlay round-trip never despawns the player at all) — so the guard is
+  correct without needing the risk table's documented fallback (an explicit transition pump in
+  `Sim::new`).
+
+- **Two pre-existing bugs found by new test coverage, both fixed in-phase (not deferred).**
+  1. `enter_merchant` took a bare `Res<CurrentEncounter>`. It runs immediately after
+     `handle_encounter_complete` in the same `.chain()`, and Bevy auto-inserts a sync point between
+     ordered systems with a `Commands` dependency — so on the Act-3 boss clear,
+     `handle_encounter_complete`'s `commands.remove_resource::<CurrentEncounter>()` had *already*
+     applied by the time `enter_merchant` ran the same frame, failing parameter validation and
+     panicking. No test exercised the Act-3-victory path before Phase 8's
+     `tests/meta.rs::run_end_appends_a_scored_run_record_on_victory` — meaning **any real
+     playthrough that reached the final boss would have crashed**. Fixed with `Option<Res<_>>`.
+  2. `resume_run` replays `TalentAcquiredEvent`s onto a player it just respawned *the same frame*.
+     `install_acquired_talent` needs that player's `AcquiredTalents`/`ActiveHooks` components to
+     already exist, but `attach_talent_components` (the system that normally adds them) runs
+     unordered relative to both — a real, not merely theoretical, race the first time any code path
+     did "spawn a player and hand it talents in the same frame" (a fresh run never does this; only
+     resume does). Fixed by having `resume_run` attach the components synchronously before replaying
+     the events, and adding a `Without<AcquiredTalents>` guard to `attach_talent_components` so it
+     can never later clobber what resume already installed.
+
+- **Save-point semantics (§3.1), as literally specified.** The save snapshot is taken exactly where
+  §3.1 names it — inside `handle_encounter_complete`, on its two non-terminal exits (regular →
+  MapSelect, and a non-final act advance) — and nowhere else (not in `handle_map_select`'s branch
+  pick). One consequence, already anticipated by §3.1's "reloaded fresh" wording but worth stating
+  plainly: because `RunState.current_node` only advances when a branch is actually *picked* (in
+  `handle_map_select`), a save taken at "just cleared node X, MapSelect is showing" still names node
+  X as `current_node`. Resuming from that save therefore reloads node X **with a freshly-rerolled
+  roster** (from the live RNG position), not a new node — a deliberate v1 simplification (the plan's
+  own "standard for the genre, keeps the snapshot small"), not a bug. Confirmed as the intended
+  reading by testing it directly: `tests/persistence.rs::resume_continues_the_rng_stream_exactly`
+  proves the reroll is itself bit-exact, which is the property that actually matters for D1.
+
+- **Score/menu key bindings (not specified by the plan, decided during implementation).** Main menu:
+  `1` New Run, `2` Resume Run (only wired live when a save exists), `3` Scoreboard, `Esc` quit —
+  extending Phase 7.5's existing `1`/`Esc` scheme rather than introducing new bindings. Login: **any**
+  key advances (not just Enter), since there is nothing to choose on a single-profile splash.
+
+- **Tests.** +4 `tests/persistence.rs`, +4 `tests/meta.rs`, +2 `tests/game_flow.rs`; new unit tests in
+  `run/rng.rs` (RNG resume contract + ChaCha8 determinism), `run/state.rs` / `meta/state.rs` (RON
+  round-trips), `meta/persistence.rs` (save-path resolution, corrupt/missing → default),
+  `meta/score.rs` (the formula across act/node/level/victory/time). New `Sim` helpers: `run_state`,
+  `meta`, `lock_hero`, `request_resume_run`, `enter_login`, `enemy_roster_signature`. Build
+  warning-free throughout.
+
+- **Presentation (never headless).** `ui/screens/login.rs` and `ui/screens/scoreboard.rs` are
+  presentation-only, like every other screen; their logic (state transitions, the score formula, the
+  unlock predicate) is exercised headless. Verified manually on the Windows build (WSL has no GPU).

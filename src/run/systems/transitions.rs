@@ -18,17 +18,22 @@
 use bevy::prelude::*;
 use rand::Rng;
 
+use crate::ability::components::AbilityInstance;
 use crate::constants::PLAYER_HEALTH;
 use crate::core::components::{GridPosition, Health, WorldPosition};
 use crate::enemy::assets::{EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary, THEME_IDS};
 use crate::enemy::components::{Enemy, MapBoss};
 use crate::enemy::systems::spawner::spawn_enemy_from_def;
 use crate::game::state::{GameOverSummary, GameState};
+use crate::meta::state::MetaState;
 use crate::pickup::components::PickUp;
 use crate::player::components::{Experience, Player};
+use crate::progression::state::LevelUpFlowState;
 use crate::projectile::components::Projectile;
 use crate::run::rng::RunRng;
 use crate::run::state::{node_depth, CurrentEncounter, ObjectiveProgress, RoomModifiers, RunState};
+use crate::run::systems::persistence::{record_run_end, save_run_snapshot, sync_run_state};
+use crate::talent::components::AcquiredTalents;
 use crate::world::components::TileMap;
 use crate::world::constants::SPAWN_CLEAR_RADIUS;
 use crate::world::generator::generate_room;
@@ -84,6 +89,7 @@ pub fn start_run(world: &mut World, seed: u64, hero_id: &str) {
         unlocked_abilities: Vec::new(),
         acquired_talents: Vec::new(),
         level_flow,
+        elapsed_secs: 0.0,
     });
 
     let depth = node_depth(1, entry.column);
@@ -316,10 +322,18 @@ pub fn check_objective(
 /// Opens the merchant shop when a Merchant node has loaded (Phase 7.5E). Transitions InRun → Merchant
 /// once the (empty) room is spawned; the shop overlay's input leaves directly to MapSelect, so this
 /// never re-fires for the same node (it is InRun-gated and the node is left via MapSelect, not InRun).
+///
+/// `Option<Res<_>>` (found by a Phase-8 scenario, §8.5-style fix): this runs right after
+/// `handle_encounter_complete` in the same `.chain()`, and Bevy auto-inserts a sync point between
+/// them (a dependency edge onto a `Commands`-using system) — so on the Act-3 boss clear,
+/// `handle_encounter_complete`'s `commands.remove_resource::<CurrentEncounter>()` has *already*
+/// applied by the time this system runs the same frame. A bare `Res<CurrentEncounter>` would fail
+/// parameter validation and panic every real playthrough that reaches the final boss.
 pub fn enter_merchant(
-    current: Res<CurrentEncounter>,
+    current: Option<Res<CurrentEncounter>>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
+    let Some(current) = current else { return };
     if current.spawned && matches!(current.objective, ObjectiveProgress::Rest) {
         next_state.set(GameState::Merchant);
     }
@@ -329,7 +343,9 @@ pub fn enter_merchant(
 
 /// Consumes `EncounterCompleteEvent`: sync the player into RunState, then either advance the act (an
 /// ActBoss clear) — rebuilding the next act's graph, or ending the run on Act 3 — or enter MapSelect
-/// for a branch choice (every other encounter).
+/// for a branch choice (every other encounter). Every non-terminal exit is also a Phase-8 save point
+/// (§3.1): the synced RunState + the live RunRng are snapshotted into `MetaState.in_progress_run`;
+/// the terminal Act-3 victory instead records a scored `RunRecord` and clears the in-progress save.
 #[allow(clippy::too_many_arguments)]
 pub fn handle_encounter_complete(
     mut events: EventReader<EncounterCompleteEvent>,
@@ -339,7 +355,10 @@ pub fn handle_encounter_complete(
     mut next_state: ResMut<NextState<GameState>>,
     mut rng: ResMut<RunRng>,
     mut room_mods: ResMut<RoomModifiers>,
-    players: Query<(&Health, &Experience), With<Player>>,
+    mut meta: ResMut<MetaState>,
+    level_flow: Res<LevelUpFlowState>,
+    abilities: Query<(Entity, &AbilityInstance)>,
+    players: Query<(Entity, &Health, &Experience, &AcquiredTalents), With<Player>>,
     enemies: Query<Entity, With<Enemy>>,
     projectiles: Query<Entity, With<Projectile>>,
     zones: Query<Entity, With<PersistentZone>>,
@@ -350,17 +369,17 @@ pub fn handle_encounter_complete(
     }
     events.clear();
 
-    // Sync the live player into RunState (Phase-8 serialization; player entity stays authoritative).
-    if let Ok((health, exp)) = players.single() {
-        run_state.player_health = health.current;
-        run_state.player_level = exp.level;
+    // Sync the live player into RunState (Phase-8: abilities/talents/level-flow too, not just
+    // health/level — see run/systems/persistence.rs::sync_run_state's header).
+    if let Ok((owner, health, exp, acquired)) = players.single() {
+        sync_run_state(&mut run_state, health.current, exp.level, owner, &abilities, acquired, &level_flow);
     }
 
     // Key off the encounter that was actually loaded (CurrentEncounter), not a graph re-lookup.
     let is_act_boss = matches!(current.encounter, EncounterType::ActBoss);
 
     if is_act_boss {
-        despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups);
+        despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups, &abilities);
         room_mods.0.clear();
         if run_state.current_act >= 3 {
             // Run complete (Act-3 boss down) — a victory. Capture the summary before teardown so the
@@ -372,6 +391,7 @@ pub fn handle_encounter_complete(
                 act: Some(run_state.current_act),
                 node_column: run_state.act_graph.node(run_state.current_node).map(|n| n.column),
             });
+            record_run_end(&mut meta, &run_state, true);
             commands.remove_resource::<CurrentEncounter>();
             commands.remove_resource::<RunState>();
             next_state.set(GameState::GameOver);
@@ -386,25 +406,31 @@ pub fn handle_encounter_complete(
             run_state.current_node = entry_id;
             let depth = node_depth(act, entry.column);
             commands.insert_resource(CurrentEncounter::for_node(&entry, depth));
+            save_run_snapshot(&mut meta, &run_state, &rng);
             // Stay InRun — load_encounter loads the new act's entry next frame.
         }
     } else {
+        save_run_snapshot(&mut meta, &run_state, &rng);
         next_state.set(GameState::MapSelect);
     }
 }
 
 /// Despawns exactly the encounter-scoped entities (enemies, projectiles/VFX, zones, pickups) on an
-/// encounter transition. The player entity persists across encounters. Status-effect instances on a
-/// despawned enemy are reaped by `despawn_orphaned_status` next frame.
+/// encounter transition, plus (Phase 8, §5) the `AbilityInstance` entities owned by those enemies —
+/// they are separate top-level entities (an `owner` field, not real Bevy children), so nothing else
+/// reaps them here. The player entity (and its own instances) persists across encounters.
+/// Status-effect instances on a despawned enemy are reaped by `despawn_orphaned_status` next frame.
 pub fn despawn_encounter_entities(
     commands: &mut Commands,
     enemies: &Query<Entity, With<Enemy>>,
     projectiles: &Query<Entity, With<Projectile>>,
     zones: &Query<Entity, With<PersistentZone>>,
     pickups: &Query<Entity, With<PickUp>>,
+    abilities: &Query<(Entity, &AbilityInstance)>,
 ) {
-    for e in enemies.iter() {
-        commands.entity(e).despawn();
+    let dying: std::collections::HashSet<Entity> = enemies.iter().collect();
+    for e in &dying {
+        commands.entity(*e).despawn();
     }
     for e in projectiles.iter() {
         commands.entity(e).despawn();
@@ -414,5 +440,10 @@ pub fn despawn_encounter_entities(
     }
     for e in pickups.iter() {
         commands.entity(e).despawn();
+    }
+    for (instance_entity, instance) in abilities.iter() {
+        if dying.contains(&instance.owner) {
+            commands.entity(instance_entity).despawn();
+        }
     }
 }

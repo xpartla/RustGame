@@ -9,6 +9,7 @@
 
 use bevy::prelude::*;
 
+use crate::ability::components::AbilityInstance;
 use crate::enemy::components::Enemy;
 use crate::game::state::GameState;
 use crate::pickup::components::PickUp;
@@ -29,6 +30,7 @@ pub fn handle_map_select(
     projectiles: Query<Entity, With<Projectile>>,
     zones: Query<Entity, With<PersistentZone>>,
     pickups: Query<Entity, With<PickUp>>,
+    abilities: Query<(Entity, &AbilityInstance)>,
 ) {
     let selected = if keys.just_pressed(KeyCode::Digit1) {
         Some(0)
@@ -49,7 +51,7 @@ pub fn handle_map_select(
     };
 
     // Tear down the cleared encounter (the player entity persists) and clear any curse.
-    despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups);
+    despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups, &abilities);
     room_mods.0.clear();
 
     run_state.current_node = chosen;

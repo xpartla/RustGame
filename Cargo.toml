@@ -16,6 +16,12 @@ path = "src/main.rs"
 [dependencies]
 bevy = "0.16.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
+# Phase 8 (D1): RunRng's algorithm, not just its seed — SmallRng is explicitly non-portable
+# across rand versions/platforms and has no serde support; ChaCha8 is value-stable, and its
+# state can be captured via public accessors (get_seed/get_stream/get_word_pos). RunRng
+# implements serde by hand (run/rng.rs) rather than via rand_chacha's own "serde1" feature,
+# because that feature's wire format uses a u128 the RON save format cannot represent.
+rand_chacha = "0.3.1"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
 

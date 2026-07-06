@@ -13,7 +13,11 @@ use crate::core::sets::CombatSet;
 use crate::enemy::systems::death::enemy_death;
 use crate::game::state::GameState;
 use crate::run::state::{CurrentEncounter, RoomModifiers, RunState};
-use crate::run::systems::menu::{handle_character_select_input, handle_main_menu_input};
+use crate::run::systems::menu::{
+    handle_character_select_input, handle_login_input, handle_main_menu_input,
+    handle_scoreboard_input,
+};
+use crate::run::systems::persistence::{apply_resume_request, tick_run_timer, ResumeRunRequest};
 use crate::run::systems::reset::{
     apply_start_run_request, handle_game_over_input, StartRunRequest,
 };
@@ -31,7 +35,17 @@ impl Plugin for RunPlugin {
             // ThroneRoom curse defs (`.roommod.ron`) — loaded but inert until a ThroneRoom is entered.
             .register_def_library::<RoomModifierDef>()
             .add_event::<EncounterCompleteEvent>()
-            .add_event::<StartRunRequest>();
+            .add_event::<StartRunRequest>()
+            .add_event::<ResumeRunRequest>();
+
+        // Deterministic run clock (Phase 8, D2) — feeds the scoreboard's speed bonus. Gated on a
+        // live run so the golden campaign (which never starts one) never ticks it.
+        app.add_systems(
+            Update,
+            tick_run_timer
+                .run_if(in_state(GameState::InRun))
+                .run_if(resource_exists::<RunState>),
+        );
 
         // Encounter lifecycle — in the CombatSet::Death region (after enemy_death, so a killed boss
         // is despawned before the objective is counted). Gated on a live run so the golden campaign,
@@ -66,9 +80,17 @@ impl Plugin for RunPlugin {
             apply_start_run_request.run_if(on_event::<StartRunRequest>),
         );
 
-        // Main menu + character select (Phase 7.5C). Each is gated on its own state; the campaign
-        // never enters Menu/CharacterSelect ⇒ both are inert there. Selecting a hero emits a
-        // StartRunRequest, handled by the shared reset path above.
+        // Resume Run (Phase 8, §3.2) — the mirror of apply_start_run_request. Only runs on a frame
+        // carrying a ResumeRunRequest (the main-menu Resume input, gated there on a save existing).
+        app.add_systems(
+            Update,
+            apply_resume_request.run_if(on_event::<ResumeRunRequest>),
+        );
+
+        // Login + main menu + character select (Phase 7.5C; Login/Resume/Scoreboard Phase 8). Each
+        // is gated on its own state; the campaign never enters any of them ⇒ all inert there.
+        // Selecting a hero emits a StartRunRequest, handled by the shared reset path above.
+        app.add_systems(Update, handle_login_input.run_if(in_state(GameState::Login)));
         app.add_systems(
             Update,
             handle_main_menu_input.run_if(in_state(GameState::Menu)),
@@ -76,6 +98,10 @@ impl Plugin for RunPlugin {
         app.add_systems(
             Update,
             handle_character_select_input.run_if(in_state(GameState::CharacterSelect)),
+        );
+        app.add_systems(
+            Update,
+            handle_scoreboard_input.run_if(in_state(GameState::Scoreboard)),
         );
     }
 }

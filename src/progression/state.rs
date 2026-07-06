@@ -21,8 +21,8 @@ use crate::ability::assets::AbilityId;
 use crate::talent::offer::TalentOffer;
 use bevy::prelude::*;
 
-/// Standalone Resource in Phase 2; stored inline in RunState from Phase 7.
-#[derive(Resource, Debug, Clone)]
+/// Standalone Resource in Phase 2; stored inline in RunState from Phase 7 (serialized, Phase 8).
+#[derive(Resource, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LevelUpFlowState {
     pub phase: LevelUpPhase,
     /// Shuffled at run start. Draw from the front (`remove(0)`) to pop without replacement.
@@ -35,7 +35,7 @@ pub struct LevelUpFlowState {
     pub owed_choices: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LevelUpPhase {
     /// Levels 2–6: unlock core abilities from band pools.
     AbilityUnlock,

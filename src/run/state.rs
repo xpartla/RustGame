@@ -1,9 +1,10 @@
 // RunState — the single authoritative record of an in-progress run — plus the small live-encounter
 // state that gates the encounter systems.
 //
-// Phase 7 keeps these **in-memory** (no serde yet — that is Phase 8, §8.2). During a run the live
-// player entity stays the source of truth for health/level/talents; RunState mirrors graph position
-// + act and is synced on each encounter transition so Phase 8 can serialize it.
+// Phase 8 makes this serializable (serde/RON) so it can round-trip to disk as part of a `SavedRun`
+// (meta/state.rs). During a run the live player entity stays the source of truth for
+// health/level/abilities/talents; RunState is a mirror, kept in sync at every node-load boundary by
+// `run::systems::persistence::sync_run_state` so a save always reflects the live build.
 //
 // Invariants:
 //   - RunState / CurrentEncounter are inserted as Resources only during an active run. A runless
@@ -11,11 +12,15 @@
 //     system is `run_if`-gated off and the campaign is unaffected.
 //   - MetaState (meta/state.rs) is always present. They never share fields.
 //   - RunRng is kept in a separate resource (run/rng.rs) so it can be passed as ResMut<RunRng>
-//     independently.
+//     independently. It travels alongside RunState only inside `SavedRun` (meta/state.rs).
+//   - CurrentEncounter / ObjectiveProgress are NOT serialized — they're rebuilt from `act_graph` +
+//     `current_node` via `CurrentEncounter::for_node` on load/resume.
 //
 // Interactions:
 //   - run/systems/transitions.rs writes current_node and act on encounter completion.
-//   - progression/state.rs LevelUpFlowState is stored inline here so it is saved (Phase 8).
+//   - run/systems/persistence.rs (Phase 8) syncs abilities/talents/level_flow, ticks elapsed_secs,
+//     and drives save/resume.
+//   - progression/state.rs LevelUpFlowState is stored inline here so it is saved.
 //   - world/graph.rs::build_act_graph builds `act_graph`.
 
 use crate::ability::assets::AbilityId;
@@ -24,10 +29,11 @@ use crate::progression::state::LevelUpFlowState;
 use crate::talent::assets::{StatModifier, TalentId};
 use crate::world::graph::{ActGraph, EncounterNode, EncounterType, ModifierId, NodeId, ObjectiveType, COLUMNS_PER_ACT};
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// The complete resumable run state. All fields are necessary and sufficient to reconstruct the
-/// game state at the point the player left off (Phase 8 serializes this).
-#[derive(Resource, Debug, Clone)]
+/// game state at the point the player left off (Phase 8 serializes this via `meta::state::SavedRun`).
+#[derive(Resource, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunState {
     pub seed: u64,
     pub hero_id: HeroId,
@@ -39,6 +45,9 @@ pub struct RunState {
     pub unlocked_abilities: Vec<AbilityId>,
     pub acquired_talents: Vec<(TalentId, u8)>,
     pub level_flow: LevelUpFlowState,
+    /// Deterministic run clock (Phase 8, D2): accumulated from `Time::delta` while `InRun` and a run
+    /// exists (never in the runless campaign). Feeds the scoreboard's speed bonus.
+    pub elapsed_secs: f32,
 }
 
 /// The live "what am I fighting right now" state. Present only while an encounter is loaded; its
@@ -123,6 +132,9 @@ pub fn node_depth(act: u8, column: usize) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::progression::state::LevelUpFlowState;
+    use crate::world::graph::build_act_graph;
+    use crate::run::rng::RunRng;
 
     #[test]
     fn depth_formula_at_act_and_column_boundaries() {
@@ -130,5 +142,34 @@ mod tests {
         assert_eq!(node_depth(1, 14), 14);
         assert_eq!(node_depth(2, 0), COLUMNS_PER_ACT as u32, "Act 2 entry continues the ramp");
         assert_eq!(node_depth(3, 0), (2 * COLUMNS_PER_ACT) as u32);
+    }
+
+    /// Phase 8 (8B): the whole RunState object graph round-trips through RON byte-for-byte equal —
+    /// the prerequisite for saving/resuming a run.
+    #[test]
+    fn run_state_round_trips_through_ron() {
+        let mut rng = RunRng::from_seed(7);
+        let graph = build_act_graph(1, "sand_dune".to_string(), &mut rng);
+        let entry = graph.entry;
+        let run = RunState {
+            seed: 7,
+            hero_id: "blood_death_knight".to_string(),
+            current_act: 2,
+            current_node: entry,
+            act_graph: graph,
+            player_health: 123.5,
+            player_level: 4,
+            unlocked_abilities: vec!["death_strike".to_string(), "dnd".to_string()],
+            acquired_talents: vec![("death_strike_leech_common".to_string(), 2)],
+            level_flow: LevelUpFlowState::new(
+                vec!["blood_boil".to_string()],
+                vec!["amz".to_string()],
+            ),
+            elapsed_secs: 42.25,
+        };
+
+        let ron = ron::ser::to_string(&run).expect("serialize RunState");
+        let restored: RunState = ron::de::from_str(&ron).expect("deserialize RunState");
+        assert_eq!(run, restored);
     }
 }

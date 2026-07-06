@@ -849,6 +849,120 @@ keyboard-first input; **D5** player bar → HUD, enemy gizmo bars stay, bosses g
   **golden baseline unchanged (no regeneration)**. The screens themselves (all presentation) are
   verified manually on the Windows build (WSL has no GPU).
 
+### Phase 8 — Persistence + Meta (complete)
+Closes the persistence + meta surface deferred through Phases 7 and 7.5: **RunState
+serialization**, save-on-node-transition + **Resume Run**, **MetaState** (hero unlocks +
+scoreboard + the score formula), a **Log-In** splash, and the `Startup`→`OnEnter(InRun)` +
+orphaned-`AbilityInstance` cleanups. Delivered in the plan's sub-steps 8A–8H (see
+`docs/phase8-plan.md` §11 for the as-built notes). All four §0 decisions were confirmed with the
+owner as the recommended defaults: **D1** exact resume via a `RunRng` algorithm switch to
+`ChaCha8Rng`; **D2** a progress+speed scoreboard formula; **D3** every hero ships unlocked (the
+lock/unlock *mechanism* only); **D4** Log-In + the orphan fix in scope, per-hero `base_stats`
+application stays out (→ Phase 9).
+
+- **RNG algorithm switch — the one declared golden-master move (8A).** `RunRng` changes from
+  `rand::rngs::SmallRng` to `rand_chacha::ChaCha8Rng` (`run/rng.rs`): `SmallRng` has no serde
+  support at all and is explicitly *not* guaranteed stable across rand versions/platforms, so
+  resuming a run needs both a serializable RNG **and** a value-stable one. `RunRng` implements
+  `Serialize`/`Deserialize` by hand (seed + stream + a `u128` word-position split into two `u64`
+  halves) rather than via `rand_chacha`'s own `serde1` feature, because that feature's wire format
+  uses a `u128` that `ron` 0.8 cannot represent. Switching algorithms changes the entire draw
+  sequence for the same seed — **the golden-master campaign baseline was regenerated once**
+  (`UPDATE_GOLDEN=1 cargo test --test golden_campaign`), committed with this entry; every
+  subsequent Phase-8 step re-verified byte-identical against the new baseline, and
+  `campaign_is_reproducible_within_a_build` stayed green throughout (no leaked nondeterminism).
+  Bonus: `ChaCha8Rng`'s value-stability *strengthens* the golden-baseline portability note over
+  `SmallRng`'s explicit non-guarantee.
+- **RunState/MetaState serde (8B/8C).** `#[derive(Serialize, Deserialize)]` across the whole
+  `RunState` object graph (`ActGraph`/`EncounterNode`/`EncounterType`/`ObjectiveType`,
+  `LevelUpFlowState`/`LevelUpPhase`, `TalentOffer`/`OfferContext`, `StatModifier`/`ModOp`/rarity +
+  uniqueness enums) — plain data, derives only. `RunState` gained `elapsed_secs: f32` (the
+  deterministic run clock, D2). `MetaState`/`RunRecord` gained the same derives;
+  `in_progress_run: Option<Vec<u8>>` became `Option<SavedRun>` (`{ run: RunState, rng: RunRng }`,
+  nested/human-inspectable RON instead of opaque bytes). `meta/persistence.rs`: a pure
+  `serialize_meta`/`deserialize_meta` (RON, no I/O) plus thin disk wrappers
+  (`save_meta_to_disk`/`load_meta_from_disk`), a save-path resolver (`RUSTGAME_SAVE_DIR` env
+  override → a platform app-data dir → `./saves`), and corrupt/missing-file → `MetaState::default()`
+  (never panics). `meta` joins the crate (`lib.rs`: `pub mod meta;`) and `GameLogicPlugin` (via the
+  new `MetaPlugin`, sim-able — it only inserts the in-memory default); the windowed `GamePlugin`
+  layers the actual disk I/O on top (`load_meta_startup` at `Startup`, `autosave_meta_to_disk` on
+  `resource_changed::<MetaState>`), so the sim never touches a filesystem.
+- **Save cadence + scoring (8D).** `run/systems/persistence.rs::sync_run_state` mirrors the live
+  player's abilities/talents/level-flow/vitals into `RunState` at every node boundary — before this,
+  `unlocked_abilities`/`acquired_talents` were never written after run-start and would have
+  serialized empty. `handle_encounter_complete` now calls it on every exit (regular → MapSelect, act
+  advance, and the terminal Act-3 victory) and snapshots `SavedRun { run, rng }` into
+  `MetaState.in_progress_run` on the two non-terminal exits; `player_death` does the same sync on
+  defeat. `tick_run_timer` accumulates `elapsed_secs` from `Time::delta` while `InRun` with a live
+  run (absent `RunState` — the golden campaign — ⇒ inert). `record_run_end` (called by both the
+  defeat and Act-3-victory paths) computes the score, appends a `RunRecord`, clears
+  `in_progress_run`, and calls the Phase-9 hero-unlock seam (`unlock_heroes_on_progress`, inert
+  today, D3). **Score formula** (`meta/score.rs`, pure, tunable consts): `progress = act·1000 +
+  node_column·50 + level·100 + (victory ? 5000 : 0)`; `speed = max(0, TIME_PAR_SECS −
+  elapsed_secs) · SPEED_WEIGHT` (never a penalty for going over par); `score = round(progress +
+  speed)`.
+- **Resume Run (8E).** `resume_run(&mut World, SavedRun)` is the mirror of
+  `reset.rs::reset_and_start_run`: `teardown_run` → insert the saved `RunRng` (exact stream
+  position, the D1 payoff) → `respawn_player` → set `Health.current`/`Experience.level` from the
+  save → re-grant every `unlocked_abilities` entry through the idempotent `UnlockAbilityEvent` →
+  `spawn_unlocked_ability` path → re-install every `acquired_talents` entry through
+  `TalentAcquiredEvent` → `install_acquired_talent` → rebuild `CurrentEncounter` from the saved
+  `act_graph`/`current_node`/`current_act` → insert the saved `RunState` → enter `InRun`. Because
+  the RNG stream is restored exactly, the room `load_encounter` rolls next frame is byte-identical
+  to what an uninterrupted run would have rolled at that point. A new `ResumeRunRequest` event
+  (mirrors `StartRunRequest`) is emitted by the main menu's "2. Resume Run" (enabled only when
+  `MetaState.in_progress_run.is_some()`) and consumed by the exclusive `apply_resume_request`; an
+  absent save is a clean no-op (stays in the menu, never panics).
+  - **Fix found by this work:** talents re-installed onto a just-respawned player in the same frame
+    could race `attach_talent_components`'s own (unordered) turn and be silently dropped, or — worse
+    — get clobbered if that system ran *after* the install. `resume_run` now attaches
+    `AcquiredTalents`/`ActiveHooks` synchronously before replaying the talent events, and
+    `attach_talent_components`'s query gained a `Without<AcquiredTalents>` guard so it can never
+    stomp components resume already populated. Not reachable by any pre-Phase-8 code path (a fresh
+    run never replays talents onto a same-frame-respawned player), so this is net-new correctness,
+    not a behavior change.
+- **MetaState surfaces (8F).** `hero_is_unlocked(&MetaState, id)` — a pure predicate, `unlocked_heroes`
+  seeded to every `HeroDef::MANIFEST` id on first launch (D3: all unlocked, the mechanism only).
+  `ui/screens/character_select.rs` greys a locked hero's card; `handle_character_select_input`
+  refuses a locked pick (no `StartRunRequest`). New `GameState::Scoreboard` +
+  `ui/screens/scoreboard.rs` (`run_history` sorted by score desc, top 10, Esc → Menu).
+- **Log-In (8G).** New `GameState::Login` (a local-profile splash — architecture-plan §6 Q3: local
+  only, no credentials, no multi-profile). The windowed boot now goes Login → Menu →
+  CharacterSelect → run (`GamePlugin`'s `Startup` system renamed `enter_main_menu` →
+  `enter_login`); any key at Login advances to Menu.
+- **Cleanups (8H).** `spawn_player`/`generate_map`/`init_level_flow` moved from `Startup` to
+  `OnEnter(GameState::InRun)`, each guarded `.run_if(not(any_with_component::<Player>))` — `InRun`
+  is still the app's default state, so this still seeds the world exactly once at boot (headless
+  sim and windowed alike), but no longer refires on every later re-entry into `InRun` (every
+  overlay round-trip; every real run-start/restart/resume, which spawn their own fresh player
+  first). Orphaned `AbilityInstance` entities (found Phase 7.5, filed to architecture-plan §8.5) are
+  now despawned in `enemy_death` and by `despawn_encounter_entities` on an encounter transition —
+  they are separate top-level entities (an `owner` field, not real Bevy children), so nothing else
+  reaped them; not a golden-trace field ⇒ byte-identical.
+  - **Fix found by this work:** `enter_merchant` (chained immediately after
+    `handle_encounter_complete`) required `Res<CurrentEncounter>` unconditionally, but Bevy
+    auto-inserts a sync point between chained systems with a `Commands` dependency — so on the
+    Act-3 boss clear, `handle_encounter_complete`'s `commands.remove_resource::<CurrentEncounter>()`
+    had *already* applied by the time `enter_merchant` ran the same frame, failing parameter
+    validation and panicking. This is a **pre-existing crash bug**: any real playthrough reaching
+    the final boss would have hit it; it was never exercised by any test before Phase 8 added
+    Act-3-victory coverage. Fixed by changing the parameter to `Option<Res<CurrentEncounter>>`.
+- **Tests: 165 passing** (was 136). +4 `tests/persistence.rs` (RunState syncs abilities/talents/timer
+  at a node transition; save→resume reconstructs a live run byte-for-byte; resume continues the
+  RunRng stream exactly — two independent resumes of identical saved data roll an identical roster;
+  resume with no save falls back cleanly) and +4 `tests/meta.rs` (a locked hero pick is refused; a
+  defeat and an Act-3 victory each append a scored `RunRecord`; the scoreboard's data source sorts
+  by score descending). `tests/game_flow.rs` gained +2 (boot reaches Login then Menu; Resume Run
+  from the main menu enters `InRun` with the saved run). New unit tests: `RunRng`'s
+  serialize/restore-mid-stream contract + ChaCha8 determinism (`run/rng.rs`); `RunState`/`MetaState`
+  RON round-trips; the save-path resolver + corrupt/missing-file fallback
+  (`meta/persistence.rs`); the score formula across act/node/level/victory/time (`meta/score.rs`);
+  `hero_is_unlocked` against a deliberately-locked hero. New sim helpers: `run_state`, `meta`,
+  `lock_hero`, `request_resume_run`, `enter_login`, `enemy_roster_signature`. Build warning-free;
+  **golden baseline regenerated once (8A, declared above)** — every later step verified
+  byte-identical against it. The Login/Scoreboard screens themselves (presentation) are verified
+  manually on the Windows build (WSL has no GPU).
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -930,10 +1044,10 @@ it is being replaced in the architecture rewrite above.
 
 ## What Was Not Built (intentional scope boundary)
 
-Phases 0–7 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
+Phases 0–8 (foundation, ability system, talent system, status effects, hero/stance system + Mage,
 enemy abilities + AI + faction-aware engine, persistent zones + code-driven hooks, act graph + room /
-encounter system) are complete. The following are designed and scaffolded but have zero implementation
-yet:
+encounter system, UI layer, persistence + meta) are complete. The following are designed and
+scaffolded but have zero implementation yet:
 
 - ~~Hero / stance system (HeroDef asset, Q swap) — Phase 4~~ **done** (focused vertical slice —
   Death Knight + Mage; heavier Mage subsystems deferred, see architecture-plan §8.6)
@@ -959,7 +1073,17 @@ yet:
   discs + the cast-VFX bus / Blood Boil nova flash. Deferred to Phase 8: scoreboard + score formula,
   Resume Run, hero unlock greying, Log-In profile, moving player/map spawn out of `Startup` — see
   architecture-plan §8.10)
-- Persistence (save/load RunState, MetaState) — Phase 8
+- ~~Persistence (save/load RunState, MetaState) — Phase 8~~ **done** (RunRng switched to a
+  serializable, value-stable `ChaCha8Rng` — the one declared golden-master regeneration; RunState/
+  MetaState serde + a nested `SavedRun`; a pure serialize/deserialize layer + thin disk wrappers
+  the sim never touches; save-on-node-transition + Resume Run, bit-exact via the restored RNG
+  stream; the progress+speed scoreboard formula; Log-In; hero unlock/greying — mechanism only, every
+  hero ships unlocked; the `Startup`→`OnEnter(InRun)` move + the orphaned-`AbilityInstance` cleanup.
+  See architecture-plan §8.11)
 - Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9
-- Scoreboard + score formula, Settings screen, damage numbers / minimap / tooltips, gamepad,
-  art/audio — later (see phase7.5-ui-plan §7)
+- Concrete hero-unlock triggers (the mechanism shipped Phase 8; needs the real Phase-9 roster) —
+  Phase 9
+- Per-hero `base_stats` application (deferred out of Phase 8, D4-OUT — a second golden regen +
+  balance concern) — Phase 9
+- Settings screen, damage numbers / minimap / tooltips, gamepad, art/audio — later (see
+  phase7.5-ui-plan §7, phase8-plan §10)

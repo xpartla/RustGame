@@ -37,7 +37,16 @@ pub struct TalentRemovedEvent {
 
 /// Inserts the talent bookkeeping components on a freshly spawned player. Keeps the `player`
 /// module decoupled from `talent` (mirrors how the ability plugin grants starting abilities).
-pub fn attach_talent_components(mut commands: Commands, players: Query<Entity, Added<Player>>) {
+///
+/// `Without<AcquiredTalents>` (Phase 8): `resume_run` (run/systems/persistence.rs) attaches these
+/// components itself, synchronously, so a same-frame `TalentAcquiredEvent` replay onto a
+/// just-respawned player can't race this system's (unordered) turn — without this guard, this
+/// system running *after* that replay would blindly overwrite the just-installed talents with
+/// empty defaults.
+pub fn attach_talent_components(
+    mut commands: Commands,
+    players: Query<Entity, (Added<Player>, Without<AcquiredTalents>)>,
+) {
     for entity in &players {
         commands
             .entity(entity)

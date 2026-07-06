@@ -3,6 +3,8 @@ pub mod map_select;
 pub mod hud;
 pub mod game_over;
 pub mod pause;
+pub mod login;
 pub mod main_menu;
 pub mod character_select;
 pub mod merchant;
+pub mod scoreboard;

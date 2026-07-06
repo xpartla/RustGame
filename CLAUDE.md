@@ -10,13 +10,14 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
 | `docs/phase6-plan.md` | Phase 6 plan + as-built notes (persistent zones + code-driven ability hooks) |
 | `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
 | `docs/phase7.5-ui-plan.md` | Phase 7.5 plan + as-built notes (UI layer: HUD, menus, game-over/pause, map view, merchant, VFX bus) |
+| `docs/phase8-plan.md` | Phase 8 plan + as-built notes (persistence + meta: RunRng → ChaCha8, RunState/MetaState serde, save/resume, scoreboard, Log-In) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -47,8 +48,8 @@ unrelated web project.)
 ## Known tech debt (before you add to it)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
-in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10) — each item has an owning phase.
-Highlights a future session must not "rediscover":
+in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10, Phase-8 in §8.11) — each item has an
+owning phase. Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -71,9 +72,19 @@ Highlights a future session must not "rediscover":
   character_select, game_over, pause, map_select visual view, merchant); death → `GameState::GameOver`
   + `run/systems/reset.rs` restart; windowed boot Menu → CharacterSelect → run (`enter_main_menu`
   replaced `auto_start_run`); merchant remove/trade ops; zone discs + the cast-VFX bus (nova flash).
-  Every screen is presentation-only (verified on Windows); its logic is headless-tested. Deferred to
-  Phase 8: scoreboard + score formula, Resume Run, hero unlock greying, Log-In, moving player/map
-  spawn to `OnEnter(InRun)`.
+  Every screen is presentation-only (verified on Windows); its logic is headless-tested.
+- ~~Persistence: RunState save/resume; MetaState (hero unlocks + scoreboard + score formula);
+  Log-In; player/map spawn `Startup`→`OnEnter(InRun)`~~ **DONE (Phase 8, §8.11)** — `RunRng` switched
+  to `rand_chacha::ChaCha8Rng` (hand-serialized; the phase's one declared golden-master regen);
+  `run/systems/persistence.rs` (`sync_run_state`/`tick_run_timer`/`save_run_snapshot`/
+  `record_run_end`/`resume_run`); `meta/persistence.rs` (pure serialize/deserialize + a
+  windowed-only disk layer, sim never touches a filesystem); `ui/screens/login.rs` +
+  `ui/screens/scoreboard.rs`; `GameState::Login`/`Scoreboard`. Two pre-existing bugs surfaced and
+  fixed along the way: `enter_merchant`'s bare `Res<CurrentEncounter>` panicked on the Act-3 victory
+  path (no test had ever reached it before); a same-frame talent re-install onto a resumed player
+  could race `attach_talent_components` (fixed with a synchronous attach + a `Without<AcquiredTalents>`
+  guard). Also resolves the orphaned-`AbilityInstance` leak (§8.5) — `enemy_death` and
+  `despawn_encounter_entities` now reap an enemy's owned instances.
 - ~~Persistent zones + AMZ projectile-blocking~~ **DONE (Phase 6, §8.8)** — `zone` module live
   (`dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ blocking). New zone abilities via
   `AbilityDef.zone: Option<ZoneSpec>`. Deferred to Phase 9: cross-ability zone buffs, Tree Conduit's
@@ -93,5 +104,8 @@ Highlights a future session must not "rediscover":
 - `HeroDef.base_stats` is data-only — per-hero HP/move-speed application is deferred (the Mage
   currently plays with the Death Knight's stats). Enemy `base_stats`, by contrast, ARE applied
   (Phase 5) and the enemy `scaling` curve is now driven live by encounter depth (Phase 7, §8.9).
+  **This is now the last open §8.5 row** (deferred out of Phase 8 by D4-OUT — applying it is a
+  second golden regen + a balance call, → Phase 9).
 
-When you resolve a register item, update §8.5/§8.6/§8.7/§8.8/§8.9/§8.10 and the CHANGELOG in the same change.
+When you resolve a register item, update §8.5/§8.6/§8.7/§8.8/§8.9/§8.10/§8.11 and the CHANGELOG in
+the same change.

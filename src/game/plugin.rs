@@ -19,13 +19,16 @@ use crate::enemy::EnemyPlugin;
 use crate::game::presentation::PresentationPlugin;
 use crate::game::state::GameState;
 use crate::hero::HeroPlugin;
+use crate::meta::persistence::{autosave_meta_to_disk, load_meta_startup};
+use crate::meta::plugin::MetaPlugin;
+use crate::meta::state::MetaState;
 use crate::pickup::PickUpPlugin;
 use crate::player::PlayerPlugin;
 use crate::progression::plugin::ProgressionPlugin;
 use crate::projectile::ProjectilePlugin;
 use crate::run::rng::RunRng;
 use crate::run::RunPlugin;
-use crate::run::systems::menu::enter_main_menu;
+use crate::run::systems::menu::enter_login;
 use crate::status::plugin::StatusPlugin;
 use crate::talent::plugin::TalentPlugin;
 use crate::world::WorldPlugin;
@@ -64,6 +67,9 @@ impl Plugin for GameLogicPlugin {
             // Run lifecycle (Phase 7). All its systems gate on a live run (CurrentEncounter/RunState);
             // with no run active — the headless sim's default, and the golden campaign — they are inert.
             RunPlugin,
+            // Account-level meta state (Phase 8). Inserts MetaState::default() (every hero unlocked,
+            // no history) — sim-able, no disk. GamePlugin (windowed) layers the real disk I/O on top.
+            MetaPlugin,
         ));
 
         // Pause toggle (Phase 7.5B). Only runs on a frame where Esc is pressed; the golden campaign
@@ -79,10 +85,18 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(GameLogicPlugin);
         app.add_plugins(PresentationPlugin);
-        // Windowed-only boot to the main menu (Phase 7.5C, D1): replaces Phase 7's auto-start-run.
-        // The game now boots Menu → CharacterSelect → run. Added by GamePlugin (windowed), NOT
+        // Windowed-only boot to Login (Phase 7.5C, D1; extended to Login in Phase 8, D4). The game
+        // now boots Login → Menu → CharacterSelect → run. Added by GamePlugin (windowed), NOT
         // GameLogicPlugin — the headless sim never runs it (Sim stays InRun), so the golden campaign
-        // is byte-identical. Startup so the Menu transition applies before the first gated Update.
-        app.add_systems(Startup, enter_main_menu);
+        // is byte-identical. Startup so the Login transition applies before the first gated Update.
+        app.add_systems(Startup, enter_login);
+
+        // MetaState disk I/O (Phase 8, §2) — windowed only; the sim never touches a filesystem.
+        // `load_meta_startup` overrides the in-memory default (already inserted by MetaPlugin,
+        // which joined GameLogicPlugin above) with whatever is actually saved; `autosave_meta_to_disk`
+        // persists it back whenever it changes (a node-transition snapshot, a completed run, a
+        // hero unlock).
+        app.add_systems(Startup, load_meta_startup);
+        app.add_systems(Update, autosave_meta_to_disk.run_if(resource_changed::<MetaState>));
     }
 }

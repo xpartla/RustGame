@@ -93,6 +93,14 @@ Baselines are pinned by `Cargo.lock` (rand/bevy algorithm stability) and generat
 machine; a toolchain or dependency bump that shifts float behavior is itself a
 baseline-regeneration event — declare it in the CHANGELOG like any other behavior change.
 
+**Phase 8 baseline move.** The current baseline was regenerated once, for the `RunRng` algorithm
+switch (`SmallRng` → `rand_chacha::ChaCha8Rng`, needed so a resumed run can restore its exact RNG
+stream position — see CHANGELOG "Phase 8" and architecture-plan §8.11). This is also a **stronger**
+portability guarantee than before: `SmallRng` is explicitly documented as *not* stable across `rand`
+versions or platforms (a future `rand` bump could silently shift it), whereas `ChaCha8Rng`'s output is
+a documented, versioned, portable stream. Every Phase-8 step after the switch re-verified
+byte-identical against this baseline.
+
 ## Adding scenarios (definition of done per phase)
 
 Every phase from Phase 3 onward should land with golden scenarios for its mechanic, e.g.:
@@ -136,6 +144,25 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   player_despawns_on_death` gained a `GameOver` assertion. The golden master stays **byte-identical**
   (the whole UI is in `PresentationPlugin`; every logic touchpoint is inert on the campaign path).
   Screens themselves are verified manually on Windows (WSL has no GPU).
+- Phase 8 (done): `tests/persistence.rs` — "RunState syncs abilities/talents/timer into RunState at a
+  node transition" (the `sync_run_state` prerequisite every other guarantee rests on), "save→resume
+  reconstructs a live run" (health/level/abilities/talents/node/act all match), "resume continues the
+  RunRng stream exactly" (the D1 headline: two independent resumes of byte-identical saved data roll
+  an identical roster), "resume with no save falls back cleanly" (stays in the menu, no panic).
+  `tests/meta.rs` — "a locked hero pick is refused" (against a deliberately-locked hero — none are
+  locked by default, D3), "a defeat and an Act-3 victory each append a scored RunRecord" (the latter
+  also caught the `enter_merchant` crash bug below), "the scoreboard's data source sorts run_history by
+  score descending". `tests/game_flow.rs` gained "boot reaches Login then Menu" and "Resume Run from
+  the main menu enters InRun with the saved run". Plus unit tests: `RunRng`'s serialize/restore
+  mid-stream contract + ChaCha8 determinism, `RunState`/`MetaState` RON round-trips, the save-path
+  resolver + corrupt/missing-file fallback, the score formula across act/node/level/victory/time, and
+  `hero_is_unlocked`. **The golden master moved once** (8A's declared RNG-algorithm regeneration);
+  every step after it verified byte-identical. Two pre-existing bugs were found and fixed by this
+  phase's new coverage (not deferred): `enter_merchant`'s bare `Res<CurrentEncounter>` panicked on the
+  Act-3 victory path (no prior test reached it), and a same-frame talent re-install onto a resumed
+  player could race `attach_talent_components` (fixed with a synchronous attach +
+  `Without<AcquiredTalents>`). The Login/Scoreboard screens are presentation-only, verified manually on
+  Windows.
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

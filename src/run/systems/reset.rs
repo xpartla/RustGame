@@ -60,7 +60,10 @@ pub fn reset_and_start_run(world: &mut World, seed: u64, hero_id: &str) {
 /// Despawns every run-scoped entity (the player included — respawned fresh) and clears the run
 /// resources. Ability instances are separate top-level entities (not children of their owner), so
 /// they are collected explicitly — nothing else cleans a dead player's or a despawned enemy's.
-fn teardown_run(world: &mut World) {
+///
+/// `pub(crate)`: reused by `run/systems/persistence.rs::resume_run` (Phase 8), the resume path's
+/// mirror of this reset path.
+pub(crate) fn teardown_run(world: &mut World) {
     let mut doomed: HashSet<Entity> = HashSet::new();
     collect::<Enemy>(world, &mut doomed);
     collect::<Projectile>(world, &mut doomed);
@@ -91,7 +94,9 @@ fn collect<C: Component>(world: &mut World, out: &mut HashSet<Entity>) {
 /// that hero's initial stance (its `stance_a` for stance heroes, else "default"). The deferred
 /// level-1 grant re-runs naturally for the new identity on the next frames (`Level1Granted` is absent
 /// on the fresh entity).
-fn respawn_player(world: &mut World, hero_id: &str) {
+///
+/// `pub(crate)`: reused by `run/systems/persistence.rs::resume_run` (Phase 8).
+pub(crate) fn respawn_player(world: &mut World, hero_id: &str) {
     let _ = world.run_system_once(spawn_player);
     world.flush();
     let stance = initial_stance(world, hero_id);

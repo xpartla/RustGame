@@ -12,19 +12,28 @@
 // Golden-master note: the campaign bot never dies, so the loop body never runs ⇒ byte-identical.
 
 use bevy::prelude::*;
+use crate::ability::components::AbilityInstance;
 use crate::core::components::Health;
 use crate::game::state::{GameOverSummary, GameState};
 use crate::hero::components::HeroIdentity;
+use crate::meta::state::MetaState;
 use crate::player::components::{Experience, Player};
+use crate::progression::state::LevelUpFlowState;
 use crate::run::state::RunState;
+use crate::run::systems::persistence::{record_run_end, sync_run_state};
+use crate::talent::components::AcquiredTalents;
 
+#[allow(clippy::too_many_arguments)]
 pub fn player_death(
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
-    run_state: Option<Res<RunState>>,
-    query: Query<(Entity, &Health, &Experience, &HeroIdentity), With<Player>>,
+    mut run_state: Option<ResMut<RunState>>,
+    mut meta: ResMut<MetaState>,
+    level_flow: Res<LevelUpFlowState>,
+    abilities: Query<(Entity, &AbilityInstance)>,
+    query: Query<(Entity, &Health, &Experience, &HeroIdentity, &AcquiredTalents), With<Player>>,
 ) {
-    for (entity, health, exp, hero) in &query {
+    for (entity, health, exp, hero, acquired) in &query {
         if health.current <= 0.0 {
             info!("Player died.");
             commands.insert_resource(GameOverSummary {
@@ -36,6 +45,12 @@ pub fn player_death(
                     .as_deref()
                     .and_then(|r| r.act_graph.node(r.current_node).map(|n| n.column)),
             });
+            // Phase 8: sync the final build into RunState and record a scored RunRecord — a run
+            // that is runless (a headless arena scenario has no RunState) has nothing to end.
+            if let Some(run_state) = run_state.as_deref_mut() {
+                sync_run_state(run_state, health.current, exp.level, entity, &abilities, acquired, &level_flow);
+                record_run_end(&mut meta, run_state, false);
+            }
             commands.entity(entity).despawn();
             next_state.set(GameState::GameOver);
         }

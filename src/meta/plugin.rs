@@ -1,18 +1,19 @@
-// TODO(Phase 8): Wire into GamePlugin. load_meta alone can be added in Phase 0.
+// MetaPlugin — inserts the MetaState resource so meta-progression logic is sim-able (Phase 8, §2).
 //
-// Responsibilities:
-//   - Schedules load_meta in Startup (inserts MetaState Resource)
-//   - Registers save_meta as a one-shot system callable by run/systems/transitions.rs
+// Joins GameLogicPlugin unconditionally, including the headless sim: `MetaState::default()` (every
+// hero unlocked, no history, no save) requires no disk access, so this is safe in any sim/test.
+//
+// The windowed game's *disk* I/O — loading the real save at boot (overriding the in-memory default)
+// and autosaving on every change — is wired separately by GamePlugin (game/plugin.rs), using the
+// thin wrappers in meta/persistence.rs. The sim never touches a filesystem.
 
 use bevy::prelude::*;
-use crate::meta::persistence::load_meta;
+use crate::meta::state::MetaState;
 
 pub struct MetaPlugin;
 
 impl Plugin for MetaPlugin {
     fn build(&self, app: &mut App) {
-        // load_meta is safe to add in Phase 0 — it just inserts MetaState::default().
-        // Replace with the real file-loading version in Phase 8.
-        app.add_systems(Startup, load_meta);
+        app.init_resource::<MetaState>();
     }
 }

@@ -151,3 +151,46 @@ fn character_select_starts_the_chosen_hero() {
     assert!(sim.owned_abilities().iter().any(|a| a == "fireblast"), "Mage level-1 grant ran");
     assert!(sim.has_run() && sim.encounter_spawned(), "the entry encounter loaded");
 }
+
+/// Boot reaches Login before the main menu (Phase 8, D4) — any key advances Login → Menu. Booting
+/// to Login is windowed-only; this drives the same logic states headlessly, like the Menu boot test
+/// above did before Login existed.
+#[test]
+fn boot_reaches_login_then_menu() {
+    let mut sim = Sim::new_arena(6);
+    sim.enter_login();
+    assert_eq!(sim.game_state(), GameState::Login);
+
+    sim.tap_key(KeyCode::Enter);
+    sim.step(1); // apply Login → Menu
+
+    assert_eq!(sim.game_state(), GameState::Menu, "any key at Login advances to the main menu");
+}
+
+/// Resume Run from the main menu (Phase 8, §3.2): clear an encounter (saving), return to the menu,
+/// and Resume rehydrates the exact saved run rather than starting a fresh one.
+#[test]
+fn resume_from_the_main_menu_enters_in_run_with_the_saved_run() {
+    let mut sim = Sim::new_arena(9);
+    sim.start_run(4444);
+    sim.step(3);
+    sim.kill_all_enemies();
+    sim.step(3); // -> save into MetaState.in_progress_run + MapSelect
+    let saved_node = sim.current_node();
+    let saved_act = sim.current_act();
+    assert!(sim.meta().in_progress_run.is_some());
+
+    // Simulate returning to the main menu with the run still saved (e.g. after quitting and
+    // relaunching — MetaState persists independently of any live RunState/CurrentEncounter).
+    sim.enter_menu();
+    assert_eq!(sim.game_state(), GameState::Menu);
+
+    sim.tap_key(KeyCode::Digit2); // "2. Resume Run"
+    sim.step(9); // apply_resume_request -> resume_run, then settle the re-grant + load_encounter
+
+    assert_eq!(sim.game_state(), GameState::InRun, "Resume Run entered the run");
+    assert!(sim.has_run());
+    assert_eq!(sim.current_node(), saved_node, "resumed at the saved node");
+    assert_eq!(sim.current_act(), saved_act);
+    assert!(sim.encounter_spawned(), "the saved node's room loaded");
+}

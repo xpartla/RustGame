@@ -10,6 +10,7 @@
 
 use bevy::prelude::*;
 use crate::game::state::GameState;
+use crate::player::components::Player;
 use crate::player::systems::experience::gain_experience;
 use crate::progression::systems::level_up::{handle_level_up, init_level_flow};
 use crate::progression::systems::offer::{
@@ -27,10 +28,19 @@ impl Plugin for ProgressionPlugin {
         app.add_event::<ThroneRoomRewardEvent>();
         app.add_event::<TradeUpRewardEvent>();
 
-        // Ordered after generate_map: both Startup systems draw from RunRng, and without an
-        // explicit constraint the executor may run them in either order — meaning the same
-        // seed could produce different maps and band-shuffle orders between launches.
-        app.add_systems(Startup, init_level_flow.after(generate_map));
+        // Phase 8, §5: moved from Startup to OnEnter(InRun), guarded like player/plugin.rs's
+        // spawn_player (see its comment) — real run-starts/restarts/resumes call `init_level_flow`
+        // directly themselves (reset.rs, persistence.rs::resume_run), so this boot-time OnEnter
+        // registration must not re-fire and stomp their band-pool shuffle. Still ordered after
+        // generate_map: both draw from RunRng, and without an explicit constraint the executor may
+        // run them in either order — meaning the same seed could produce different maps and
+        // band-shuffle orders between launches.
+        app.add_systems(
+            OnEnter(GameState::InRun),
+            init_level_flow
+                .after(generate_map)
+                .run_if(not(any_with_component::<Player>)),
+        );
 
         app.add_systems(
             Update,

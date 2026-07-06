@@ -43,14 +43,14 @@ pub struct TalentDef {
     pub effect: TalentEffect,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum TalentRarity {
     Common,
     Rare,
     Epic,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum UniquenessConstraint {
     /// No limit — can be offered and taken as many times as the pool allows.
     None,
@@ -63,7 +63,7 @@ pub enum UniquenessConstraint {
     MutuallyExcludes(TalentId),
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum TalentEffect {
     /// Pure data — handled by the modifier stack in resolve_params(). No code hook needed.
     Modifier(StatModifier),
@@ -73,14 +73,14 @@ pub enum TalentEffect {
     Behavior(HookId),
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatModifier {
     /// The stat key this modifier applies to (must match a key in AbilityDef.base_params).
     pub stat: StatId,
     pub op: ModOp,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ModOp {
     /// Adds a flat value: new = base + sum(Add)
     Add(f32),
