@@ -19,6 +19,14 @@
 // Split into two functions:
 //   resolve_params  — ECS-facing: resolves talent ids to defs and gathers their modifiers.
 //   apply_modifiers — pure math core (no ECS, no assets); unit-tested directly.
+//
+// Universal stat baseline (Phase 9.1, §8.1(4) / §3.11 of the phase-9 plan): crit_chance, crit_mult,
+// and attack_speed are seeded into every ability's resolved params even when its own RON never
+// declares them, so a general (`ability_scope: None`) passive talent can reach every ability's crit/
+// attack-speed the same way it reaches any other global stat. Neutral by construction — crit_chance
+// defaults to 0.0 (ability/effects.rs never rolls the crit RNG when it is <= 0.0, so no shipped
+// content perturbs the golden master's RNG stream) and attack_speed defaults to 0.0 (identity in the
+// `cooldown / (1 + attack_speed)` formula, ability/systems/execute.rs).
 
 use std::collections::HashMap;
 use bevy::asset::Assets;
@@ -72,9 +80,18 @@ pub fn resolve_params(
     apply_modifiers(base_params, &modifiers)
 }
 
-/// Pure math core. Applies the additive / multiplicative / override stacks to `base_params`.
-/// Iterates the ability's own stat keys — modifiers targeting a stat the ability doesn't define
-/// have no base to act on and are ignored.
+/// Universal per-cast stats every ability resolves, whether or not its own RON declares them, so a
+/// general passive talent (`ability_scope: None`) can modify crit/attack-speed uniformly. See the
+/// module doc for why each default is neutral.
+const UNIVERSAL_STAT_DEFAULTS: &[(&str, f32)] = &[
+    ("crit_chance", 0.0),
+    ("crit_mult", 2.0),
+    ("attack_speed", 0.0),
+];
+
+/// Pure math core. Applies the additive / multiplicative / override stacks to `base_params` plus
+/// the universal stat baseline. Iterates the combined stat key set — modifiers targeting a stat
+/// neither the ability nor the universal baseline defines have no base to act on and are ignored.
 fn apply_modifiers(base_params: &HashMap<StatId, f32>, modifiers: &[&StatModifier]) -> ResolvedParams {
     let mut additive: HashMap<&str, f32> = HashMap::new();
     let mut multiplicative: HashMap<&str, f32> = HashMap::new();
@@ -90,16 +107,22 @@ fn apply_modifiers(base_params: &HashMap<StatId, f32>, modifiers: &[&StatModifie
         }
     }
 
-    let mut resolved: HashMap<StatId, f32> = HashMap::with_capacity(base_params.len());
-    for (stat, base) in base_params {
-        let value = if let Some(o) = overrides.get(stat.as_str()) {
+    let mut resolved: HashMap<StatId, f32> = HashMap::with_capacity(base_params.len() + UNIVERSAL_STAT_DEFAULTS.len());
+    let combined = base_params.iter().map(|(k, v)| (k.as_str(), *v)).chain(
+        UNIVERSAL_STAT_DEFAULTS
+            .iter()
+            .filter(|(stat, _)| !base_params.contains_key(*stat))
+            .copied(),
+    );
+    for (stat, base) in combined {
+        let value = if let Some(o) = overrides.get(stat) {
             *o
         } else {
-            let add = additive.get(stat.as_str()).copied().unwrap_or(0.0);
-            let mult = multiplicative.get(stat.as_str()).copied().unwrap_or(0.0);
+            let add = additive.get(stat).copied().unwrap_or(0.0);
+            let mult = multiplicative.get(stat).copied().unwrap_or(0.0);
             (base + add) * (1.0 + mult)
         };
-        resolved.insert(stat.clone(), value);
+        resolved.insert(stat.to_string(), value);
     }
 
     ResolvedParams(resolved)
@@ -161,6 +184,37 @@ mod tests {
         let r = apply_modifiers(&b, &[&stray]);
         assert_eq!(r.get("damage"), 10.0);
         assert_eq!(r.get("nonexistent"), 0.0); // not present → ResolvedParams::get returns 0
+    }
+
+    #[test]
+    fn universal_stats_default_neutral_when_no_ability_or_talent_touches_them() {
+        // No ability RON declares crit_chance/crit_mult/attack_speed today — resolve_params must
+        // still surface neutral defaults so a *future* general talent has something to modify.
+        let b = base(&[("damage", 10.0), ("cooldown", 1.2)]);
+        let r = apply_modifiers(&b, &[]);
+        assert_eq!(r.get("crit_chance"), 0.0, "no crit unless a talent grants it");
+        assert_eq!(r.get("crit_mult"), 2.0, "sensible default crit multiplier");
+        assert_eq!(r.get("attack_speed"), 0.0, "identity in cooldown / (1 + attack_speed)");
+    }
+
+    #[test]
+    fn a_general_talent_reaches_the_universal_crit_chance_stat_on_any_ability() {
+        // A general (ability_scope: None) "gain X% crit strike" passive must land on an ability
+        // whose own RON never mentions crit_chance at all (architecture-plan §3.4's global-scope
+        // promise, extended to the universal baseline).
+        let b = base(&[("damage", 10.0)]);
+        let general_crit = m("crit_chance", ModOp::Add(15.0));
+        let r = apply_modifiers(&b, &[&general_crit]);
+        assert_eq!(r.get("crit_chance"), 15.0);
+    }
+
+    #[test]
+    fn an_ability_declared_universal_stat_overrides_the_default() {
+        // If an ability's own RON *does* declare one of the universal stats (a bespoke crit-focused
+        // ability), its base value wins over the generic default — the merge never clobbers it.
+        let b = base(&[("crit_chance", 25.0)]);
+        let r = apply_modifiers(&b, &[]);
+        assert_eq!(r.get("crit_chance"), 25.0);
     }
 
     // Exercises the full ECS-facing path: acquired id → TalentLibrary → Assets<TalentDef> →

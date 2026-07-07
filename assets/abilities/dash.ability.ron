@@ -1,0 +1,21 @@
+// WORKING NAME: "Dash"
+// Movement ability — Mechanics' "Shift / Space for movement ability, i.e. dash"
+// (`InputSlot::Movement`). DEMONSTRATOR ONLY this phase (Phase 9.1, §8.1(3)/§8.5): the primitive is
+// built once here; no shipped hero's `stance_slots.movement` binds it yet — that happens with the
+// class that first claims the slot. Unbound; exercised by tests/hero_stance.rs.
+//
+// Behavior: blink — a short forced-movement impulse along the caster's Facing direction. No
+// targets, no damage.
+(
+    id: "dash",
+    display_name: "Dash",
+    unlock_schedule: Level1,
+    behavior: "blink",
+    hooks: [],
+    base_params: {
+        "speed": 500.0,
+        "duration": 0.15,
+        "cooldown": 1.0,
+    },
+    talent_pool: [],
+)

@@ -197,6 +197,9 @@ impl DefAsset for AbilityDef {
         ("amz", "abilities/amz.ability.ron"),
         // Boss contact melee (Phase 7) — the placeholder `warlord` boss's heavy smash.
         ("warlord_smash", "abilities/warlord_smash.ability.ron"),
+        // Movement-slot demonstrator (Phase 9.1) — see assets/abilities/dash.ability.ron. Unbound;
+        // no shipped hero's `movement` slot references it yet.
+        ("dash", "abilities/dash.ability.ron"),
     ];
 }
 
@@ -293,5 +296,15 @@ mod tests {
         // A regular ability parses with `zone: None` via serde(default).
         let def = load("assets/abilities/death_strike.ability.ron");
         assert!(def.zone.is_none());
+    }
+
+    #[test]
+    fn dash_parses_as_a_blink_behavior() {
+        let def = load("assets/abilities/dash.ability.ron");
+        assert_eq!(def.id, "dash");
+        assert_eq!(def.behavior, "blink");
+        assert_eq!(def.base_params.get("speed"), Some(&500.0));
+        assert_eq!(def.base_params.get("duration"), Some(&0.15));
+        assert!(def.effects.is_empty(), "blink has no damage/heal/status effects");
     }
 }

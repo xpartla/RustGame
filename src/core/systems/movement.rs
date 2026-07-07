@@ -1,7 +1,27 @@
-use bevy::prelude::{Query, Res, Vec2};
+use bevy::prelude::{Commands, Entity, Query, Res, Vec2};
 use bevy::time::Time;
-use crate::core::components::{GridPosition, Immobilized, MoveSpeedModifier, Velocity, WorldPosition};
+use crate::core::components::{ForcedImpulse, GridPosition, Immobilized, MoveSpeedModifier, Velocity, WorldPosition};
 use crate::world::components::TileMap;
+
+/// Resolves an active `ForcedImpulse` (Phase 9.1, §8.1(6)): overwrites the entity's `Velocity` with
+/// the impulse's velocity — overriding whatever `MovementSet::Intent` (flow-field AI, WASD input)
+/// set this frame — and ticks its timer down, removing the impulse once it finishes. Runs first in
+/// `MovementSet::Integrate`, ahead of `apply_velocity`, so the overridden `Velocity` still goes
+/// through the normal per-axis `TileMap` wall-slide.
+pub fn resolve_forced_movement(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Velocity, &mut ForcedImpulse)>,
+) {
+    let dt = time.delta();
+    for (entity, mut vel, mut impulse) in &mut query {
+        vel.0 = impulse.velocity;
+        impulse.timer.tick(dt);
+        if impulse.timer.finished() {
+            commands.entity(entity).remove::<ForcedImpulse>();
+        }
+    }
+}
 
 /// Advances every `WorldPosition` by its `Velocity`, blocked by impassable tiles.
 ///

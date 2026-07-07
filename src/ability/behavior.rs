@@ -18,12 +18,11 @@
 //
 // Behaviors still pending (registered in their phase; until then execute_ready_abilities skips
 // any ability whose behavior id is not in the registry):
-//   "dropped_zone"      — D&D / Consecrated Ground trail (Phase 6)
-//   "periodic_self_zone" — self-centred pulsing zone (Phase 6)
-//   "orbiting"          — Spinning Hammer (later)
-//   "leap_to_target"    — Ferocious Bite (later)
-//   "channel_while_moving" — Heal / Flash of Light / Frost Impale (later)
-//   "summon"            — Companion (later)
+//   "periodic_self_zone" — self-centred pulsing zone (later)
+//   "orbiting"          — Spinning Hammer (Phase 9.3)
+//   "leap_to_target"    — Ferocious Bite (Phase 9.4)
+//   "channel_while_moving" — Heal / Flash of Light / Frost Impale (Phase 9.3+)
+//   "summon"            — Companion (Phase 9.2)
 
 use bevy::prelude::*;
 use std::collections::HashMap;
@@ -101,6 +100,16 @@ pub struct ProjectileSpawn {
     pub lifetime: f32,
 }
 
+/// A forced-movement impulse a behavior wants applied to its OWN caster (dash/blink, Phase 9.1) —
+/// unlike `ZoneSpawn`/`ProjectileSpawn`, which spawn a new world entity, this targets the caster
+/// directly. The execute system turns it into a `core::components::ForcedImpulse` inserted on the
+/// caster, resolved once at cast time.
+#[derive(Debug, Clone, Copy)]
+pub struct ForcedImpulseSpawn {
+    pub velocity: Vec2,
+    pub duration: f32,
+}
+
 /// What a behavior resolves for one cast: the targeting result the execute system applies the
 /// ability's declarative `effects` against. Gameplay outcome (damage/heal/status) is data, not here.
 #[derive(Debug, Clone, Default)]
@@ -118,6 +127,9 @@ pub struct CastOutcome {
     /// Optional persistent zone to drop (Phase 6 — D&D, Consecrated Ground, AMZ, Tree Conduit).
     /// The execute system builds the `PersistentZone` from the ability's `zone` spec + params.
     pub zone: Option<ZoneSpawn>,
+    /// Optional forced-movement impulse to apply to the caster (Phase 9.1 — the Movement-slot
+    /// dash/blink). `None` for every other behavior.
+    pub forced_impulse: Option<ForcedImpulseSpawn>,
 }
 
 /// What a behavior is given each time it runs. Read-only view of the caster.
@@ -219,6 +231,7 @@ impl AbilityBehavior for MeleeCone {
             vfx: Some(VfxShape::Cone { radius: range, half_angle, forward, lifetime: ATTACK_LIFETIME }),
             projectile: None,
             zone: None,
+            forced_impulse: None,
         }
     }
 }
@@ -239,7 +252,7 @@ impl AbilityBehavior for SelfNova {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None }
+        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None, forced_impulse: None }
     }
 
     fn needs_aim(&self) -> bool {
@@ -266,7 +279,7 @@ impl AbilityBehavior for ContactMelee {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None }
+        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None, forced_impulse: None }
     }
 
     fn needs_aim(&self) -> bool {
@@ -306,6 +319,7 @@ impl AbilityBehavior for ProjectileBehavior {
                 lifetime,
             }),
             zone: None,
+            forced_impulse: None,
         }
     }
 }
@@ -329,6 +343,25 @@ impl AbilityBehavior for DroppedZone {
 
     fn needs_aim(&self) -> bool {
         false
+    }
+}
+
+/// Movement ability (Shift/Space — Mechanics' `InputSlot::Movement`; Phase 9.1, §8.1(3)/§8.5). No
+/// targets, no damage: requests a short forced-movement impulse along the caster's facing. The
+/// execute system turns the request into a `ForcedImpulse` on the caster.
+///
+/// Params: "speed", "duration".
+pub struct Blink;
+
+impl AbilityBehavior for Blink {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let speed = params.get("speed");
+        let duration = params.get("duration");
+        CastOutcome {
+            origin: ctx.origin,
+            forced_impulse: Some(ForcedImpulseSpawn { velocity: ctx.facing * speed, duration }),
+            ..Default::default()
+        }
     }
 }
 
@@ -382,5 +415,21 @@ mod tests {
         let outcome = MeleeCone.resolve(&ctx, &p);
         assert_eq!(outcome.hits.len(), 2, "both enemies are in the cone");
         assert_eq!(outcome.primary.map(|h| h.entity), Some(near), "primary is the nearest hit");
+    }
+
+    #[test]
+    fn blink_requests_a_forced_impulse_along_facing_with_no_targets() {
+        let owner = Entity::from_raw(1);
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::Y, targets: &[] };
+        let p = params(&[("speed", 500.0), ("duration", 0.15)]);
+
+        let outcome = Blink.resolve(&ctx, &p);
+
+        assert!(outcome.hits.is_empty(), "blink hits nothing");
+        assert!(outcome.projectile.is_none());
+        assert!(outcome.zone.is_none());
+        let impulse = outcome.forced_impulse.expect("blink requests a forced impulse");
+        assert_eq!(impulse.velocity, Vec2::Y * 500.0, "impulse velocity follows facing * speed");
+        assert_eq!(impulse.duration, 0.15);
     }
 }

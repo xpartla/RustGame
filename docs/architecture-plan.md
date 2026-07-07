@@ -946,10 +946,12 @@ switch (the phase's one declared golden regen) + Log-In; see §8.11, docs/phase8
 3. ✅ "Resume Run" from the main menu; player/map spawn moved from `Startup` to `OnEnter(InRun)` (the
    `game/state.rs` TODO), guarded so it seeds the world exactly once.
 
-**Phase 9 — Remaining classes + content pass**
-1. Add remaining heroes (each is one RON file + ability/talent RONs).
-2. Fill in enemy ability kits per theme + the real per-theme rosters.
+**Phase 9 — Remaining classes + content pass** _(an ordered sub-phase arc, 9.1–9.7 — see
+`docs/phase9-plan.md`; 9.1 complete, §8.12)_
+1. Add remaining heroes (each is one RON file + ability/talent RONs). _(9.3 Paladin, 9.4 Druid)_
+2. Fill in enemy ability kits per theme + the real per-theme rosters. _(9.6)_
 3. Multi-phase boss AI for boss rooms + act boss fights (the merchant screen shipped in Phase 7.5).
+   _(9.7, elite multi-ability bosses land in 9.6 first)_
 
 ---
 
@@ -973,12 +975,23 @@ rather than discovered mid-phase.
    `channel_while_moving`, `summon` (Companion is BDK **level-1**), `orbiting`,
    `leap_to_target`, and the **movement ability / dash** (`InputSlot::Movement` exists,
    nothing implements it). → Projectile ASAP (Phase 3 uses it for status application tests);
-   the rest before the class that needs them (Phase 4/9).
-4. **Actor stat sheet & CC semantics** — crit %, attack speed, move-speed modifiers, and what
+   the rest before the class that needs them (Phase 4/9). ~~The movement ability / dash~~
+   **DONE (Phase 9.1, §8.12)** — a `blink` behavior + Shift/Space wired to `InputSlot::Movement`;
+   an unbound demonstrator (`dash.ability.ron`) proves it end-to-end. `channel_while_moving`/
+   `summon`/`orbiting`/`leap_to_target` remain open — Phase 9.2+ (each lands with its first class
+   consumer, per DP2).
+4. ~~**Actor stat sheet & CC semantics**~~ — crit %, attack speed, move-speed modifiers, and what
    root/stun/slow actually do to an enemy's movement/AI. resolve_params only covers ability
-   params. → New phase alongside status effects (Phase 3.75: "actor stats & CC").
-5. **Shields/absorbs** (bone shield, ice barrier, Paladin overheal shield) — no system.
-6. **Forced movement** (Abomination Limb grip, knockback shockwaves) — no system.
+   params. → New phase alongside status effects (Phase 3.75: "actor stats & CC"). CC semantics
+   **DONE (Phase 3, §8.4)**; crit %/attack speed **DONE (Phase 9.1, §8.12)** — a universal stat
+   baseline in `resolve_params` + a `RunRng`-driven crit roll + the attack-speed cooldown formula.
+5. ~~**Shields/absorbs**~~ (bone shield, ice barrier, Paladin overheal shield) — no system.
+   **DONE (Phase 9.1, §8.12)** — the generic `Absorb` pool + `GainShieldEvent`/`apply_shield_gain`.
+   The named consumers (bone shield, Ice Barrier, Purgatory, overheal) are still Phase 9.2/9.5/9.3
+   content.
+6. ~~**Forced movement**~~ (Abomination Limb grip, knockback shockwaves) — no system.
+   **DONE (Phase 9.1, §8.12)** — the generic `ForcedImpulse` + `resolve_forced_movement`. Abomination
+   Limb's grip and a knockback talent are still Phase 9.2+ content.
 7. **Enemy scaling** — "Enemies have their own scaling, independent of the player"
    (Mechanics.md) has no data model (EnemyDef stats are flat) and no phase. → Schedule with
    Phase 5; also the prerequisite for meaningful balance testing.
@@ -1284,6 +1297,54 @@ like Phases 4–7.5 verified against the original). See `docs/phase8-plan.md` §
 orphaned-`AbilityInstance` row is **resolved**; `HeroDef.base_stats` per-hero application remains the
 **last** open register row (deferred out of Phase 8 by D4-OUT — a second golden regen + a balance
 call, → Phase 9). §7 Phase 8's three bullets are now ✅ done, mirroring Phases 4–7.5's flip.
+
+### 8.12 Phase 9.1 delivered (2026-07-07)
+
+The first sub-phase of the Phase-9 content-pass arc (`docs/phase9-plan.md` §2) — five cross-cutting
+engine primitives the four unfinished class kits + the real enemy/boss rosters need, built once per
+DP2 ("engine primitives land once in 9.1; class-specific behaviors land with their first consumer")
+and left **inert until content uses them**. See the CHANGELOG "Phase 9.1" section for full detail.
+**The golden master stayed byte-identical at every step** — no shipped ability/talent/enemy
+references any of the new stats or components, matching the sub-phase's own DoD. Delivered:
+
+- **Shields/absorbs (closes the §8.1(5) system gap)** — `Absorb` (core/components.rs), draining in
+  `apply_damage` between the `DamageTakenModifier` scale and the `Health` write (a pinned scheduling
+  point, docs/testing.md); `GainShieldEvent` (a `add_gameplay_event`, like `DamageEvent`/`HealEvent`)
+  + `apply_shield_gain`. The **primitive** is done; bone shield / Ice Barrier / Purgatory (the actual
+  consumers) are still Phase 9.2/9.5 content.
+- **Forced movement (closes the §8.1(6) system gap)** — `ForcedImpulse` + `resolve_forced_movement`,
+  first in `MovementSet::Integrate` so grip/knockback still respect the `TileMap` wall-slide and
+  override `MovementSet::Intent`'s flow-field/WASD velocity. One primitive, two constructors
+  (`toward_point` / `knockback`) — Abomination Limb (9.2) is the first real consumer.
+- **Class-resource charges** — `ResourceModel::Charges { max }` + a `Charges` component
+  (`gain`/`spend_all`) + `sync_charges_to_class_resource`, a small bridge that mirrors `Charges`
+  into the pre-existing (never-inserted-until-now) `ClassResource` the HUD already renders — Mage
+  frost charges / Druid enhanced charges (9.4/9.5) light up the bar with zero HUD work. Transient
+  per DP3 (not part of `RunState`).
+- **Crit % + attack speed (closes the §8.1(4) system gap)** — a universal stat baseline
+  (`crit_chance`/`crit_mult`/`attack_speed`, neutral defaults) in `talent/modifier.rs::apply_modifiers`
+  so a general passive talent reaches every ability even when its own RON never declares the stat;
+  `roll_crit` draws from `RunRng` (never `thread_rng`, per DP5) and — critically — never touches the
+  RNG at all when `crit_chance <= 0.0`, which is *why* the golden master stays byte-identical despite
+  a live RNG-consuming code path landing in the hot damage-application loop. Attack speed's
+  `effective_cd = resolved_cd / (1 + attack_speed)` **also resolves the §8.5 `Override(0)` cooldown-
+  guard debt row** (the guard's owning trigger, "the first cooldown-manipulating talent," is now
+  moot — the guard is simply gone, replaced by an always-write).
+- **Movement-slot dash** — a `blink` behavior + `ForcedImpulseSpawn` (a new `CastOutcome` field
+  targeting the caster itself, unlike `zone`/`projectile`'s world-entity spawns); Shift/Space now
+  reach `InputSlot::Movement` in `hero/systems/input_slot.rs` (previously wired to nothing). A new
+  unbound demonstrator, `assets/abilities/dash.ability.ron`, exercises it; neither shipped hero's
+  `stance_slots.movement` binds it yet.
+
+§8.1 status after Phase 9.1: **(4) crit/attack-speed, (5) shields/absorbs, (6) forced movement are
+all done** (the general primitives; per-ability consumers are content, landing with their first use
+in 9.2+). §8.5: the `resolved_cd > 0.0` / `Override(0)` guard row is **resolved** (removed, not
+patched — attack speed's always-write formula makes the guard unnecessary); `HeroDef.base_stats`
+remains the **only** open register row (Phase 9.2, the arc's one declared golden-master regen).
+Deferred from 9.1 with triggers (phase9-plan §2): the Absorb/ForcedImpulse *consumers* (bone shield,
+Ice Barrier, Purgatory, Abomination Limb grip, a knockback talent — Phase 9.2), the Charges
+*producers* (Mage frost charges, Druid enhanced/combo — Phase 9.4/9.5), and binding the dash to a
+real hero's Movement slot (whichever class's kit calls for it first).
 
 ---
 

@@ -97,6 +97,57 @@ fn grunt_contact_attack_cadence() {
     assert_eq!(sim.player_health(), 90.0, "second hit after the 1s cooldown");
 }
 
+// Phase 9.1 — crit % + attack speed (the universal stat baseline, talent/modifier.rs). No shipped
+// ability declares crit_chance/crit_mult/attack_speed; these scenarios force them via
+// `set_ability_param` (the established test-only override knob) to prove the primitive end-to-end.
+
+#[test]
+fn forced_crit_chance_multiplies_damage_by_the_default_crit_mult() {
+    let mut sim = Sim::new_arena(42);
+    let target = sim.spawn_grunt((1, 0));
+    sim.set_health(target, 100.0); // durable dummy — survives a doubled hit
+    sim.set_player_facing(Vec2::X);
+    sim.set_ability_param("death_strike", "crit_chance", 100.0);
+
+    sim.trigger_ability("death_strike");
+    sim.step(1);
+
+    // 10 base damage * the universal-baseline 2.0 crit multiplier.
+    assert_eq!(sim.enemy_health(target), Some(80.0), "a forced 100% crit deals double damage");
+}
+
+#[test]
+fn no_crit_talent_means_no_crit() {
+    let mut sim = Sim::new_arena(42);
+    let target = sim.spawn_grunt((1, 0));
+    sim.set_health(target, 100.0);
+    sim.set_player_facing(Vec2::X);
+    // crit_chance defaults to 0.0 — death_strike.ability.ron never declares it.
+
+    sim.trigger_ability("death_strike");
+    sim.step(1);
+    assert_eq!(sim.enemy_health(target), Some(90.0), "plain 10 damage, no crit roll");
+}
+
+#[test]
+fn attack_speed_shortens_the_observed_cooldown() {
+    let mut sim = Sim::new_arena(42);
+    let brute = sim.spawn_enemy("brute", (1, 1));
+    sim.set_player_facing(Vec2::new(1.0, 1.0));
+    // +100% attack speed halves the cooldown: 1.2s / (1 + 1.0) = 0.6s.
+    sim.set_ability_param("death_strike", "attack_speed", 1.0);
+
+    sim.trigger_ability("death_strike");
+    sim.step(1);
+    assert_eq!(sim.enemy_health(brute), Some(20.0), "first cast lands (30-10)");
+
+    // A hair past the halved 0.6s cooldown — the old 1.2s cooldown would still block this.
+    sim.step(37);
+    sim.trigger_ability("death_strike");
+    sim.step(1);
+    assert_eq!(sim.enemy_health(brute), Some(10.0), "halved cooldown allows a second cast well before 1.2s");
+}
+
 #[test]
 fn player_despawns_on_death() {
     let mut sim = Sim::new_arena(42);

@@ -963,6 +963,83 @@ application stays out (→ Phase 9).
   byte-identical against it. The Login/Scoreboard screens themselves (presentation) are verified
   manually on the Windows build (WSL has no GPU).
 
+### Phase 9.1 — Content-Pass Foundations: Shields, Forced Movement, Charges, Crit/Attack-Speed, Dash (complete)
+The first sub-phase of the Phase-9 content-pass arc (`docs/phase9-plan.md`): five cross-cutting
+engine primitives that the four unfinished class kits + the real enemy/boss rosters need, built
+once and left **inert until content uses them** (D2 of the phase-9 plan). Every step verified
+**byte-identical** against the existing golden-master baseline — no shipped ability, talent, or
+enemy references any of the new stats/components, so nothing on the campaign trace moves.
+
+- **Shields / absorbs (§8.1(5)).** A generic damage-absorbing pool: `Absorb { amount }`
+  (core/components.rs) drains in `apply_damage` **between** the `DamageTakenModifier` scaling and
+  the health write — a hit larger than the pool spills the remainder to `Health`, and an emptied
+  shield is removed. The pure math core (`drain_absorb`) is unit-tested directly. Granted via the
+  new `GainShieldEvent` (a combat-resolution outcome, registered with `add_gameplay_event` so a
+  grant survives an overlay freeze like `DamageEvent`/`HealEvent`) and applied by the new
+  `apply_shield_gain` system (`core/systems/apply_shield.rs`, ordered `.before(apply_damage)` in
+  `CombatSet::Apply` so a same-frame grant can absorb a same-frame hit); multiple grants stack
+  additively into one component. No shipped content grants one yet — bone shield / Ice Barrier /
+  Purgatory are the first consumers (Phase 9.2/9.5).
+- **Forced movement (§8.1(6)).** `ForcedImpulse { velocity, timer }` (core/components.rs) overrides
+  an entity's `Velocity` for its duration, then removes itself; `resolve_forced_movement` runs
+  first in `MovementSet::Integrate` (ahead of `apply_velocity`), so the override still respects the
+  per-axis `TileMap` wall-slide and takes priority over whatever `MovementSet::Intent` (flow-field
+  AI, WASD input) set that frame. Two constructors cover both shapes with one primitive:
+  `toward_point` (grip — Abomination Limb) and `knockback` (a shockwave talent). No shipped ability
+  grants one yet.
+- **Class-resource charges.** `ResourceModel::Charges { max }` (hero/assets.rs) joins `None` /
+  `HealthBased`; the runtime count lives in a new `Charges { current, max }` component
+  (hero/components.rs, `gain`/`spend_all`, unit-tested) — transient by design (DP3 of the phase-9
+  plan: not part of `RunState`, resets on resume like the rest of live combat state). A new bridge
+  system, `sync_charges_to_class_resource` (hero/systems/resource.rs), mirrors `Charges` into the
+  existing (previously never-inserted) `ClassResource` component the HUD's class-resource bar
+  already reads (`ui/screens/hud.rs::update_class_resource`) — so a `Charges`-backed hero's bar
+  lights up with **zero HUD work** the moment Mage frost charges / Druid enhanced charges (Phase
+  9.4/9.5) start using it.
+- **Crit % + attack speed (§8.1(4)).** `talent/modifier.rs::apply_modifiers` now seeds a universal
+  stat baseline (`crit_chance: 0.0`, `crit_mult: 2.0`, `attack_speed: 0.0`) into every ability's
+  resolved params even when its own RON never declares them, so a general (`ability_scope: None`)
+  passive talent ("Gain X% crit strike" / "Gain X% attack speed", Mechanics' General Passives
+  section) can reach every ability's crit/attack-speed the same way it reaches any other global
+  stat — an ability-declared value still wins over the default. `ability/effects.rs` bakes
+  `crit_chance`/`crit_mult` onto each `ResolvedEffect::Damage` and rolls an independent crit per
+  target at application time (`roll_crit`, drawing from `RunRng` — never `thread_rng`, per DP5 of
+  the phase-9 plan); the roll **short-circuits without touching the RNG at all when `crit_chance <=
+  0.0`**, which is the byte-identical guarantee (every shipped ability resolves to 0.0 today).
+  `ability/systems/execute.rs::execute_ready_abilities` now computes
+  `effective_cd = resolved_cd / (1 + attack_speed)` and always writes it to `AbilityCooldown.duration`
+  — removing the old `resolved_cd > 0.0` guard, which **also resolves the §8.5 `Override(0)`
+  cooldown-guard debt row**: a future talent that overrides an ability's cooldown to exactly 0 now
+  actually takes effect (a `.max(0.05)` floor on the `(1 + attack_speed)` denominator only guards a
+  pathological >100%-per-source haste stack from dividing by zero/negative — no such talent exists
+  yet). `attack_speed` defaults to 0.0 ⇒ denom 1.0 ⇒ identical cooldowns for every shipped ability.
+- **Movement-slot dash (`InputSlot::Movement`).** A new `blink` `AbilityBehavior`
+  (`ability/behavior.rs`) requests a `ForcedImpulseSpawn` (a new `CastOutcome` field, mirroring the
+  `zone`/`projectile` request pattern but targeting the caster itself, not a new world entity)
+  along the caster's facing; `execute_ready_abilities` turns it into a `ForcedImpulse` on the
+  caster. `hero/systems/input_slot.rs::resolve_input_to_ability` now also reads
+  `ButtonInput<KeyCode>` for `ShiftLeft`/`Space` → `InputSlot::Movement` (Mechanics' "Shift / Space
+  for movement ability, i.e. dash"). A new unbound demonstrator ability,
+  `assets/abilities/dash.ability.ron` (`speed: 500`, `duration: 0.15`, `cooldown: 1.0`), exercises
+  the behavior end-to-end; no shipped hero's `stance_slots.movement` binds it yet (both RONs still
+  leave it `None`), so the golden campaign never fires it.
+- **Tests: 187 passing** (was 165). New files: `tests/shields.rs` (+3: absorb-then-spill, additive
+  stacking, a hit smaller than the pool leaves health untouched), `tests/forced_movement.rs` (+3:
+  grip pulls toward a point, the impulse expires and stops driving the entity, knockback stops at a
+  wall), `tests/charges.rs` (+1: Charges syncs into the HUD's ClassResource bar).
+  `tests/combat.rs` +3 (a forced 100% crit doubles damage via the default crit_mult; no crit talent
+  ⇒ no crit; +100% attack speed halves Death Strike's observed cooldown). `tests/hero_stance.rs` +1
+  (Shift triggers the bound dash demonstrator end-to-end). New unit tests: `drain_absorb`'s
+  spill-over math (core/systems/apply_damage.rs); `roll_crit`'s zero-chance short-circuit and
+  guaranteed-100%-without-a-lucky-seed cases (ability/effects.rs); the universal stat baseline's
+  neutral defaults, a general talent reaching `crit_chance` on an ability that never declares it,
+  and an ability-declared value overriding the default (talent/modifier.rs); `Charges::gain`
+  capping at max and `spend_all` resetting to zero (hero/components.rs); the `blink` behavior's
+  pure targeting logic (ability/behavior.rs); `dash.ability.ron`'s parse (ability/assets.rs). Build
+  warning-free; **golden master byte-identical** — `campaign_matches_golden_baseline` and
+  `campaign_is_reproducible_within_a_build` both green, unchanged from the Phase-8 baseline (no
+  regeneration, per D1's contract that this arc's only baseline move is confined to Phase 9.2).
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,
@@ -1080,10 +1157,15 @@ scaffolded but have zero implementation yet:
   stream; the progress+speed scoreboard formula; Log-In; hero unlock/greying — mechanism only, every
   hero ships unlocked; the `Startup`→`OnEnter(InRun)` move + the orphaned-`AbilityInstance` cleanup.
   See architecture-plan §8.11)
-- Full class content (Druid, Paladin, Mage capstones; all enemies and bosses) — Phase 9
+- ~~Shared engine primitives for the content pass: shields/absorbs, forced movement, class-resource
+  charges (+ its HUD bridge), the crit%/attack-speed stat sheet, the Movement-slot dash — Phase
+  9.1~~ **done** (all five, byte-identical against the golden master, inert until Phases 9.2–9.6
+  wire real content into them; see architecture-plan §8.12, docs/phase9-plan.md)
+- Full class content (BDK closeout, Paladin, Druid, Mage completion; all enemies and bosses) —
+  Phase 9.2–9.6
 - Concrete hero-unlock triggers (the mechanism shipped Phase 8; needs the real Phase-9 roster) —
   Phase 9
 - Per-hero `base_stats` application (deferred out of Phase 8, D4-OUT — a second golden regen +
-  balance concern) — Phase 9
+  balance concern; the arc's one declared regen, → Phase 9.2)
 - Settings screen, damage numbers / minimap / tooltips, gamepad, art/audio — later (see
   phase7.5-ui-plan §7, phase8-plan §10)

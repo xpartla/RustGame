@@ -13,7 +13,7 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
-use crate::ability::behavior::{BehaviorRegistry, ContactMelee, DroppedZone, MeleeCone, ProjectileBehavior, SelfNova};
+use crate::ability::behavior::{BehaviorRegistry, Blink, ContactMelee, DroppedZone, MeleeCone, ProjectileBehavior, SelfNova};
 use crate::ability::hooks::{BloodBoilDndRange, HookRegistry};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
@@ -36,14 +36,16 @@ impl Plugin for AbilityPlugin {
             .add_event::<CastVfxEvent>();
 
         // Built-in behaviors. melee_cone (Phase 1), projectile/self_nova (Phase 3), contact_melee
-        // (Phase 5), dropped_zone (Phase 6). orbit/summon/leap/channel register in their own phases;
-        // an ability whose behavior is unregistered stays inert.
+        // (Phase 5), dropped_zone (Phase 6), blink (Phase 9.1 — the Movement-slot dash). orbit/
+        // summon/leap/channel register in their own phases; an ability whose behavior is
+        // unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
         behaviors.register("self_nova", SelfNova);
         behaviors.register("contact_melee", ContactMelee);
         behaviors.register("dropped_zone", DroppedZone);
+        behaviors.register("blink", Blink);
         app.insert_resource(behaviors);
 
         // Code-driven ability hooks (Phase 6). A hook runs only when the caster has acquired the

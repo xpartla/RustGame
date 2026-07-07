@@ -164,6 +164,22 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   `Without<AcquiredTalents>`). The Login/Scoreboard screens are presentation-only, verified manually on
   Windows.
 
+- Phase 9.1 (done): shared content-pass primitives, all inert until Phases 9.2+ wire real content
+  into them (see architecture-plan §8.12). `tests/shields.rs` — a shielded actor takes no health
+  damage until the pool is spent, then spills the remainder; grants stack additively. `tests/
+  forced_movement.rs` — a grip impulse pulls an entity toward a point; the impulse expires and stops
+  driving the entity; a knockback impulse stops at a wall (the per-axis `TileMap` slide still
+  applies). `tests/charges.rs` — a `Charges` component syncs into the HUD's `ClassResource` bar with
+  no other wiring. `tests/combat.rs` gained: a forced 100% crit multiplies damage by the default
+  crit_mult; no crit talent means no crit; +100% attack speed halves Death Strike's observed
+  cooldown. `tests/hero_stance.rs` gained: Shift/Space (`InputSlot::Movement`) triggers a bound
+  dash end-to-end. Plus unit tests: `drain_absorb`'s spill-over math; `roll_crit`'s zero-chance
+  short-circuit (the byte-identical guarantee) and always-succeeds-at-100% cases; the universal
+  crit/attack-speed stat baseline's neutral defaults + a general talent reaching an undeclared stat;
+  `Charges::gain`/`spend_all`; the `blink` behavior's pure targeting logic; `dash.ability.ron`'s
+  parse. The golden master stayed **byte-identical** — no shipped ability/talent/enemy references
+  any of the five new primitives.
+
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 
 ## The compat agent

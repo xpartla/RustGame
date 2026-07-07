@@ -97,3 +97,13 @@ pub struct GainXpEvent {
 pub struct LevelUpEvent {
     pub level: u32,
 }
+
+/// Request to grant `amount` of absorb shield to `target` (Phase 9.1, §8.1(5)). Additive: multiple
+/// grants stack into the one `Absorb` component per entity (core/components.rs). Consumed
+/// exclusively by `apply_shield_gain` (core/systems/apply_shield.rs). A combat-resolution outcome
+/// like `DamageEvent`/`HealEvent`, so it is registered via `add_gameplay_event`.
+#[derive(Event)]
+pub struct GainShieldEvent {
+    pub target: Entity,
+    pub amount: f32,
+}

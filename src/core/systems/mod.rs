@@ -4,4 +4,5 @@ pub mod render_sync;
 pub mod flow_field;
 pub mod apply_damage;
 pub mod apply_heal;
+pub mod apply_shield;
 pub mod debug;

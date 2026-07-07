@@ -32,15 +32,15 @@ use bevy::time::TimeUpdateStrategy;
 
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
-use crate::core::components::{DamageDealtModifier, Facing, Faction, GridPosition, Health, WorldPosition};
-use crate::core::events::{DamageEvent, DamageTag};
+use crate::core::components::{Absorb, DamageDealtModifier, Facing, Faction, ForcedImpulse, GridPosition, Health, WorldPosition};
+use crate::core::events::{DamageEvent, DamageTag, GainShieldEvent};
 use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary};
 use crate::enemy::components::{Enemy, EnemySpawner};
 use crate::enemy::systems::spawner::enemy_bundle;
 use crate::game::state::GameState;
 use crate::game::GameLogicPlugin;
 use crate::hero::assets::{HeroDef, HeroLibrary};
-use crate::hero::components::{ActiveStance, HeroIdentity};
+use crate::hero::components::{ActiveStance, Charges, ClassResource, HeroIdentity};
 use crate::pickup::components::PickUpSpawner;
 use crate::player::components::Player;
 use crate::progression::state::LevelUpFlowState;
@@ -318,6 +318,27 @@ impl Sim {
             .get::<ActiveStance>(player)
             .map(|s| s.0.clone())
             .unwrap_or_default()
+    }
+
+    /// Test-only: binds every `stance_slots` entry of the loaded `hero_id`'s `HeroDef` to
+    /// `ability_id` on its `movement` slot (mutates the loaded asset in place, mirroring
+    /// `set_ability_param`'s override pattern). No shipped hero binds `movement` yet (Phase 9.1);
+    /// this exercises the Shift/Space input path end-to-end without waiting for the class that
+    /// eventually claims the slot.
+    pub fn bind_movement_ability(&mut self, hero_id: &str, ability_id: &str) {
+        let world = self.app.world_mut();
+        let handle = world
+            .resource::<HeroLibrary>()
+            .get(hero_id)
+            .unwrap_or_else(|| panic!("unknown hero '{hero_id}'"))
+            .clone();
+        let mut defs = world.resource_mut::<Assets<HeroDef>>();
+        let def = defs
+            .get_mut(&handle)
+            .unwrap_or_else(|| panic!("hero '{hero_id}' not loaded yet — settle assets first"));
+        for slot in &mut def.stance_slots {
+            slot.movement = Some(ability_id.to_string());
+        }
     }
 
     // ---------------------------------------------------------------- input
@@ -660,6 +681,52 @@ impl Sim {
         self.app
             .world_mut()
             .send_event(crate::core::events::GainXpEvent { target, amount });
+    }
+
+    // ---------------------------------------------------------------- shields (Phase 9.1)
+
+    /// Grants `amount` of absorb shield to `target` through the real `GainShieldEvent` path. Step
+    /// afterward so `apply_shield_gain` runs.
+    pub fn give_shield(&mut self, target: Entity, amount: f32) {
+        self.app.world_mut().send_event(GainShieldEvent { target, amount });
+    }
+
+    /// The live `Absorb` pool on `entity` (0.0 if it carries none — matches how a fully-drained
+    /// shield reads once `apply_damage` removes the component).
+    pub fn shield_amount(&self, entity: Entity) -> f32 {
+        self.app.world().get::<Absorb>(entity).map(|a| a.amount).unwrap_or(0.0)
+    }
+
+    // ---------------------------------------------------------------- forced movement (Phase 9.1)
+
+    /// Inserts a `ForcedImpulse` on `entity` pulling it toward `target` at `speed` for `duration`
+    /// seconds (test tool for the grip primitive — bypasses the ability path; Abomination Limb wires
+    /// this to a real cast in Phase 9.2). The direction is resolved once from the entity's current
+    /// position.
+    pub fn pull_toward(&mut self, entity: Entity, target: Vec2, speed: f32, duration: f32) {
+        let from = self.entity_pos(entity).unwrap_or(target);
+        let impulse = ForcedImpulse::toward_point(from, target, speed, duration);
+        self.app.world_mut().entity_mut(entity).insert(impulse);
+    }
+
+    /// Inserts a `ForcedImpulse` on `entity` pushing it along `direction` at `speed` for `duration`
+    /// seconds (test tool for the knockback primitive).
+    pub fn knockback(&mut self, entity: Entity, direction: Vec2, speed: f32, duration: f32) {
+        let impulse = ForcedImpulse::knockback(direction, speed, duration);
+        self.app.world_mut().entity_mut(entity).insert(impulse);
+    }
+
+    // ---------------------------------------------------------------- class resource (Phase 9.1)
+
+    /// Directly sets `entity`'s `Charges` component (test tool — bypasses the ability path; Mage
+    /// frost charges / Druid combo charges are the first real producers, Phase 9.4/9.5).
+    pub fn set_charges(&mut self, entity: Entity, current: u32, max: u32) {
+        self.app.world_mut().entity_mut(entity).insert(Charges { current, max });
+    }
+
+    /// The `(current, max)` of `entity`'s `ClassResource` bar (the HUD's data source), if present.
+    pub fn class_resource(&mut self, entity: Entity) -> Option<(f32, f32)> {
+        self.app.world().get::<ClassResource>(entity).map(|r| (r.current, r.max))
     }
 
     // ---------------------------------------------------------------- zones (Phase 6)

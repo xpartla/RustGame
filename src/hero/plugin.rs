@@ -16,6 +16,7 @@ use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
 use crate::hero::assets::HeroDef;
 use crate::hero::systems::input_slot::resolve_input_to_ability;
+use crate::hero::systems::resource::sync_charges_to_class_resource;
 use crate::hero::systems::stance::handle_stance_swap;
 
 pub struct HeroPlugin;
@@ -29,6 +30,12 @@ impl Plugin for HeroPlugin {
             (handle_stance_swap, resolve_input_to_ability)
                 .before(CombatSet::Damage)
                 .run_if(in_state(GameState::InRun)),
+        );
+        // Class-resource bridge (Phase 9.1): mirrors Charges into the HUD's ClassResource whenever
+        // content grants/spends them. No shipped hero carries Charges yet — inert.
+        app.add_systems(
+            Update,
+            sync_charges_to_class_resource.run_if(in_state(GameState::InRun)),
         );
 
         // Debug-only: press M to become the Mage for manual playtesting (no character-select yet).

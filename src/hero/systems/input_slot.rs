@@ -5,13 +5,16 @@
 // mapped to the pressed slot for the player's active stance and emits TriggerAbilityEvent.
 //
 // Resolution path:
-//   1. Read the pressed InputSlot from mouse/keyboard input (LMB → Basic, RMB → Special).
+//   1. Read the pressed InputSlot from mouse/keyboard input (LMB → Basic, RMB → Special,
+//      Shift/Space → Movement).
 //   2. Read the player's ActiveStance.
 //   3. Look up HeroDef.stance_slots for the matching (stance, slot) pair → AbilityId.
 //   4. Emit TriggerAbilityEvent { ability_id, owner }.
 //
 // StanceSwap (Q) is handled separately by hero/systems/stance.rs, not here. The Movement slot
-// (Shift/Space dash) is unbound until the dash primitive lands (deferred, see §8.5).
+// (Shift/Space, Phase 9.1) is wired here, but no shipped hero binds it yet — every `stance_slots`
+// entry's `movement` field is still `None` (see assets/abilities/dash.ability.ron, the unbound
+// demonstrator), so this stays byte-identical until a class' kit claims the slot.
 //
 // Replaces the Phase-1 stub player/systems/ability_input.rs, which hardcoded LMB → death_strike.
 // Runs before CombatSet::Damage so the event is available to execute_ready_abilities that frame.
@@ -36,10 +39,11 @@ pub fn resolve_slot(hero_def: &HeroDef, stance: &str, slot: InputSlot) -> Option
     }
 }
 
-/// Reads mouse input + the player's active stance and emits a TriggerAbilityEvent for each
-/// pressed, bound slot. No-op until the player's HeroDef asset has loaded.
+/// Reads mouse + keyboard input and the player's active stance and emits a TriggerAbilityEvent for
+/// each pressed, bound slot. No-op until the player's HeroDef asset has loaded.
 pub fn resolve_input_to_ability(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     // A suppressed (stunned) player cannot cast — excluded from the query.
     player: Query<(Entity, &HeroIdentity, &ActiveStance), Without<AbilitiesSuppressed>>,
     hero_library: Res<HeroLibrary>,
@@ -52,6 +56,11 @@ pub fn resolve_input_to_ability(
     }
     if mouse.just_pressed(MouseButton::Right) {
         pressed.push(InputSlot::Special);
+    }
+    // Mechanics' "Shift / Space for movement ability, i.e. dash" (Phase 9.1). Either key triggers
+    // the same slot; only one TriggerAbilityEvent per frame even if both are pressed together.
+    if keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::Space) {
+        pressed.push(InputSlot::Movement);
     }
     if pressed.is_empty() {
         return;

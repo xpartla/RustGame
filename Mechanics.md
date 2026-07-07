@@ -2,6 +2,10 @@
 
 * WASD movement  
 * Shift / Space for movement ability, i.e. dash  
+  * _Phase 9.1 (implemented): the primitive only — Shift/Space now reach `InputSlot::Movement`, and
+    a `blink` ability behavior (a short forced-movement impulse along facing) exists as an unbound
+    demonstrator (`dash.ability.ron`). No shipped hero binds a real dash to the slot yet — that
+    lands with whichever class's kit calls for one._
 * Left Click for basic ability  
 * Right Click for special ability  
 * Q for stance swap
@@ -25,6 +29,7 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
     * (common) Increase leech by X%  
     * (common) Increase range by X%  
     * (epic, unique) After Death Strike kills X enemies, gain bone shield that blocks 1 next attack / projectile  
+      * _Phase 9.1 (implemented): the underlying primitive — a generic `Absorb` damage-absorbing pool, drained by `apply_damage` before `Health`. The bone-shield kill-counter + grant (its Post-hook plumbing has existed since Phase 6) is still Phase 9.2 content._
 * Heart Strike \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Melee, hit X nearest enemies within Y range, dealing Z damage,, the lower your health \- higher the damage  
     * (common) Hit \+1 more enemies  
@@ -32,6 +37,9 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
     * (epic) Deal additional X% damage if you are under 25% health  
 * Abomination limb \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
   * Periodically grip enemy from X radius  
+    * _Phase 9.1 (implemented): the underlying primitive — `ForcedImpulse` (a one-shot velocity
+      override respecting wall collision), with a `toward_point` constructor for exactly this
+      pull-toward-caster shape. The periodic-cast wiring is still Phase 9.2 content._
     * (common) Increase grip range by X  
     * (rare) Grip additional X targets  
     * (rare, unique) After gripping an enemy gets stunned for X seconds  
@@ -40,6 +48,9 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
   * Periodically drop an area where enemies take increased Death Strike damage and Heart Strike hits additional target \+ you heal X% more when standing inside  
     * _Phase 6 (implemented): D\&D drops a persistent "death_and_decay" zone (RMB Special). The owner-regen effect is live (heals % max health per second while inside). The cross-ability buffs (increased Death Strike damage / +1 Heart Strike target inside) are deferred to the BDK content pass — they need Heart Strike + a Death-Strike zone hook._  
 * Purgatory (cheat death) \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
+  * _Phase 9.1 (implemented): the underlying primitive — the same `Absorb` pool as bone shield can
+    model a timed damage immunity; the cheat-death (restore to 5%) interceptor and the ability
+    itself are still Phase 9.2 content._
   * Restore to 5% health, immune to damage for 5 seconds, long CD (rare, unique)  
     * (rare) Increase restored health by X%  
     * (epic, \[3\]) Increase damage immunity by X seconds  
@@ -260,7 +271,14 @@ Melee, healing, area damage zones, strong single target
 
 * (rare, unique \[5\]) Gain 10% movement speed up to 50% for x seconds after killing an enemy  
 * (common) Gain X% crit strike  
+  * _Phase 9.1 (implemented): the underlying stat sheet — every ability resolves a `crit_chance` /
+    `crit_mult` pair (neutral defaults) that a general talent can modify, and the damage-application
+    path rolls an independent crit per hit from `RunRng`. This specific talent (granting the
+    percentage) is still content._
 * (common) Gain X% attack speed  
+  * _Phase 9.1 (implemented): the underlying stat sheet — every ability resolves an `attack_speed`
+    value (neutral default 0) that shortens its cooldown via `cooldown / (1 + attack_speed)`. This
+    specific talent is still content._  
 * (rare, unique) Deal X% increased damage to enemies within close range, but take Y% increased damage from projectiles  
 * (rare, unique) Killing a rare enemy or a boss heals you for X% of your max health and increases your movement speed by Y% for Z seconds  
 * (epic, unique) Taking damage emits a shockwave, knocking enemies back and destroying all enemy projectiles (cooldown X seconds)  

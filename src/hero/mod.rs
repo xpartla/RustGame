@@ -6,10 +6,11 @@
 //
 // Module map:
 //   assets.rs     — HeroDef RON asset (one file per class, assets/heroes/*.hero.ron) + HeroLibrary
-//   components.rs — HeroIdentity, ActiveStance, InputSlot, ClassResource (on the player entity)
+//   components.rs — HeroIdentity, ActiveStance, InputSlot, ClassResource, Charges (Phase 9.1)
 //   systems/
 //     input_slot.rs — translates InputSlot + ActiveStance → AbilityId, emits TriggerAbilityEvent
 //     stance.rs     — handles Q press: swaps ActiveStance, applies the entered stance's swap effect
+//     resource.rs   — Phase 9.1: mirrors Charges into ClassResource for the HUD bar
 
 pub mod assets;
 pub mod components;

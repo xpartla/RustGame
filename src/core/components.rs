@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use bevy::math::Vec2;
-use bevy::prelude::{Component, Entity, Resource};
+use bevy::prelude::{Component, Entity, Resource, Timer, TimerMode};
 use crate::constants::TILE_SIZE;
 
 #[derive(Component, Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -56,6 +56,48 @@ pub struct Immobilized;
 /// player and enemy casters alike. Absent ⇒ may cast.
 #[derive(Component, Debug)]
 pub struct AbilitiesSuppressed;
+
+/// A damage-absorbing pool (Phase 9.1, §8.1(5)). Consumed by `apply_damage` BEFORE `Health`,
+/// between the `DamageTakenModifier` scaling and the health write — a hit larger than the pool
+/// spills the remainder to `Health`. Multiple grants (`GainShieldEvent`, core/events.rs) stack
+/// additively into this one component; it is removed once fully drained. No shipped content grants
+/// one yet — bone shield / Ice Barrier / Purgatory are the first consumers (Phase 9.2/9.5).
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Absorb {
+    pub amount: f32,
+}
+
+/// A one-shot positional impulse (Phase 9.1, §8.1(6)) that overrides an entity's `Velocity` for its
+/// duration, then removes itself. Grip (pull toward a point — Abomination Limb) and knockback
+/// (push away — a shockwave talent) are the same shape, differing only in the direction baked in at
+/// construction. Resolved by `resolve_forced_movement`, which runs ahead of `apply_velocity` in
+/// `MovementSet::Integrate` so the impulse still respects `TileMap` wall-sliding and overrides
+/// whatever `MovementSet::Intent` (flow-field AI, WASD input) set that frame. No shipped ability
+/// grants one yet — Abomination Limb's grip is the first consumer (Phase 9.2).
+#[derive(Component, Debug, Clone)]
+pub struct ForcedImpulse {
+    pub velocity: Vec2,
+    pub timer: Timer,
+}
+
+impl ForcedImpulse {
+    /// A pull toward `to_point` from `from`, at `speed` world-units/sec, for `duration` seconds.
+    /// The direction is resolved once (a one-shot impulse, not a continuous re-target).
+    pub fn toward_point(from: Vec2, to_point: Vec2, speed: f32, duration: f32) -> Self {
+        Self {
+            velocity: (to_point - from).normalize_or_zero() * speed,
+            timer: Timer::from_seconds(duration, TimerMode::Once),
+        }
+    }
+
+    /// A push along `direction`, at `speed` world-units/sec, for `duration` seconds.
+    pub fn knockback(direction: Vec2, speed: f32, duration: f32) -> Self {
+        Self {
+            velocity: direction.normalize_or_zero() * speed,
+            timer: Timer::from_seconds(duration, TimerMode::Once),
+        }
+    }
+}
 
 /// Logic collision radius for incoming hits (Phase 3.1). Read by projectile collision now;
 /// enemy shots hitting the *player* (Phase 5) read the same component. Visual size lives in

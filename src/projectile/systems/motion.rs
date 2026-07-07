@@ -15,6 +15,7 @@ use crate::ability::behavior::HitTarget;
 use crate::core::components::{Faction, Hurtbox, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::projectile::components::{ProjectileMotion, ProjectilePayload};
+use crate::run::rng::RunRng;
 use crate::status::components::ApplyStatusEvent;
 
 pub fn move_projectiles(time: Res<Time>, mut projectiles: Query<(&mut WorldPosition, &ProjectileMotion)>) {
@@ -29,6 +30,7 @@ pub fn projectile_collision(
     mut damage_events: EventWriter<DamageEvent>,
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
+    mut rng: ResMut<RunRng>,
     mut projectiles: Query<(Entity, &WorldPosition, &mut ProjectileMotion, &mut ProjectilePayload)>,
     targets: Query<(Entity, &WorldPosition, &Hurtbox, &Faction)>,
 ) {
@@ -51,6 +53,7 @@ pub fn projectile_collision(
                 &mut damage_events,
                 &mut heal_events,
                 &mut status_events,
+                &mut rng,
                 payload.source,
                 &[hit],
                 Some(hit),

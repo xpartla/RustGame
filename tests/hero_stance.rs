@@ -136,6 +136,28 @@ fn non_stance_hero_q_is_a_noop() {
     assert!(sim.status_ids_on(player).is_empty(), "no swap effect applied");
 }
 
+/// The Movement slot (Shift/Space, Phase 9.1) fires whatever ability is bound to it — no shipped
+/// hero claims the slot yet, so this binds the "dash" demonstrator (assets/abilities/dash.ability.ron)
+/// to prove the Shift/Space input path reaches TriggerAbilityEvent end-to-end, distinct from
+/// ability/behavior.rs's unit test of the `blink` behavior's pure targeting logic.
+#[test]
+fn movement_slot_triggers_a_dash() {
+    let mut sim = Sim::new_arena(42);
+    sim.bind_movement_ability("blood_death_knight", "dash");
+    sim.grant_ability("dash");
+    sim.step(1); // spawn_unlocked_ability
+
+    sim.set_player_pos(Vec2::ZERO);
+    sim.set_player_facing(Vec2::X);
+    let start = sim.player_pos();
+
+    sim.tap_key(KeyCode::ShiftLeft);
+    sim.step(10); // the ForcedImpulse takes effect the frame after the cast (deferred Commands)
+
+    let moved = sim.player_pos().x - start.x;
+    assert!(moved > 50.0, "Shift triggered the bound dash (~75 units over 0.15s), moved {moved}");
+}
+
 /// The debug playtest hotkey (M) re-identifies the live player as the Mage and grants its kit.
 #[test]
 fn debug_hotkey_switches_player_to_mage() {

@@ -23,10 +23,11 @@ use crate::ability::behavior::{AbilityContext, BehaviorRegistry, ResolvedParams,
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, CastVfxKind, TriggerAbilityEvent};
 use crate::ability::effects::{apply_resolved_effects, resolve_effects};
 use crate::ability::hooks::{HookContext, HookRegistry};
-use crate::core::components::{AbilitiesSuppressed, Facing, Faction, WorldPosition};
+use crate::core::components::{AbilitiesSuppressed, Facing, Faction, ForcedImpulse, WorldPosition};
 use crate::core::events::{DamageEvent, HealEvent};
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::ApplyStatusEvent;
+use crate::run::rng::RunRng;
 use crate::run::state::RoomModifiers;
 use crate::talent::assets::{StatModifier, TalentDef, TalentLibrary};
 use crate::talent::components::{AcquiredTalents, ActiveHooks};
@@ -84,11 +85,12 @@ pub fn execute_ready_abilities(
     mut status_events: EventWriter<ApplyStatusEvent>,
     mut cast_vfx: EventWriter<CastVfxEvent>,
     // Grouped into one tuple SystemParam to stay under Bevy's 16-param-per-system limit.
-    (registry, hook_registry, zone_presence, room_mods): (
+    (registry, hook_registry, zone_presence, room_mods, mut rng): (
         Res<BehaviorRegistry>,
         Res<HookRegistry>,
         Res<PlayerZonePresence>,
         Res<RoomModifiers>,
+        ResMut<RunRng>,
     ),
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
@@ -216,10 +218,13 @@ pub fn execute_ready_abilities(
             }
             let resolved = resolve_effects(&def.effects, &params);
             // Instant hits (cone/nova). Empty for a pure projectile cast (delivery is deferred).
+            // Crit rolls (Phase 9.1) draw from RunRng, never thread_rng — only when a target
+            // ability's resolved crit_chance > 0.0 (see roll_crit's byte-identical guarantee).
             apply_resolved_effects(
                 &mut damage_events,
                 &mut heal_events,
                 &mut status_events,
+                &mut rng,
                 trigger.owner,
                 &outcome.hits,
                 outcome.primary,
@@ -261,6 +266,15 @@ pub fn execute_ready_abilities(
                 spawn_dropped_zone(&mut commands, spec, &params, spawn.center, trigger.owner, *owner_faction);
             }
 
+            // Forced-movement impulse (Phase 9.1 — the Movement-slot dash/blink). Applied directly
+            // to the caster, not the world, unlike the zone/projectile spawns above.
+            if let Some(spawn) = outcome.forced_impulse {
+                commands.entity(trigger.owner).insert(ForcedImpulse {
+                    velocity: spawn.velocity,
+                    timer: Timer::from_seconds(spawn.duration, TimerMode::Once),
+                });
+            }
+
             // Travelling projectile: spawn it carrying the baked effects for on-impact delivery.
             if let Some(spawn) = outcome.projectile {
                 commands.spawn((
@@ -299,10 +313,17 @@ pub fn execute_ready_abilities(
             }
 
             cooldown.elapsed = 0.0;
+            // Attack speed (Phase 9.1, §8.1(4)): effective_cd = resolved_cd / (1 + attack_speed).
+            // attack_speed defaults to 0.0 (talent/modifier.rs's universal baseline) when no talent
+            // grants it, so denom is 1.0 and this is identical to the old `resolved_cd` for every
+            // shipped ability today. The `.max(0.05)` floor only guards a pathological >100%-per-
+            // source haste stack from ever dividing by zero/negative — no such talent exists yet.
+            // Always writing `duration` (removing the old `resolved_cd > 0.0` guard) also resolves
+            // the §8.5 Override(0) debt: a talent that overrides an ability's cooldown to 0 now
+            // actually takes effect, instead of silently leaving the previous duration in place.
             let resolved_cd = params.get("cooldown");
-            if resolved_cd > 0.0 {
-                cooldown.duration = resolved_cd;
-            }
+            let attack_speed = params.get("attack_speed");
+            cooldown.duration = resolved_cd / (1.0 + attack_speed).max(0.05);
             break; // one instance per trigger
         }
     }

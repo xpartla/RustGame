@@ -63,6 +63,11 @@ pub enum ResourceModel {
     /// Health IS the gameplay resource — some abilities cost health or scale with missing health.
     /// No secondary bar; the existing Health component is the resource.
     HealthBased,
+    /// A capped integer charge bar (Phase 9.1, §3.11 of the phase-9 plan) — Mage frost charges and
+    /// Druid enhanced/combo charges are the first consumers (Phase 9.4/9.5). `max` is content; the
+    /// runtime count lives in `hero::components::Charges`. Transient (not part of `RunState` — a
+    /// charge count is mid-encounter state, reset like the rest of live combat state on resume).
+    Charges { max: u32 },
 }
 
 /// Binds InputSlots to AbilityIds for one stance.

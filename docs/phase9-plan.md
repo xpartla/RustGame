@@ -546,3 +546,55 @@ Per the non-negotiable contract (CLAUDE.md), every sub-phase updates:
 ---
 
 _As-built notes get appended per sub-phase below, like every prior phase doc._
+
+## 13. Sub-phase 9.1 as-built (completed 2026-07-07)
+
+Landed as planned, at full scope (all five primitives from §2), **byte-identical against the
+golden master at every step** — `campaign_matches_golden_baseline` and
+`campaign_is_reproducible_within_a_build` both green, unchanged from the Phase-8 baseline. See the
+CHANGELOG "Phase 9.1" section and architecture-plan §8.12 for full detail; summary here:
+
+- **2.1 Shields/absorbs** — `Absorb` + `GainShieldEvent`/`apply_shield_gain`, exactly as sketched.
+  One design call the plan left open ("single-component is simpler and enough for the shipped kit"):
+  confirmed — a single additive `Absorb` per entity, no per-source tracking.
+- **2.2 Forced movement** — `ForcedImpulse { velocity, timer }`, resolving the plan's own open
+  question ("pick one shape in 9.1b") by using **one** component/shape for both grip and knockback,
+  differing only in which constructor built it (`toward_point` vs `knockback`). `resolve_forced_movement`
+  slots in as the first system of the existing `MovementSet::Integrate` chain — no new `SystemSet`
+  needed; the plan's sketch didn't specify exactly where it would sit relative to `apply_velocity`,
+  and "first, so it can still hit `TileMap` collision" turned out to be a one-line change (`(resolve_forced_movement,
+  apply_velocity, world_to_grid).chain()`).
+- **2.3 Charges** — `ResourceModel::Charges { max }` + `Charges` + the bridge system, as sketched.
+  One clarification the plan left implicit: `ClassResource` was never actually inserted anywhere
+  before this (confirmed by grep — the HUD's `update_class_resource` read a component nothing
+  produced). `sync_charges_to_class_resource` is therefore the **first** producer, not just a
+  mirror of an existing value.
+- **2.4 Crit/attack-speed** — implemented via a **universal stat baseline** merged into every
+  ability's resolved params (talent/modifier.rs), rather than requiring every ability's own RON to
+  declare `crit_chance`/`crit_mult`/`attack_speed`. This wasn't explicitly spelled out in §2.4's
+  sketch but follows directly from "the general passives… must reach every ability" — without it, a
+  general (`ability_scope: None`) talent would have nothing to modify on an ability that never lists
+  the stat, since `apply_modifiers` only resolves stats present in `base_params`. The crit roll lives
+  in `ability/effects.rs::apply_resolved_effects` (per-target, not per-cast — so a melee-cone/self-
+  nova hit against several enemies rolls independently for each), gated by `crit_chance > 0.0` so it
+  costs nothing on the `RunRng` stream for any ability without the stat (today, all of them). The
+  `Override(0)` cooldown-guard debt (§8.5) is resolved as a side effect of the attack-speed formula:
+  the old `if resolved_cd > 0.0 { … }` guard is simply removed (an always-write), rather than
+  patched — simpler than anticipated, since attack-speed's identity-at-0.0 default made the guard's
+  original purpose (never overwrite `duration` with a bogus 0) moot.
+- **2.5 Movement/dash** — a `blink` behavior + a new `ForcedImpulseSpawn` field on `CastOutcome`
+  (mirroring `zone`/`projectile`, but targeting the caster, not the world) + Shift/Space wired into
+  `resolve_input_to_ability`. A demonstrator ability (`dash.ability.ron`) exists so the mechanic is
+  testable end-to-end (mirrors the Scratch/Fireblast/Tree-Conduit demonstrator pattern from Phases
+  3–6), including a `Sim::bind_movement_ability` test-only knob (mirrors `set_ability_param`) to
+  bind it onto a `HeroDef`'s `movement` slot without touching either shipped hero's RON.
+
+**Tests: 187 passing (was 165).** New files `tests/shields.rs` (+3), `tests/forced_movement.rs`
+(+3), `tests/charges.rs` (+1); `tests/combat.rs` +3 (crit forced/absent, attack-speed cooldown);
+`tests/hero_stance.rs` +1 (Shift triggers the bound dash). New unit tests across
+`core/systems/apply_damage.rs`, `ability/effects.rs`, `talent/modifier.rs`, `hero/components.rs`,
+`ability/behavior.rs`, `ability/assets.rs` (11 total). Build warning-free.
+
+No deviations from the plan's Definition of Done (§2.6): all five primitives compile warning-free,
+each has its scenario/unit test, `/compat-check`-equivalent ladder is green, golden master is
+byte-identical.
