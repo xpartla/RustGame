@@ -1,0 +1,12 @@
+// "Increase range by X" (Mechanics). +20% multiplicative, mirrors death_strike_range_common.
+(
+    id: "heart_strike_range_common",
+    display_name: "Extended Reach",
+    ability_scope: Some("heart_strike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: MultiplyAdd(0.20),
+    )),
+)

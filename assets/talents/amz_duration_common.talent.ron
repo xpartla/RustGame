@@ -1,0 +1,12 @@
+// "Increase the duration of the zone by X seconds" (Mechanics, common).
+(
+    id: "amz_duration_common",
+    display_name: "Lingering Barrier",
+    ability_scope: Some("amz"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "zone_duration",
+        op: Add(2.0),
+    )),
+)

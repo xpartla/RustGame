@@ -1,0 +1,35 @@
+// WORKING NAME: "Heart Strike"
+// Class: Blood Death Knight
+// Slot: passive (auto-cast on cooldown)
+// Unlock: randomly at level 2/3 (band ability, alongside Blood Boil).
+//
+// Behavior: nearest_melee (Phase 9.2) — hits up to "target_count" of the nearest enemies within
+// "range". Mechanics: "the lower your health, the higher the damage" — always-on identity, not a
+// talent, so it's an innate Pre hook (heart_strike_missing_health), not gated by ActiveHooks.
+(
+    id: "heart_strike",
+    display_name: "Heart Strike",
+    unlock_schedule: Band(2, 3),
+    activation: AutoCast,
+    behavior: "nearest_melee",
+    hooks: [
+        (Pre, "bdk_dnd_damage_boost"),
+    ],
+    innate_hooks: [
+        (Pre, "heart_strike_missing_health"),
+    ],
+    base_params: {
+        "damage": 8.0,
+        "range": 55.0,
+        "target_count": 2.0,
+        "cooldown": 3.0,
+    },
+    talent_pool: [
+        "heart_strike_extra_target_common",
+        "heart_strike_range_common",
+        "heart_strike_execute_epic",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+    ],
+)

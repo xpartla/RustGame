@@ -1,6 +1,6 @@
 use bevy::prelude::{Commands, Entity, Query, Res, Vec2};
 use bevy::time::Time;
-use crate::core::components::{ForcedImpulse, GridPosition, Immobilized, MoveSpeedModifier, Velocity, WorldPosition};
+use crate::core::components::{ForcedImpulse, GridPosition, Immobilized, MoveSpeedModifier, Velocity, WorldPosition, ZoneSpeedModifier};
 use crate::world::components::TileMap;
 
 /// Resolves an active `ForcedImpulse` (Phase 9.1, §8.1(6)): overwrites the entity's `Velocity` with
@@ -33,19 +33,21 @@ pub fn resolve_forced_movement(
 ///
 /// Status modifiers ride on generic components (Phase 3): the integration step is scaled by
 /// `MoveSpeedModifier` (frostbite slow) and skipped entirely while `Immobilized` (root/stun).
+/// `ZoneSpeedModifier` (Phase 9.2) is a second, independent multiplier folded in the same way —
+/// see its own doc comment for why it isn't just folded into `MoveSpeedModifier`.
 /// Scaling the *step* — not the stored `Velocity` — keeps the enemy-AI lerp toward its desired
 /// velocity clean. Entities without these components are unaffected (step = `vel * dt`).
 pub fn apply_velocity(
-    mut query: Query<(&mut WorldPosition, &Velocity, Option<&MoveSpeedModifier>, Option<&Immobilized>)>,
+    mut query: Query<(&mut WorldPosition, &Velocity, Option<&MoveSpeedModifier>, Option<&ZoneSpeedModifier>, Option<&Immobilized>)>,
     map: Res<TileMap>,
     time: Res<Time>,
 ) {
     let delta = time.delta_secs();
-    for (mut pos, vel, move_mod, immobilized) in &mut query {
+    for (mut pos, vel, move_mod, zone_mod, immobilized) in &mut query {
         if immobilized.is_some() {
             continue;
         }
-        let speed_mult = move_mod.map(|m| m.0).unwrap_or(1.0);
+        let speed_mult = move_mod.map(|m| m.0).unwrap_or(1.0) * zone_mod.map(|m| m.0).unwrap_or(1.0);
         let step = vel.0 * delta * speed_mult;
 
         let try_x = Vec2::new(pos.0.x + step.x, pos.0.y);

@@ -1,0 +1,11 @@
+// "20% overkill damage is leeched" (Mechanics, rare, unique). Handled by
+// talent::systems::passives::overkill_leech_on_kill (needs Health post-apply_damage + LastHitBy +
+// the killer's ActiveHooks — the same read-only-Post-hook limitation as Bone Shield/Purgatory).
+(
+    id: "bdk_passive_overkill_leech",
+    display_name: "Overkill",
+    ability_scope: None,
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("bdk_overkill_leech"),
+)

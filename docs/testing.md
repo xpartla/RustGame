@@ -93,13 +93,21 @@ Baselines are pinned by `Cargo.lock` (rand/bevy algorithm stability) and generat
 machine; a toolchain or dependency bump that shifts float behavior is itself a
 baseline-regeneration event — declare it in the CHANGELOG like any other behavior change.
 
-**Phase 8 baseline move.** The current baseline was regenerated once, for the `RunRng` algorithm
+**Phase 8 baseline move.** The baseline was regenerated once in Phase 8, for the `RunRng` algorithm
 switch (`SmallRng` → `rand_chacha::ChaCha8Rng`, needed so a resumed run can restore its exact RNG
 stream position — see CHANGELOG "Phase 8" and architecture-plan §8.11). This is also a **stronger**
 portability guarantee than before: `SmallRng` is explicitly documented as *not* stable across `rand`
 versions or platforms (a future `rand` bump could silently shift it), whereas `ChaCha8Rng`'s output is
 a documented, versioned, portable stream. Every Phase-8 step after the switch re-verified
 byte-identical against this baseline.
+
+**Phase 9.2 baseline moves (×3).** Phase 9.1 stayed byte-identical throughout (its primitives were
+inert). Phase 9.2 made three isolated, declared moves as its content went live: (1) base_stats
+application (DK 100→200 hp — a clean hp-only diff), (2) Companion becoming a real active minion
+(a wider diff — xp/enemies/statuses/position all shift once it's contributing real DPS), (3) the
+combined rest-of-kit batch (Heart Strike, Abomination Limb, Purgatory, Bone Shield, and every new
+talent tree — not separable from each other by the time they're all wired into the same default DK
+loadout). See CHANGELOG "Phase 9.2" for the full attribution of each move.
 
 ## Adding scenarios (definition of done per phase)
 
@@ -179,6 +187,24 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   `Charges::gain`/`spend_all`; the `blink` behavior's pure targeting logic; `dash.ability.ron`'s
   parse. The golden master stayed **byte-identical** — no shipped ability/talent/enemy references
   any of the five new primitives.
+- Phase 9.2 (done): the BDK kit closeout (architecture-plan §8.13) — 8 new scenario files, one per
+  new ability/talent-tree area: `tests/heart_strike.rs`, `tests/abomination_limb.rs`,
+  `tests/purgatory.rs`, `tests/bone_shield.rs`, `tests/amz_talents.rs`, `tests/blood_boil_talents.rs`,
+  `tests/bdk_class_passives.rs`, `tests/companion.rs`. A recurring pattern across most of them: an
+  auto-cast ability granted mid-test needs care around the exact frame its `AbilityInstance` becomes
+  visible to `execute_ready_abilities` (`grant_level_1_abilities`/`spawn_unlocked_ability` run
+  `.after(CombatSet::Death)`, so an instance granted this frame is first cast-eligible only the
+  *next* frame) — spawn any target enemy **before** stepping past the grant, not after, or an
+  early whiff can consume the cooldown before the scenario's own checks run. `Sim::disable_companion()`
+  (new helper) isolates ~10 pre-existing tests from Companion's now-real incidental damage. The
+  golden master moved **three times** this phase (base_stats; Companion; the combined rest-of-kit
+  batch) — see the CHANGELOG "Phase 9.2" section for exactly what each regen covers.
+  **Known open issue:** after regen #3, `campaign_is_reproducible_within_a_build` started failing
+  intermittently (~1 run in 3) — several real scheduling races were found and fixed (see the
+  CHANGELOG entry and architecture-plan §8.5's new row), but one more divergence source remains
+  unidentified. The baseline is deliberately **not** regenerated a fourth time until this is fully
+  resolved — `campaign_matches_golden_baseline` currently fails against the stale regen-#3 baseline,
+  a known, expected state, not a new unexplained regression.
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

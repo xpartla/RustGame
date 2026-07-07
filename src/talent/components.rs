@@ -85,3 +85,11 @@ impl ActiveHooks {
         self.hooks.retain(|h| h != id);
     }
 }
+
+/// Kills accumulated toward Bone Shield's next grant (Phase 9.2, Death Strike's epic talent).
+/// Wraps past the threshold (a multi-kill frame can grant more than once). Inserted unconditionally
+/// alongside `AcquiredTalents`/`ActiveHooks` at player spawn (whether or not the talent is ever
+/// taken) so `ability::systems::bone_shield::bone_shield_on_kill` never needs to reason about a
+/// lazily-inserted component racing a kill.
+#[derive(Component, Debug, Default, Clone)]
+pub struct BoneShieldProgress(pub u32);

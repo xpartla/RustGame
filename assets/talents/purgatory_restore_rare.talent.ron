@@ -1,0 +1,13 @@
+// "Increase restored health by X%" (Mechanics, rare). Flat +2 percentage points per stack:
+// 5% -> 11% with all 3 copies.
+(
+    id: "purgatory_restore_rare",
+    display_name: "Deeper Reserves",
+    ability_scope: Some("purgatory"),
+    rarity: Rare,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "restore_percent",
+        op: Add(2.0),
+    )),
+)

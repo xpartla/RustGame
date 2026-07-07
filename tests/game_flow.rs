@@ -12,7 +12,8 @@ use rust_game::sim::Sim;
 fn player_death_enters_game_over() {
     let mut sim = Sim::new_arena(42);
     let player = sim.player();
-    sim.deal_damage(player, 150.0);
+    // Phase 9.2: base_stats gives the Death Knight 200 HP (was the shared 100 HP constant).
+    sim.deal_damage(player, 250.0);
     sim.step(2);
 
     assert!(sim.try_player().is_none(), "player despawned at 0 hp");

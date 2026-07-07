@@ -1,0 +1,12 @@
+// "Hit +1 more enemies" (Mechanics). Stack(2): base 2 targets -> up to 4 with both copies.
+(
+    id: "heart_strike_extra_target_common",
+    display_name: "Wider Reach",
+    ability_scope: Some("heart_strike"),
+    rarity: Common,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "target_count",
+        op: Add(1.0),
+    )),
+)

@@ -5,10 +5,10 @@ use rand::Rng;
 use crate::ability::components::{AbilityCooldown, AbilityInstance};
 use crate::constants::TILE_SIZE;
 use crate::core::components::{
-    DamageDealtModifier, Facing, Faction, GridPosition, Health, Hurtbox, LastHitBy, Velocity, WorldPosition,
+    DamageDealtModifier, Facing, Faction, GridPosition, Health, Hurtbox, LastHitBy, MoveSpeed, Velocity, WorldPosition,
 };
 use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary};
-use crate::enemy::components::{AiBehavior, Enemy, EnemyAppearance, EnemySpawner, MoveSpeed, XpReward};
+use crate::enemy::components::{AiBehavior, Enemy, EnemyAppearance, EnemySpawner, XpReward};
 use crate::world::components::TileMap;
 use bevy::asset::Assets;
 

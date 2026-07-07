@@ -1,0 +1,12 @@
+// "Blood Boil deals additional damage over time scaling with the target's current health"
+// (Mechanics, rare, unique[3]). Simplified to applying "bleed" (existing physical DoT status) to
+// every hit — the status system has no percent-of-current-health DoT primitive yet. Handled as a
+// targeted special-case in ability/systems/execute.rs (Post hooks are read-only), not HookRegistry.
+(
+    id: "blood_boil_health_scaling_rare",
+    display_name: "Festering Blood",
+    ability_scope: Some("blood_boil"),
+    rarity: Rare,
+    uniqueness: Stack(3),
+    effect: Behavior("blood_boil_health_scaling"),
+)

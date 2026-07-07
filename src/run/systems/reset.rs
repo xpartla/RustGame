@@ -18,13 +18,15 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use std::collections::HashSet;
 
-use crate::ability::components::AbilityInstance;
+use crate::ability::components::{AbilityInstance, Minion};
+use crate::core::components::{BaseHealth, Health, MoveSpeed};
 use crate::enemy::components::Enemy;
 use crate::game::state::{GameOverSummary, GameState};
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::{ActiveStance, HeroIdentity};
 use crate::pickup::components::PickUp;
 use crate::player::components::Player;
+use crate::player::systems::base_stats::{resolve_base_stats, BaseStatsApplied};
 use crate::player::systems::spawn_player::spawn_player;
 use crate::progression::systems::level_up::init_level_flow;
 use crate::projectile::components::Projectile;
@@ -71,6 +73,7 @@ pub(crate) fn teardown_run(world: &mut World) {
     collect::<PickUp>(world, &mut doomed);
     collect::<StatusEffectInstance>(world, &mut doomed);
     collect::<AbilityInstance>(world, &mut doomed);
+    collect::<Minion>(world, &mut doomed);
     collect::<Player>(world, &mut doomed);
     for e in doomed {
         world.despawn(e);
@@ -95,6 +98,15 @@ fn collect<C: Component>(world: &mut World, out: &mut HashSet<Entity>) {
 /// level-1 grant re-runs naturally for the new identity on the next frames (`Level1Granted` is absent
 /// on the fresh entity).
 ///
+/// Also applies `hero_id`'s `base_stats` **synchronously** (Phase 9.2) and inserts
+/// `BaseStatsApplied` right here — deliberately not left to the deferred
+/// `player::systems::base_stats::apply_base_stats` Update system, because `resume_run` (the other
+/// caller of this fn) sets `Health.current` to a saved partial value immediately after this
+/// returns; if the deferred system instead caught this same player on a later frame, its blanket
+/// `Health::new(max)` would reset `current` back to full and silently destroy the resumed HP. The
+/// deferred system exists only for the one path that cannot apply base_stats synchronously: the
+/// very first boot spawn, whose `HeroDef` asset may not have loaded yet.
+///
 /// `pub(crate)`: reused by `run/systems/persistence.rs::resume_run` (Phase 8).
 pub(crate) fn respawn_player(world: &mut World, hero_id: &str) {
     let _ = world.run_system_once(spawn_player);
@@ -107,6 +119,21 @@ pub(crate) fn respawn_player(world: &mut World, hero_id: &str) {
     }
     if let Some(mut st) = world.get_mut::<ActiveStance>(player) {
         st.0 = stance;
+    }
+
+    let base_stats = {
+        let hero_library = world.resource::<HeroLibrary>();
+        let hero_defs = world.resource::<Assets<HeroDef>>();
+        resolve_base_stats(hero_library, hero_defs, hero_id)
+    };
+    if let Some((max_health, move_speed)) = base_stats {
+        if let Some(mut health) = world.get_mut::<Health>(player) {
+            *health = Health::new(max_health);
+        }
+        if let Some(mut speed) = world.get_mut::<MoveSpeed>(player) {
+            speed.0 = move_speed;
+        }
+        world.entity_mut(player).insert((BaseStatsApplied, BaseHealth(max_health)));
     }
 }
 

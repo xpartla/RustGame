@@ -1,0 +1,12 @@
+// "Grip additional X targets" (Mechanics, rare).
+(
+    id: "abomination_limb_targets_rare",
+    display_name: "Many Hands",
+    ability_scope: Some("abomination_limb"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "target_count",
+        op: Add(1.0),
+    )),
+)

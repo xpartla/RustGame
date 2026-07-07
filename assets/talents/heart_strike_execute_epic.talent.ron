@@ -1,0 +1,10 @@
+// "Deal additional X% damage if you are under 25% health" (Mechanics, epic).
+// Effect: Behavior hook "heart_strike_execute_bonus" (ability/hooks.rs) — +50% damage under 25% hp.
+(
+    id: "heart_strike_execute_epic",
+    display_name: "Execute",
+    ability_scope: Some("heart_strike"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("heart_strike_execute_bonus"),
+)

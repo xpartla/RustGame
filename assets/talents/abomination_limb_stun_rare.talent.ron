@@ -1,0 +1,12 @@
+// "After gripping an enemy gets stunned for X seconds" (Mechanics, rare unique).
+// Effect: Behavior hook id "abomination_limb_stun" — a targeted special-case in
+// ability/systems/execute.rs (Post hooks are read-only and can't emit follow-up ApplyStatusEvents),
+// not a HookRegistry entry.
+(
+    id: "abomination_limb_stun_rare",
+    display_name: "Crushing Grip",
+    ability_scope: Some("abomination_limb"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("abomination_limb_stun"),
+)

@@ -8,6 +8,7 @@ use crate::core::systems::{
     apply_damage::apply_damage,
     apply_heal::apply_heal,
     apply_shield::apply_shield_gain,
+    invulnerability::tick_invulnerability,
 };
 
 // Presentation note: sync_transform / apply_facing_rotation / draw_health_bars are visual
@@ -55,11 +56,24 @@ impl Plugin for CorePlugin {
                             (resolve_forced_movement, apply_velocity, world_to_grid)
                                 .chain()
                                 .in_set(MovementSet::Integrate),
-                            // A shield granted this frame must be in place before apply_damage runs,
-                            // so a same-frame grant can absorb a same-frame hit (Phase 9.1, §8.1(5)).
-                            apply_shield_gain.before(apply_damage).in_set(CombatSet::Apply),
-                            apply_damage.in_set(CombatSet::Apply),
-                            apply_heal.in_set(CombatSet::Apply),
+                            // Explicitly chained (Phase 9.2 pin): all four independently mutate/read
+                            // Health/Invulnerable and previously had no order relative to each other
+                            // beyond the two edges called out below — Bevy's ambiguity checker
+                            // (`ScheduleBuildSettings { ambiguity_detection: LogLevel::Error }`, used
+                            // to hunt a golden-campaign reproducibility flake this whole chain
+                            // closes) flagged apply_heal-vs-apply_damage, apply_heal-vs-
+                            // purgatory_cheat_death, and tick_invulnerability-vs-apply_damage as
+                            // ambiguous — every frame a heal and a hit (or an expiring immunity
+                            // window) coincide, not a rare edge case, so this was the dominant
+                            // remaining source of divergence.
+                            //   - shield first, so a same-frame grant can absorb a same-frame hit
+                            //     (Phase 9.1, §8.1(5)).
+                            //   - damage next, then heal (both mutate Health.current).
+                            //   - invulnerability ticks last: the frame immunity expires still
+                            //     protects against a hit resolved earlier in this same frame.
+                            (apply_shield_gain, apply_damage, apply_heal, tick_invulnerability)
+                                .chain()
+                                .in_set(CombatSet::Apply),
                             ).run_if(in_state(GameState::InRun)),
         );
     }

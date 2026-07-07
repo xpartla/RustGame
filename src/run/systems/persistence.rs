@@ -27,7 +27,7 @@ use crate::progression::state::LevelUpFlowState;
 use crate::run::rng::RunRng;
 use crate::run::state::{node_depth, CurrentEncounter, RunState};
 use crate::run::systems::reset::{respawn_player, teardown_run};
-use crate::talent::components::{AcquiredTalents, ActiveHooks};
+use crate::talent::components::{AcquiredTalents, ActiveHooks, BoneShieldProgress};
 use crate::talent::systems::apply::TalentAcquiredEvent;
 
 /// Ticks the deterministic run clock (D2) while a run is live. `Time::delta` only advances on
@@ -133,7 +133,9 @@ pub fn resume_run(world: &mut World, saved: SavedRun) {
     // below targets this same just-spawned player *this frame*, and `install_acquired_talent`
     // needs `AcquiredTalents`/`ActiveHooks` to already exist or it silently drops the event.
     // `attach_talent_components` is guarded `Without<AcquiredTalents>` so it won't clobber this.
-    world.entity_mut(player).insert((AcquiredTalents::default(), ActiveHooks::default()));
+    // BoneShieldProgress (Phase 9.2) resets on resume too — DP3 (phase9-plan.md): mid-encounter/
+    // talent-progress-style state is transient, matching Charges' own resume behavior.
+    world.entity_mut(player).insert((AcquiredTalents::default(), ActiveHooks::default(), BoneShieldProgress::default()));
 
     // Re-grant abilities (incl. level-1) through the idempotent UnlockAbilityEvent →
     // spawn_unlocked_ability path — no new spawn code (§3.2 step 4).

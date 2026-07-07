@@ -21,6 +21,7 @@ use rust_game::sim::Sim;
 #[test]
 fn default_death_knight_lmb_casts_death_strike() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own damage from the pet
     assert_eq!(sim.hero_id(), "blood_death_knight");
     assert_eq!(sim.active_stance(), "default");
 

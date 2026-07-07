@@ -6,14 +6,19 @@
 // Behavior: melee_cone — hits all enemies within range and half_angle of Facing direction.
 //
 // Hooks:
-//   Post "bone_shield_on_kill" — fires only if the player has the bone_shield_epic talent.
-//   Tracks kill count; grants bone shield (blocks next hit) after threshold kills.
-//   Implemented in ability/hooks/bone_shield.rs; registered in AbilityPlugin::build.
+//   Pre "bdk_dnd_damage_boost" (Phase 9.2) — fires only with bdk_passive_dnd_damage_boost acquired:
+//   -60% damage baseline, +500% (net ×2.4) while standing in D&D.
+//   Pre "bdk_no_heal_cap" (Phase 9.2) — fires only with bdk_passive_no_heal_cap acquired: ×1.5
+//   leech_percent (the other half — the 35% heal cap — is enforced globally by
+//   talent::systems::passives::enforce_heal_cap, not per-cast).
+//
+// Bone Shield (the death_strike_bone_shield_epic talent) is NOT listed in `hooks` below — it's not
+// driven through the per-cast Pre/Post HookRegistry pipeline at all. It's its own always-running
+// system (ability/systems/bone_shield.rs::bone_shield_on_kill, in CombatSet::Death) that checks the
+// killer's ActiveHooks directly on every kill and reads bone_shield_kill_threshold/bone_shield_amount
+// below from this ability's own (talent-modified) resolved params.
 //
 // Key interactions:
-//   - "dnd" zone: D&D talent "bdk_passive_blood_boil_spawns_dnd" and D&D ability
-//     buff Death Strike damage for enemies inside — NOT encoded here; encoded in the
-//     D&D ability's hook which reads PlayerZonePresence.
 //   - leech_percent: on each hit, heal (damage_dealt * leech_percent / 100) via HealEvent.
 //     Implemented in the MeleeCone behavior (Phase 1).
 (
@@ -22,7 +27,8 @@
     unlock_schedule: Level1,
     behavior: "melee_cone",
     hooks: [
-        (Post, "bone_shield_on_kill"),
+        (Pre, "bdk_dnd_damage_boost"),
+        (Pre, "bdk_no_heal_cap"),
     ],
     base_params: {
         "damage": 10.0,
@@ -30,8 +36,9 @@
         "half_angle": 0.785,    // ~45 degrees
         "cooldown": 1.2,
         "leech_percent": 5.0,
-        // bone_shield hook reads this; meaningless if hook not active
+        // bone_shield_on_kill (its own system, not a per-cast hook) reads these two directly.
         "bone_shield_kill_threshold": 5.0,
+        "bone_shield_amount": 20.0,
     },
     talent_pool: [
         "death_strike_leech_common",

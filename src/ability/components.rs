@@ -63,6 +63,26 @@ pub struct AbilityHookState(pub std::collections::HashMap<String, f32>);
 #[derive(Component, Debug)]
 pub struct Level1Granted;
 
+/// Marker: this entity is a minion spawned by a `summon` ability (Phase 9.2 — Companion). Carries
+/// its own `AbilityInstance`/`AbilityCooldown` (mimicking a real, independent caster — the faction-
+/// aware ability engine already handles any entity with `WorldPosition`/`Facing`/`Faction`
+/// uniformly, so a minion needs no changes to `execute_ready_abilities`). Reaped by
+/// `ability::systems::summon::update_minions` on expiry/death, and swept by the encounter/run
+/// teardown paths alongside `Enemy`/`Projectile`/`PersistentZone`.
+#[derive(Component, Debug)]
+pub struct Minion;
+
+/// The entity that summoned this minion (the player, for the shipped kit). Not currently read by
+/// any system — reserved for a future "minions count toward their owner" mechanic; the minion is
+/// self-sufficient (its own Faction/AbilityInstance) without it.
+#[derive(Component, Debug)]
+pub struct MinionOwner(#[allow(dead_code)] pub Entity);
+
+/// Remaining lifetime; `update_minions` ticks it down and despawns the minion (+ reaps its owned
+/// `AbilityInstance`) on expiry.
+#[derive(Component, Debug)]
+pub struct MinionLifetime(pub Timer);
+
 /// Event emitted by hero/systems/input_slot.rs when the player presses an input slot.
 /// The ability execution system listens for this and fires the matching AbilityInstance.
 #[derive(Event, Debug)]

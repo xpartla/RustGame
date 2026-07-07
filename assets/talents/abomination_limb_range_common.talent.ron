@@ -1,0 +1,12 @@
+// "Increase grip range by X" (Mechanics).
+(
+    id: "abomination_limb_range_common",
+    display_name: "Longer Reach",
+    ability_scope: Some("abomination_limb"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: MultiplyAdd(0.20),
+    )),
+)

@@ -1,0 +1,28 @@
+// WORKING NAME: "Purgatory" (cheat death)
+// Class: Blood Death Knight
+// Slot: passive, reactive (no input binding, no auto-cast)
+// Unlock: randomly at level 4/5/6 (band ability, alongside Abomination Limb and AMZ).
+//
+// Never fires through the normal TriggerAbilityEvent pipeline — this AbilityDef exists only so
+// `ability::systems::purgatory::purgatory_cheat_death` can read its (talent-modified) resolved
+// params and manage its AbilityCooldown through the same generic tick_ability_cooldowns every
+// other ability uses. `behavior: "self_nova"` + `radius: 0.0` is a harmless placeholder in case it
+// were ever accidentally triggered (a guaranteed whiff).
+(
+    id: "purgatory",
+    display_name: "Purgatory",
+    unlock_schedule: Band(4, 6),
+    behavior: "self_nova",
+    hooks: [],
+    base_params: {
+        "radius": 0.0,
+        "restore_percent": 5.0,
+        "immunity_secs": 5.0,
+        "cooldown": 45.0,
+    },
+    talent_pool: [
+        "purgatory_restore_rare",
+        "purgatory_immunity_epic",
+        "purgatory_cooldown_rare",
+    ],
+)

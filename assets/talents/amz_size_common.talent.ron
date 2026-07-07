@@ -1,0 +1,12 @@
+// "Increase the size of the zone by X%" (Mechanics, common).
+(
+    id: "amz_size_common",
+    display_name: "Wider Barrier",
+    ability_scope: Some("amz"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "zone_radius",
+        op: MultiplyAdd(0.20),
+    )),
+)

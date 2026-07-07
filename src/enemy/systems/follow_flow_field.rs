@@ -1,6 +1,6 @@
 use bevy::prelude::{Query, Res, Vec2, With};
-use crate::core::components::{FlowField, GridPosition, Velocity};
-use crate::enemy::components::{AiBehavior, Enemy, MoveSpeed};
+use crate::core::components::{FlowField, GridPosition, MoveSpeed, Velocity};
+use crate::enemy::components::{AiBehavior, Enemy};
 
 pub fn enemy_follow_flow_field(
     flow_field: Res<FlowField>,

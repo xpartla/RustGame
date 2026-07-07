@@ -1,7 +1,7 @@
 use bevy::math::Vec2;
 use bevy::prelude::Commands;
-use crate::constants::{PLAYER_HEALTH, PLAYER_RADIUS};
-use crate::core::components::{Faction, GridPosition, Health, Hurtbox, Velocity, WorldPosition};
+use crate::constants::{PLAYER_HEALTH, PLAYER_RADIUS, PLAYER_SPEED};
+use crate::core::components::{Faction, GridPosition, Health, Hurtbox, MoveSpeed, Velocity, WorldPosition};
 use crate::core::components::Facing;
 use crate::hero::components::{ActiveStance, HeroIdentity, DEFAULT_HERO_ID};
 use crate::player::components::{Experience, Player};
@@ -9,10 +9,16 @@ use crate::player::components::{Experience, Player};
 /// Spawns the player with logic components only. Visuals (Transform, Mesh2d, material) are
 /// attached by the presentation layer (player/systems/visuals.rs) so headless simulations
 /// never touch render assets.
+///
+/// `Health`/`MoveSpeed` seed with the shared constants (`PLAYER_HEALTH`/`PLAYER_SPEED`) — the
+/// HeroDef asset loads asynchronously, so `player/systems/base_stats.rs::apply_base_stats`
+/// corrects both from `HeroDef.base_stats` the frame it resolves (Phase 9.2, mirrors
+/// `ability/plugin.rs::grant_level_1_abilities`'s deferral pattern).
 pub fn spawn_player(mut commands: Commands) {
     commands.spawn((
         Player,
         Health::new(PLAYER_HEALTH),
+        MoveSpeed(PLAYER_SPEED),
         Experience::new(),
         WorldPosition(Vec2::ZERO),
         GridPosition{x:0, y:0},

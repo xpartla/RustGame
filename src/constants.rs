@@ -23,3 +23,18 @@ pub const ZONE_TICK_INTERVAL: f32 = 1.0;
 // curve is global: XP to advance from `level` to the next = XP_FIRST_LEVEL + (level-1)*XP_LEVEL_STEP.
 pub const XP_FIRST_LEVEL: u32 = 10;
 pub const XP_LEVEL_STEP: u32 = 5;
+
+// Companion minion tuning (Phase 9.2, §8.1(3) `summon`). Attack damage/range/cooldown are its own
+// AbilityDef (assets/abilities/companion_attack.ability.ron); these are the body itself — how
+// tough/fast/big/far-seeking it is. Not exposed as ability params (no talent scales a minion's
+// body directly today; its attack numbers are what talents would reasonably touch).
+pub const MINION_HEALTH: f32 = 20.0;
+pub const MINION_SPEED: f32 = 45.0;
+pub const MINION_RADIUS: f32 = 10.0;
+/// How far a minion will notice and chase a Hostile actor; beyond this it idles at the spot it
+/// was summoned/left at.
+pub const MINION_SEEK_RANGE: f32 = 300.0;
+/// Once within this distance of its target, a minion holds position instead of continuing to
+/// close — comfortably inside `companion_attack`'s 50-unit range, so it can actually swing instead
+/// of oscillating past a (possibly stationary) target at melee range every frame.
+pub const MINION_ENGAGE_RANGE: f32 = 35.0;

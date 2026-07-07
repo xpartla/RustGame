@@ -13,6 +13,7 @@ use rust_game::sim::Sim;
 #[test]
 fn death_strike_hits_only_in_cone_and_leeches() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own damage/leech/XP from the pet
     sim.set_player_health(50.0);
 
     // In cone: dead ahead at 32 units. Out of arc: 90° off at 32. Out of range: 96 ahead.
@@ -46,6 +47,7 @@ fn death_strike_hits_only_in_cone_and_leeches() {
 #[test]
 fn death_strike_cooldown_gates_repeat_casts() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own cooldown from the pet's damage
     // A brute (30 hp) diagonal at ~45 units: inside the 60 cone range, outside its own
     // 32-unit contact range for the duration of the test.
     let brute = sim.spawn_enemy("brute", (1, 1));
@@ -70,6 +72,7 @@ fn death_strike_cooldown_gates_repeat_casts() {
 #[test]
 fn unregistered_behavior_skips_gracefully() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate "dnd" from the DK's pet incidentally hitting the grunt
     let grunt = sim.spawn_grunt((1, 0));
     sim.set_player_facing(Vec2::X);
 
@@ -87,14 +90,15 @@ fn grunt_contact_attack_cadence() {
     // (the grunt_contact ability's cooldown starts ready), then once per 1.0s.
     sim.spawn_grunt((0, 0));
 
+    // Phase 9.2: base_stats gives the Death Knight 200 HP (was the shared 100 HP constant).
     sim.step(1);
-    assert_eq!(sim.player_health(), 95.0, "first contact hit lands immediately (100-5)");
+    assert_eq!(sim.player_health(), 195.0, "first contact hit lands immediately (200-5)");
 
     sim.step(30); // 0.5s — still inside the 1s cooldown
-    assert_eq!(sim.player_health(), 95.0, "no second hit inside the cooldown");
+    assert_eq!(sim.player_health(), 195.0, "no second hit inside the cooldown");
 
     sim.step(40); // total ~1.18s since first hit
-    assert_eq!(sim.player_health(), 90.0, "second hit after the 1s cooldown");
+    assert_eq!(sim.player_health(), 190.0, "second hit after the 1s cooldown");
 }
 
 // Phase 9.1 — crit % + attack speed (the universal stat baseline, talent/modifier.rs). No shipped
@@ -104,6 +108,7 @@ fn grunt_contact_attack_cadence() {
 #[test]
 fn forced_crit_chance_multiplies_damage_by_the_default_crit_mult() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate the crit roll's damage from the pet
     let target = sim.spawn_grunt((1, 0));
     sim.set_health(target, 100.0); // durable dummy — survives a doubled hit
     sim.set_player_facing(Vec2::X);
@@ -119,6 +124,7 @@ fn forced_crit_chance_multiplies_damage_by_the_default_crit_mult() {
 #[test]
 fn no_crit_talent_means_no_crit() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own damage from the pet
     let target = sim.spawn_grunt((1, 0));
     sim.set_health(target, 100.0);
     sim.set_player_facing(Vec2::X);
@@ -132,6 +138,7 @@ fn no_crit_talent_means_no_crit() {
 #[test]
 fn attack_speed_shortens_the_observed_cooldown() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own cooldown from the pet's damage
     let brute = sim.spawn_enemy("brute", (1, 1));
     sim.set_player_facing(Vec2::new(1.0, 1.0));
     // +100% attack speed halves the cooldown: 1.2s / (1 + 1.0) = 0.6s.
@@ -152,7 +159,8 @@ fn attack_speed_shortens_the_observed_cooldown() {
 fn player_despawns_on_death() {
     let mut sim = Sim::new_arena(42);
     let player = sim.player();
-    sim.deal_damage(player, 150.0);
+    // Phase 9.2: base_stats gives the Death Knight 200 HP (was the shared 100 HP constant).
+    sim.deal_damage(player, 250.0);
     sim.step(2);
     assert!(sim.try_player().is_none(), "player despawned at 0 hp");
     // Phase 7.5B: death now freezes into GameOver instead of leaving a dead world running.

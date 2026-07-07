@@ -37,6 +37,7 @@ fn synthetic_def(id: &str, stacking: StackingRule) -> StatusEffectDef {
 #[test]
 fn bleed_applies_ticks_on_cadence_and_expires() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate the bleed DoT from the DK's pet (long-running test)
     let player = sim.player();
     let enemy = sim.spawn_grunt((5, 0));
     sim.set_health(enemy, 100.0); // durable dummy: survives the whole DoT

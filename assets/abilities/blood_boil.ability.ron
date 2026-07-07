@@ -5,8 +5,12 @@
 //
 // Behavior: self_nova — a periodic AoE pulse around the character that damages every enemy in
 // `radius` and leeches. Made live in Phase 3 as the auto-cast demonstrator (its inert instance
-// existed since Phase 2). Talent variants (current-health %, DoT transfer, D&D synergy) arrive in
-// the BDK content pass.
+// existed since Phase 2).
+//
+// blood_boil_health_scaling_rare (Phase 9.2) applies "bleed" to every hit — a documented
+// simplification of Mechanics' "X% of current health as damage over Y seconds" (the status system
+// has no percent-of-current-health DoT primitive yet); handled as a targeted special-case in
+// ability/systems/execute.rs (Post hooks are read-only, can't emit ApplyStatusEvent).
 (
     id: "blood_boil",
     display_name: "Blood Boil",
@@ -16,8 +20,12 @@
     // Phase 6: the blood_boil_dnd_range_rare talent installs this Pre hook, which doubles `radius`
     // while the caster stands in D&D. Inert unless that talent is acquired (kept out of the
     // campaign-reachable talent_pool this phase, so the golden master stays neutral).
+    // Phase 9.2: bdk_dnd_damage_boost / bdk_no_heal_cap (class passives) — see
+    // death_strike.ability.ron's doc comment.
     hooks: [
         (Pre, "blood_boil_dnd_range"),
+        (Pre, "bdk_dnd_damage_boost"),
+        (Pre, "bdk_no_heal_cap"),
     ],
     base_params: {
         "damage": 6.0,
@@ -25,7 +33,11 @@
         "leech_percent": 5.0,
         "cooldown": 4.0,
     },
-    talent_pool: [],
+    talent_pool: [
+        "blood_boil_damage_common",
+        "blood_boil_range_common",
+        "blood_boil_health_scaling_rare",
+    ],
     effects: [
         Damage(amount: "damage", tags: [Physical], target: AllHits),
         Leech(percent: "leech_percent"),

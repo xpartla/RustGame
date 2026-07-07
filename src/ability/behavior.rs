@@ -61,6 +61,10 @@ impl ResolvedParams {
 pub struct Target {
     pub entity: Entity,
     pub pos: Vec2,
+    /// Whether this actor's `AiBehavior` is `RangedCaster` (Phase 9.2 — Abomination Limb's
+    /// "grip only ranged enemies" epic talent). Always `false` for non-enemy targets (the player,
+    /// a Companion minion), which carry no `AiBehavior`.
+    pub is_ranged: bool,
 }
 
 /// One entity a behavior resolved as hit, with its position (for follow-up geometry / VFX).
@@ -110,6 +114,25 @@ pub struct ForcedImpulseSpawn {
     pub duration: f32,
 }
 
+/// A minion a behavior wants spawned (Phase 9.2 — Companion), at the caster's `origin` (already on
+/// `CastOutcome`). Mirrors `ZoneSpawn`'s minimal-signal shape: the behavior only signals "spawn
+/// here"; the ability's `summon` spec (`AbilityDef.summon`, ability/assets.rs) supplies `mimic` and
+/// resolved params supply the duration — `resolve()` has no access to the `AbilityDef` itself, only
+/// `ResolvedParams`, so it cannot carry a real `AbilityId` here.
+#[derive(Debug, Clone, Copy)]
+pub struct SummonSpawn;
+
+/// A forced pull toward the caster requested on one gripped target (Phase 9.2 — Abomination
+/// Limb). Unlike `ForcedImpulseSpawn` (which targets the caster itself), this names a specific
+/// OTHER entity to yank. The execute system turns each into a `core::components::ForcedImpulse`
+/// on `target`.
+#[derive(Debug, Clone, Copy)]
+pub struct GripSpawn {
+    pub target: Entity,
+    pub velocity: Vec2,
+    pub duration: f32,
+}
+
 /// What a behavior resolves for one cast: the targeting result the execute system applies the
 /// ability's declarative `effects` against. Gameplay outcome (damage/heal/status) is data, not here.
 #[derive(Debug, Clone, Default)]
@@ -130,6 +153,11 @@ pub struct CastOutcome {
     /// Optional forced-movement impulse to apply to the caster (Phase 9.1 — the Movement-slot
     /// dash/blink). `None` for every other behavior.
     pub forced_impulse: Option<ForcedImpulseSpawn>,
+    /// Optional minion to spawn (Phase 9.2 — Companion). `None` for every other behavior.
+    pub summon: Option<SummonSpawn>,
+    /// Targets to forcibly pull toward the caster (Phase 9.2 — Abomination Limb). Empty for every
+    /// other behavior.
+    pub grip_targets: Vec<GripSpawn>,
 }
 
 /// What a behavior is given each time it runs. Read-only view of the caster.
@@ -229,9 +257,7 @@ impl AbilityBehavior for MeleeCone {
             primary,
             hits,
             vfx: Some(VfxShape::Cone { radius: range, half_angle, forward, lifetime: ATTACK_LIFETIME }),
-            projectile: None,
-            zone: None,
-            forced_impulse: None,
+            ..Default::default()
         }
     }
 }
@@ -252,7 +278,42 @@ impl AbilityBehavior for SelfNova {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None, forced_impulse: None }
+        CastOutcome { origin: ctx.origin, hits, primary, ..Default::default() }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
+/// Nearest-N melee (Heart Strike, Phase 9.2). Resolves up to `target_count` of the NEAREST enemies
+/// within `range` as hits — distinct from `SelfNova`'s "everyone in radius" (unbounded count). No
+/// aim required (self-centred, like SelfNova). Missing-health damage scaling and the D&D/execute
+/// talents are the ability's innate/talent-gated hooks (ability/hooks.rs), not decided here.
+///
+/// Params: "range", "target_count" (+ whatever the ability's effects reference).
+pub struct NearestMelee;
+
+impl AbilityBehavior for NearestMelee {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let range = params.get("range");
+        let target_count = params.get("target_count").max(0.0) as usize;
+
+        let mut hits: Vec<HitTarget> = ctx
+            .targets
+            .iter()
+            .filter(|t| t.pos.distance(ctx.origin) <= range)
+            .map(|t| HitTarget { entity: t.entity, pos: t.pos })
+            .collect();
+        hits.sort_by(|a, b| {
+            let da = a.pos.distance_squared(ctx.origin);
+            let db = b.pos.distance_squared(ctx.origin);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        hits.truncate(target_count);
+
+        let primary = nearest(&hits, ctx.origin);
+        CastOutcome { origin: ctx.origin, hits, primary, ..Default::default() }
     }
 
     fn needs_aim(&self) -> bool {
@@ -279,7 +340,7 @@ impl AbilityBehavior for ContactMelee {
             }
         }
         let primary = nearest(&hits, ctx.origin);
-        CastOutcome { origin: ctx.origin, hits, primary, vfx: None, projectile: None, zone: None, forced_impulse: None }
+        CastOutcome { origin: ctx.origin, hits, primary, ..Default::default() }
     }
 
     fn needs_aim(&self) -> bool {
@@ -309,17 +370,13 @@ impl AbilityBehavior for ProjectileBehavior {
 
         CastOutcome {
             origin: ctx.origin,
-            hits: Vec::new(),
-            primary: None,
-            vfx: None,
             projectile: Some(ProjectileSpawn {
                 velocity: ctx.facing * speed,
                 radius,
                 pierce,
                 lifetime,
             }),
-            zone: None,
-            forced_impulse: None,
+            ..Default::default()
         }
     }
 }
@@ -365,6 +422,73 @@ impl AbilityBehavior for Blink {
     }
 }
 
+/// Summon (Phase 9.2 — Companion). No targets, no instant damage: signals "spawn a minion here."
+/// The ability's `summon` spec (`AbilityDef.summon`) + resolved params supply everything else
+/// (which ability the minion mimics, how long it lives); the execute system builds the minion
+/// entity. No aim required — a passive, no-input ability (auto-cast).
+pub struct Summon;
+
+impl AbilityBehavior for Summon {
+    fn resolve(&self, ctx: &AbilityContext, _params: &ResolvedParams) -> CastOutcome {
+        CastOutcome {
+            origin: ctx.origin,
+            summon: Some(SummonSpawn),
+            ..Default::default()
+        }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
+/// Grip (Phase 9.2 — Abomination Limb). Periodically pulls up to `target_count` of the nearest
+/// enemies within `range` toward the caster (a `ForcedImpulse` per target, resolved by the execute
+/// system). No aim required, no instant damage — grip is pure crowd control; the ability's
+/// `effects` list stays empty. `ranged_only` (0.0/1.0, set by the epic talent via `Override(1.0)`)
+/// filters to enemies whose `AiBehavior` is `RangedCaster` only.
+///
+/// Params: "range", "target_count", "grip_speed", "grip_duration", "ranged_only".
+pub struct Grip;
+
+impl AbilityBehavior for Grip {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let range = params.get("range");
+        let target_count = params.get("target_count").max(0.0) as usize;
+        let grip_speed = params.get("grip_speed");
+        let grip_duration = params.get("grip_duration");
+        let ranged_only = params.get("ranged_only") > 0.5;
+
+        let mut candidates: Vec<&Target> = ctx
+            .targets
+            .iter()
+            .filter(|t| t.pos.distance(ctx.origin) <= range)
+            .filter(|t| !ranged_only || t.is_ranged)
+            .collect();
+        candidates.sort_by(|a, b| {
+            let da = a.pos.distance_squared(ctx.origin);
+            let db = b.pos.distance_squared(ctx.origin);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates.truncate(target_count);
+
+        let grip_targets = candidates
+            .iter()
+            .map(|t| GripSpawn {
+                target: t.entity,
+                velocity: (ctx.origin - t.pos).normalize_or_zero() * grip_speed,
+                duration: grip_duration,
+            })
+            .collect();
+
+        CastOutcome { origin: ctx.origin, grip_targets, ..Default::default() }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,9 +504,9 @@ mod tests {
         let out_of_range = Entity::from_raw(3); // 100 to the side
         let outside_arc = Entity::from_raw(4); // ~53° off the aim, within range
         let targets = [
-            Target { entity: in_cone, pos: Vec2::new(30.0, 0.0) },
-            Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0) },
-            Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0) },
+            Target { entity: in_cone, pos: Vec2::new(30.0, 0.0), is_ranged: false },
+            Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0), is_ranged: false },
+            Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0), is_ranged: false },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]); // ~45°
@@ -406,8 +530,8 @@ mod tests {
         // Both dead ahead and inside a wide cone; `far` is listed first to prove primary is
         // chosen by distance, not iteration order.
         let targets = [
-            Target { entity: far, pos: Vec2::new(50.0, 0.0) },
-            Target { entity: near, pos: Vec2::new(20.0, 0.0) },
+            Target { entity: far, pos: Vec2::new(50.0, 0.0), is_ranged: false },
+            Target { entity: near, pos: Vec2::new(20.0, 0.0), is_ranged: false },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]);
@@ -415,6 +539,77 @@ mod tests {
         let outcome = MeleeCone.resolve(&ctx, &p);
         assert_eq!(outcome.hits.len(), 2, "both enemies are in the cone");
         assert_eq!(outcome.primary.map(|h| h.entity), Some(near), "primary is the nearest hit");
+    }
+
+    #[test]
+    fn nearest_melee_caps_to_target_count_nearest_within_range() {
+        let owner = Entity::from_raw(1);
+        let near = Entity::from_raw(2);
+        let mid = Entity::from_raw(3);
+        let far_in_range = Entity::from_raw(4);
+        let out_of_range = Entity::from_raw(5);
+        // Listed out of distance order to prove sorting, not iteration order, decides the cut.
+        let targets = [
+            Target { entity: far_in_range, pos: Vec2::new(40.0, 0.0), is_ranged: false },
+            Target { entity: out_of_range, pos: Vec2::new(90.0, 0.0), is_ranged: false },
+            Target { entity: near, pos: Vec2::new(10.0, 0.0), is_ranged: false },
+            Target { entity: mid, pos: Vec2::new(20.0, 0.0), is_ranged: false },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let p = params(&[("range", 60.0), ("target_count", 2.0)]);
+
+        let outcome = NearestMelee.resolve(&ctx, &p);
+
+        let hit_entities: Vec<Entity> = outcome.hits.iter().map(|h| h.entity).collect();
+        assert_eq!(hit_entities, vec![near, mid], "only the 2 nearest in-range targets are hit");
+        assert_eq!(outcome.primary.map(|h| h.entity), Some(near));
+    }
+
+    #[test]
+    fn nearest_melee_needs_no_aim() {
+        assert!(!NearestMelee.needs_aim());
+    }
+
+    #[test]
+    fn grip_pulls_the_nearest_target_count_toward_the_caster() {
+        let owner = Entity::from_raw(1);
+        let near = Entity::from_raw(2);
+        let far_in_range = Entity::from_raw(3);
+        let out_of_range = Entity::from_raw(4);
+        let targets = [
+            Target { entity: far_in_range, pos: Vec2::new(0.0, 100.0), is_ranged: false },
+            Target { entity: out_of_range, pos: Vec2::new(0.0, 300.0), is_ranged: false },
+            Target { entity: near, pos: Vec2::new(50.0, 0.0), is_ranged: false },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let p = params(&[("range", 150.0), ("target_count", 1.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 0.0)]);
+
+        let outcome = Grip.resolve(&ctx, &p);
+
+        assert_eq!(outcome.grip_targets.len(), 1, "only target_count=1 nearest in-range target gripped");
+        let grip = outcome.grip_targets[0];
+        assert_eq!(grip.target, near);
+        assert_eq!(grip.velocity, Vec2::new(-100.0, 0.0), "pulled toward the caster's origin");
+        assert_eq!(grip.duration, 0.5);
+        assert!(outcome.hits.is_empty(), "grip deals no instant damage");
+    }
+
+    #[test]
+    fn grip_ranged_only_filters_out_melee_targets() {
+        let owner = Entity::from_raw(1);
+        let melee = Entity::from_raw(2);
+        let ranged = Entity::from_raw(3);
+        let targets = [
+            Target { entity: melee, pos: Vec2::new(10.0, 0.0), is_ranged: false },
+            Target { entity: ranged, pos: Vec2::new(20.0, 0.0), is_ranged: true },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let p = params(&[("range", 100.0), ("target_count", 5.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 1.0)]);
+
+        let outcome = Grip.resolve(&ctx, &p);
+
+        assert_eq!(outcome.grip_targets.len(), 1);
+        assert_eq!(outcome.grip_targets[0].target, ranged, "ranged_only skips the melee target even though it's nearer");
     }
 
     #[test]

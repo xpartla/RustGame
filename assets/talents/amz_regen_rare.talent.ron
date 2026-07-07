@@ -1,0 +1,15 @@
+// "You regenerate health each second you are inside the zone" (Mechanics, rare). Reuses the
+// existing D&D-style occupant regen (ZoneEffects.regen_fraction, ability/systems/execute.rs's
+// spawn_dropped_zone) purely by overriding the (previously-zero) "regen_percent_per_second" param —
+// no new zone-tick code needed. 0.5 matches D&D's own regen strength.
+(
+    id: "amz_regen_rare",
+    display_name: "Sanctuary",
+    ability_scope: Some("amz"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "regen_percent_per_second",
+        op: Override(0.5),
+    )),
+)

@@ -18,7 +18,7 @@
 use bevy::prelude::*;
 use rand::Rng;
 
-use crate::ability::components::AbilityInstance;
+use crate::ability::components::{AbilityInstance, Minion};
 use crate::constants::PLAYER_HEALTH;
 use crate::core::components::{GridPosition, Health, WorldPosition};
 use crate::enemy::assets::{EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary, THEME_IDS};
@@ -363,6 +363,7 @@ pub fn handle_encounter_complete(
     projectiles: Query<Entity, With<Projectile>>,
     zones: Query<Entity, With<PersistentZone>>,
     pickups: Query<Entity, With<PickUp>>,
+    minions: Query<Entity, With<Minion>>,
 ) {
     if events.is_empty() {
         return;
@@ -379,7 +380,7 @@ pub fn handle_encounter_complete(
     let is_act_boss = matches!(current.encounter, EncounterType::ActBoss);
 
     if is_act_boss {
-        despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups, &abilities);
+        despawn_encounter_entities(&mut commands, &enemies, &projectiles, &zones, &pickups, &abilities, &minions);
         room_mods.0.clear();
         if run_state.current_act >= 3 {
             // Run complete (Act-3 boss down) — a victory. Capture the summary before teardown so the
@@ -415,11 +416,12 @@ pub fn handle_encounter_complete(
     }
 }
 
-/// Despawns exactly the encounter-scoped entities (enemies, projectiles/VFX, zones, pickups) on an
-/// encounter transition, plus (Phase 8, §5) the `AbilityInstance` entities owned by those enemies —
-/// they are separate top-level entities (an `owner` field, not real Bevy children), so nothing else
-/// reaps them here. The player entity (and its own instances) persists across encounters.
-/// Status-effect instances on a despawned enemy are reaped by `despawn_orphaned_status` next frame.
+/// Despawns exactly the encounter-scoped entities (enemies, projectiles/VFX, zones, pickups,
+/// Phase 9.2: Companion minions) on an encounter transition, plus (Phase 8, §5) the
+/// `AbilityInstance` entities owned by those enemies/minions — they are separate top-level
+/// entities (an `owner` field, not real Bevy children), so nothing else reaps them here. The
+/// player entity (and its own instances) persists across encounters. Status-effect instances on a
+/// despawned enemy are reaped by `despawn_orphaned_status` next frame.
 pub fn despawn_encounter_entities(
     commands: &mut Commands,
     enemies: &Query<Entity, With<Enemy>>,
@@ -427,8 +429,10 @@ pub fn despawn_encounter_entities(
     zones: &Query<Entity, With<PersistentZone>>,
     pickups: &Query<Entity, With<PickUp>>,
     abilities: &Query<(Entity, &AbilityInstance)>,
+    minions: &Query<Entity, With<Minion>>,
 ) {
-    let dying: std::collections::HashSet<Entity> = enemies.iter().collect();
+    let mut dying: std::collections::HashSet<Entity> = enemies.iter().collect();
+    dying.extend(minions.iter());
     for e in &dying {
         commands.entity(*e).despawn();
     }

@@ -48,12 +48,12 @@ fn heal_pickup_heals_and_clamps_to_max() {
     sim.step(2);
     assert_eq!(sim.player_health(), 75.0, "heal pack restores 25");
 
-    // Overheal clamps to max (100).
-    sim.set_player_health(90.0);
+    // Overheal clamps to max (200 — Phase 9.2 base_stats).
+    sim.set_player_health(190.0);
     let pos = sim.player_pos();
     sim.world_mut().spawn((PickUp { kind: PickUpKind::Heal(25.0) }, WorldPosition(pos)));
     sim.step(2);
-    assert_eq!(sim.player_health(), 100.0, "heal clamps at max health");
+    assert_eq!(sim.player_health(), 200.0, "heal clamps at max health");
 }
 
 #[test]

@@ -1,0 +1,12 @@
+// "Lower cooldown by X seconds" (Mechanics, rare). 45s -> 25s with both copies.
+(
+    id: "purgatory_cooldown_rare",
+    display_name: "Swift Return",
+    ability_scope: Some("purgatory"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "cooldown",
+        op: Add(-10.0),
+    )),
+)

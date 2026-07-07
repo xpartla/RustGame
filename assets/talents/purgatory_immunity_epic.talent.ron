@@ -1,0 +1,12 @@
+// "Increase damage immunity by X seconds" (Mechanics, epic, unique[3]). 5s -> 11s with all 3 copies.
+(
+    id: "purgatory_immunity_epic",
+    display_name: "Lingering Purgatory",
+    ability_scope: Some("purgatory"),
+    rarity: Epic,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "immunity_secs",
+        op: Add(2.0),
+    )),
+)

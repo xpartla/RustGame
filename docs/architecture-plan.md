@@ -1346,6 +1346,85 @@ Ice Barrier, Purgatory, Abomination Limb grip, a knockback talent — Phase 9.2)
 *producers* (Mage frost charges, Druid enhanced/combo — Phase 9.4/9.5), and binding the dash to a
 real hero's Movement slot (whichever class's kit calls for it first).
 
+### 8.13 Phase 9.2 delivered (2026-07-07)
+
+The second sub-phase of the Phase-9 content-pass arc: closes out the Blood Death Knight kit —
+Companion (a new `summon` behavior), Heart Strike, Abomination Limb, Purgatory, Bone Shield — lands
+every remaining BDK talent (Blood Boil/AMZ/class-passive trees, 15 new `.talent.ron` files across
+this sub-phase), and applies `HeroDef.base_stats` per-hero. See the CHANGELOG "Phase 9.2" section
+for full detail; highlights:
+
+- **`HeroDef.base_stats` now applies (closes the last open §8.5 row).** `MoveSpeed` moved from
+  `enemy::components` to `core::components` (now shared); a new deferred `apply_base_stats` system
+  mirrors `grant_level_1_abilities`'s async-asset-load pattern, with `respawn_player` applying it
+  synchronously on restart/resume so it can't race the resume path's explicit HP restore.
+- **Companion is genuinely active** via a new `summon` `AbilityBehavior` + `Minion`/`MinionOwner`/
+  `MinionLifetime` — the faction-aware ability engine needed **zero changes** for an independent
+  minion attacker to "just work." Two scheduling/logic bugs surfaced and fixed: a grant-vs-execute
+  ordering race from adding new unordered systems (pinned `.after(CombatSet::Death)`, mirroring
+  `gain_experience`) and a movement/facing-timing oscillation bug (fixed with an engage-range
+  hold-position behavior). ~10 pre-existing tests needed `Sim::disable_companion()` to stay isolated
+  from its now-real incidental damage.
+- **Heart Strike, Abomination Limb, Purgatory, Bone Shield** all landed with their full talent
+  trees — a new `grip` behavior (Abomination Limb), a new core `Invulnerable` component + cheat-death
+  interceptor (Purgatory), and a kill-counting system reading `ActiveHooks` directly (Bone Shield,
+  since a shield grant needs mutable persistent state a read-only Post hook can't hold).
+- **AMZ's talent tree is fully implemented**, including a new independent `ZoneSpeedModifier` core
+  component (kept separate from the status-owned `MoveSpeedModifier` to avoid a two-writer race) and
+  a `follow_caster` param escape hatch letting a talent override an ability's otherwise-static zone
+  anchor.
+- **Two items deliberately simplified/deferred, both documented at the point of implementation:**
+  Bone Shield counts any kill (not Death-Strike-specific — `DamageEvent` carries no ability
+  provenance); Blood Boil's health-scaling talent applies flat "bleed" instead of a true
+  percent-of-current-health DoT (no such primitive exists yet). Blood Boil's fourth talent
+  ("on-death DoT transfer to nearby enemies") is fully deferred — a genuinely new mechanic with no
+  RON referencing it yet.
+- **`progression/systems/offer.rs`'s hardcoded BDK-only class-passive const is gone** — the offer
+  pool now reads `HeroDef.class_passive_pool` dynamically, matching every other def-driven pool.
+- **Three isolated golden-master regenerations** (base_stats; Companion; the combined rest-of-kit
+  batch), each verified reproducible immediately after. 229 tests passing (was 187).
+- **Reproducibility hardening, partial.** After regen #3, `campaign_is_reproducible_within_a_build`
+  started failing intermittently (~1 run in 3) — a genuine defect, not something to regenerate
+  around. Using Bevy's `ambiguity_detection` schedule-build setting to get an authoritative list
+  (rather than guessing), several real, previously-unpinned scheduling races were found and fixed —
+  most significantly, `apply_damage`/`apply_heal`/`tick_invulnerability`/`purgatory_cheat_death` all
+  independently `.in_set(CombatSet::Apply)` with no order between them despite all four touching
+  `Health` essentially every frame; also several `.after(CombatSet::Death)`-anchored systems
+  (`spawn_unlocked_ability` vs. `update_minion_lifecycle`; the new health/leech passives vs.
+  `install_acquired_talent`/`uninstall_removed_talent`/`apply_base_stats`/`handle_level_up`). These
+  fixes are landed and correct. **Reproducibility improved but is not fully closed** — one more
+  divergence source remains unidentified (isolated to the player's own position drifting mid-run
+  with every enemy bit-identical at that point; RNG/talent-offers and the new AMZ zone-speed
+  mechanic were both ruled out by direct testing). Per an explicit product-owner decision
+  (2026-07-07), this is landed as tracked debt rather than chased further this session — see the
+  new §8.5 row below. **The golden-master baseline is deliberately NOT regenerated** —
+  `campaign_matches_golden_baseline` is a known, expected failure against the stale regen-#3
+  baseline until this is resolved and a regen #4 lands in a follow-up session.
+
+§8.5 status after Phase 9.2: every row from Phase 9.1 and earlier is resolved (see §8.12/above); one
+**new** row opens (below) — the campaign-reproducibility flake. §8.1(5)/(6) (shields, forced
+movement) now have real consumers (bone shield, Ice Barrier's absorb is still Phase 9.5;
+Abomination Limb's grip). Deferred with triggers: Blood Boil's on-death DoT transfer (needs a new
+mechanic — no RON references it); the Charges *producers* (Mage/Druid, Phase 9.4/9.5, unchanged
+from 9.1); binding the Movement-slot dash to a real hero.
+
+**New §8.5 row — golden-campaign reproducibility flake (partially fixed, not closed).**
+`campaign_is_reproducible_within_a_build` fails intermittently (~1 run in 3) even after the
+scheduling fixes above. Known-ruled-out: RNG/talent-offer sequencing (verified byte-identical
+across repeated runs), entity-allocation ordering (fixed, verified via the ambiguity checker),
+`resolve_zone_speed_bonus`/`ZoneSpeedModifier` (disabled and retested — flake persisted unchanged).
+Known signature: the FIRST observable divergence is the player's own position, drifting by roughly
+1 unit around the 23-second mark of the 30s scripted campaign, with every enemy's position and
+health bit-identical at that same point (ruling out an enemy-side cause). Next steps for whoever
+picks this up: (1) re-enable `ScheduleBuildSettings { ambiguity_detection: LogLevel::Error }`
+temporarily in `sim/mod.rs` (see this section's own investigation for the pattern) and check the
+remaining flagged pairs involving `zone_tick_effects`/`execute_ready_abilities`/`move_projectiles`/
+`collect_pickups`/`projectile_collision` (not yet individually pinned — presumed pre-existing and
+benign, but not confirmed); (2) consider bisecting against the pre-Phase-9.2 commit to determine
+whether this is a latent, pre-existing issue merely first exposed by 9.2's added content, or
+something newly introduced; (3) once `campaign_is_reproducible_within_a_build` passes cleanly
+across many repeated runs, regenerate the baseline (regen #4) and close this row.
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

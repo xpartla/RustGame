@@ -1040,6 +1040,206 @@ enemy references any of the new stats/components, so nothing on the campaign tra
   `campaign_is_reproducible_within_a_build` both green, unchanged from the Phase-8 baseline (no
   regeneration, per D1's contract that this arc's only baseline move is confined to Phase 9.2).
 
+### Phase 9.2 — Blood Death Knight Closeout: Full Kit, Talent Trees, Base Stats (complete)
+The second sub-phase of the Phase-9 content-pass arc: finishes the BDK's kit end-to-end (Companion,
+Heart Strike, Abomination Limb, Purgatory, Bone Shield), lands all remaining talent trees (Blood
+Boil ×3, AMZ ×5, Abomination Limb ×4, Purgatory ×3, Heart Strike ×3, 5 class passives), and applies
+`HeroDef.base_stats` per-hero — the **last open `§8.5` tech-debt row**. Three isolated golden-master
+regenerations (base_stats alone; Companion alone; the combined rest-of-kit batch), each attributed
+below.
+
+- **Per-hero base stats (regen #1).** `MoveSpeed` moved from `enemy::components` to
+  `core::components` (shared player/enemy component — was enemy-only). New
+  `player::systems::base_stats::apply_base_stats` (deferred Update system, mirrors
+  `grant_level_1_abilities`'s async-asset-load pattern; a `BaseStatsApplied` marker fires it exactly
+  once) sets `Health`/`MoveSpeed` from the active hero's `HeroDef.base_stats` the frame the asset
+  resolves — `spawn_player` still seeds the shared `PLAYER_HEALTH`/`PLAYER_SPEED` constants as a
+  same-frame placeholder. `run/systems/reset.rs::respawn_player` (restart + resume) applies it
+  **synchronously** instead and sets the marker itself, so `resume_run`'s subsequent
+  `health.current = saved...` is never clobbered by the deferred system re-detecting an "unmarked"
+  player on a later frame — a bug class already seen once this arc (talent components racing a
+  resume) and avoided here by following the same fix shape. The BDK's own `base_stats` (200 hp /
+  35 move speed, unchanged from the prototype's hardcoded numbers) makes this regen a clean 30-line
+  diff (hp fields only) — no other campaign-trace field moves. **Every hardcoded `100`-hp test
+  assumption across the suite updated to `200`** (or converted from an absolute clamp check to a
+  relative "took damage" check where that was the assertion's real intent).
+- **Companion, via a new `summon` behavior (regen #2).** `AbilityDef` gains `summon:
+  Option<SummonSpec { mimic: AbilityId }>`; `CastOutcome` gains `summon: Option<SummonSpawn>`; a new
+  `Summon` `AbilityBehavior` just signals "spawn here" (no aim, no hits) — `execute_ready_abilities`
+  reads the ability's `summon` spec to spawn a `Minion` entity (its own `WorldPosition`/`Facing`/
+  `Faction`/`Health`/`MoveSpeed`/`Hurtbox`) plus an independent `AbilityInstance` mimicking
+  `companion_attack` (a standalone Death-Strike-shaped ability), owned by the minion. **The
+  faction-aware ability engine needed zero changes** — any entity with the right components can
+  cast, so the minion "just worked" as an independent attacker. New `ability/systems/summon.rs`:
+  `minion_seek_and_face` (straight-line seek toward the nearest opposing actor — the shared
+  `FlowField` is built FROM the player outward and is backwards for a minion chasing hostiles, so it
+  implements its own seek; holds position within `MINION_ENGAGE_RANGE` instead of oscillating
+  through the target) and `update_minion_lifecycle` (expires on a `MinionLifetime` timer or on
+  death, reaping its owned `AbilityInstance` too). `Minion`/`MinionOwner`/`MinionLifetime`
+  components (ability/components.rs); reaped alongside other encounter entities on run
+  reset/map-transition (`run/systems/{reset,transitions,select}.rs`).
+  - **Two same-class scheduling/logic bugs found and fixed along the way:** (1) adding the new
+    minion systems to the `Update` schedule shifted Bevy's scheduler tie-break order for *other*
+    unordered systems, making a same-frame ability grant visible to that same frame's
+    `execute_ready_abilities` (a whiff-cast burning its cooldown before any target could exist) —
+    fixed by pinning `(grant_level_1_abilities, spawn_unlocked_ability).chain().after(CombatSet::
+    Death)`, mirroring the existing `gain_experience.after(CombatSet::Death)` precedent (this is
+    exactly the risk `docs/phase9-plan.md`'s own risk table flagged for "9.2 (summon spawn order)").
+    (2) the minion's `Facing` is computed pre-movement (`MovementSet::Intent`) but its melee cone
+    check runs post-movement (`CombatSet::Damage`) the same frame — combined with no "stop
+    distance," the minion continuously overshot a stationary target and oscillated, its facing
+    pointing away from the target exactly when the cone check ran, causing near-permanent whiffing;
+    fixed by the `MINION_ENGAGE_RANGE` hold-position behavior above.
+  - `companion.ability.ron` rewritten (behavior `summon`, mimics `companion_attack`); new
+    `companion_attack.ability.ron`. **Companion is genuinely active for the default DK now** — ~10
+    pre-existing tests that check exact damage/health numbers needed `sim.disable_companion()`
+    (a new `Sim` helper) to stay isolated from its incidental hits; deliberately **not** baked into
+    `Sim::new_arena()` itself, since the golden campaign is supposed to exercise Companion's real
+    DPS contribution.
+- **Heart Strike** (band-2/3, `nearest_melee` behavior — hits up to `target_count` nearest enemies
+  within `range`, no aim needed). Innate (unconditional, not talent-gated) missing-health damage
+  scaling — "increase damage as health lowers," up to +100% at 0 hp — via a new
+  `AbilityDef.innate_hooks` field (parallel to `hooks`, always runs if registered, no `ActiveHooks`
+  gate) and the `HeartStrikeMissingHealth` hook. 3 talents: `heart_strike_extra_target_common`
+  (+1 target, Stack(2)), `heart_strike_range_common` (+range%, Stack(3)),
+  `heart_strike_execute_epic` (+50% damage under 25% hp, Exclusive).
+- **Abomination Limb** (band-4/6, new `grip` behavior — periodically pulls up to `target_count`
+  nearest enemies within `range` toward the caster via `ForcedImpulse`; pure crowd control, no
+  damage). `Target` gains an `is_ranged: bool` field (from the actor's `AiBehavior`) for the
+  ranged-only epic talent. 4 talents: `abomination_limb_range_common`, `_targets_rare` (+1 target,
+  Stack(2)), `_stun_rare` (stuns gripped targets — a targeted execute.rs special-case, since Post
+  hooks are deliberately read-only and can't emit a follow-up `ApplyStatusEvent`), `_ranged_only_epic`
+  (Override `ranged_only` to filter to `AiBehavior::RangedCaster` only).
+- **Purgatory** (band-4/6, cheat death). New core `Invulnerable(Timer)` component —
+  `apply_damage` discards a hit entirely while present (before the `Absorb` shield even drains);
+  ticked down by `tick_invulnerability` (`CombatSet::Apply`). A new
+  `ability::systems::purgatory::purgatory_cheat_death` system runs `.after(apply_damage)` in
+  `CombatSet::Apply` (sees `Health.current` AFTER a lethal hit — including any negative overkill —
+  rather than trying to predict lethality beforehand) and, on a ready owned `purgatory` instance,
+  restores health to `restore_percent` of max and grants `Invulnerable` for `immunity_secs`.
+  Purgatory's own `AbilityDef` never fires through the normal `TriggerAbilityEvent` pipeline — it
+  exists purely so this system can read its talent-modified resolved params and ride the same
+  `AbilityCooldown`/`tick_ability_cooldowns` every other ability uses. 3 talents:
+  `purgatory_restore_rare` (+2% restored per stack, Stack(3)), `purgatory_immunity_epic` (+2s
+  immunity per stack, Stack(3)), `purgatory_cooldown_rare` (−10s cooldown per stack, Stack(2)).
+- **Bone Shield** (`death_strike_bone_shield_epic`, previously inert). New
+  `ability::systems::bone_shield::bone_shield_on_kill` (`CombatSet::Death`) counts kills toward
+  Death Strike's `bone_shield_kill_threshold`/`bone_shield_amount` resolved params and grants a
+  `GainShieldEvent` each time the count wraps past the threshold. **Simplification (documented in
+  the system's own doc comment):** counts the killer's kills from *any* source, not specifically
+  Death-Strike-attributed ones — `DamageEvent` carries no ability provenance. New
+  `talent::components::BoneShieldProgress(u32)`, inserted unconditionally alongside
+  `AcquiredTalents`/`ActiveHooks` at player spawn (and on resume) so there's no "first kill after
+  acquiring is dropped while the component lands" race.
+- **Blood Boil's remaining talents.** `blood_boil_damage_common`/`_range_common` (plain
+  `MultiplyAdd`, Stack(3) each). `blood_boil_health_scaling_rare` (Stack(3)) applies the existing
+  "bleed" status to every hit — a **documented simplification** of Mechanics' "X% of current health
+  as damage over time" (the status system has no percent-of-current-health DoT primitive yet); a
+  targeted execute.rs special-case, same reasoning as Abomination Limb's stun talent. Mechanics'
+  fourth Blood Boil talent — "on-death DoT transfer to nearby enemies" — is **deferred**: it needs a
+  genuinely new "on-death status transfer" mechanic (watch for a death where the victim carries a
+  blood-boil-sourced DoT, then re-apply it to enemies within range) that doesn't fit any existing
+  hook/behavior shape; no talent RON references it, so nothing offers it yet.
+- **AMZ's talent tree, fully implemented.** `amz_size_common` / `_duration_common` (plain
+  modifiers, Stack(3) each). `amz_regen_rare` (Exclusive) reuses the **existing** D&D-style occupant
+  regen (`ZoneEffects.regen_fraction`) purely by overriding AMZ's own (previously-zero)
+  `regen_percent_per_second` param — zero new zone-tick code. `amz_follow_epic` (Exclusive)
+  overrides a new `follow_caster` param that `spawn_dropped_zone` now checks ahead of the ability's
+  static `ZoneSpec.anchor`, forcing `ZoneAnchor::Follow` — talents can't rewrite an `AbilityDef`
+  field directly, only a resolved param, so this is the escape hatch. `amz_movespeed_rare`
+  (Exclusive) grants +20% move speed while standing inside — a new, **independent**
+  `ZoneSpeedModifier` core component (deliberately NOT folded into the existing
+  `MoveSpeedModifier`, which `status::resolve_actor_status` already owns/overwrites wholesale from
+  the entity's own statuses each frame — a second, zone-presence-driven source would race that
+  ownership) that `apply_velocity` multiplies in alongside it; managed by a new
+  `zone::systems::speed_bonus::resolve_zone_speed_bonus`, chained right after
+  `build_player_zone_presence` (one-frame lag before `apply_velocity` sees it, consistent with
+  every other zone-presence consumer).
+- **5 BDK class passives** (`HeroDef.class_passive_pool`), each `ability_scope: None`:
+  - `bdk_passive_dnd_damage_boost` (Phase 9.2 already landed this — see prior entry) — unchanged.
+  - `bdk_passive_no_heal_cap` (Epic, Exclusive): a `bdk_no_heal_cap` Pre hook ×1.5's
+    `leech_percent` on Death Strike/Blood Boil; a new always-running
+    `talent::systems::passives::enforce_heal_cap` clamps `Health.current` to 35% of max every frame
+    while the flag is active — a per-frame clamp catches every heal source uniformly (pickups, D&D
+    regen) without hooking each one individually.
+  - `bdk_passive_overkill_leech` (Rare, Exclusive): `talent::systems::passives::
+    overkill_leech_on_kill` (`CombatSet::Death`) heals the killer for 20% of a kill's negative
+    "overkill" `Health.current`.
+  - `bdk_passive_health_and_healing` (Common, Stack(3)): +10% max health and +15% healing taken per
+    stack. New `core::components::{BaseHealth, HealingTakenModifier}`; `apply_heal` now scales by
+    `HealingTakenModifier` (absent ⇒ 1.0). `talent::systems::passives::resolve_health_and_healing`
+    recomputes both numbers FROM `BaseHealth` (the pristine, un-boosted max, set once by
+    `apply_base_stats`/`respawn_player`) whenever `AcquiredTalents` changes, so re-acquiring a stack
+    never compounds against an already-boosted value; the `Health.max` delta is also granted to
+    `Health.current` (a mid-run pickup shouldn't feel wasted).
+  - `bdk_passive_blood_boil_spawns_dnd` (Epic, Exclusive): its execute.rs special-case landed
+    earlier this phase; only its `.talent.ron` file (and MANIFEST entry) were still missing —
+    closed out here.
+  - A talent effect is one `Modifier` OR one `Behavior`, never both — three of these five passives
+    bundle two independent numeric knobs (or a numeric + a cap) into ONE `Behavior` hook rather than
+    splitting the modifier half out, the same compromise `bdk_passive_dnd_damage_boost` already
+    made.
+- **`progression/systems/offer.rs`'s hardcoded `BDK_CLASS_PASSIVES` const removed** — the eligible
+  offer pool now reads the active hero's own `HeroDef.class_passive_pool` (via a new
+  `HeroIdentity`/`HeroLibrary`/`Assets<HeroDef>` thread through `refill_offer`/
+  `handle_throne_room_reward`/`handle_tradeup_reward` → `build_eligible_pool`), so a future hero's
+  passives need no code change here — matching the pattern every other def-driven pool already
+  follows.
+- **Three isolated golden-master regenerations**, each verified `campaign_is_reproducible_within_a_
+  build` green immediately after: (1) base_stats alone — a clean ~30-line hp-only diff; (2)
+  Companion alone — a larger diff (xp/enemies/statuses/position now shift, since Companion
+  contributes real DPS); (3) the combined rest-of-kit batch (Heart Strike, Abomination Limb,
+  Purgatory, Bone Shield, the Blood Boil/AMZ/class-passive talent trees) in one regen, since none of
+  that content is isolated from the others by the time it's all wired into the same default DK
+  loadout.
+- **Tests: 229 passing** (was 187). New files: `tests/heart_strike.rs` (+2), `tests/abomination_
+  limb.rs` (+2), `tests/purgatory.rs` (+2), `tests/bone_shield.rs` (+2), `tests/amz_talents.rs` (+5),
+  `tests/blood_boil_talents.rs` (+4), `tests/bdk_class_passives.rs` (+5), `tests/companion.rs` (+4,
+  from the Companion sub-step above). New unit tests across `ability/behavior.rs` (`Grip`'s
+  target-count/range/ranged-only filtering, `Summon`/`NearestMelee` targeting),
+  `ability/hooks.rs` (`HeartStrikeMissingHealth`/`_ExecuteBonus`, `BdkDndDamageBoost`,
+  `BdkNoHealCapLeechBoost`), `ability/assets.rs` and `talent/assets.rs` (RON-parse checks for every
+  new ability/talent file). Build warning-free.
+
+- **Reproducibility hardening — several real scheduling bugs found and fixed; one still open
+  (tracked, §8.5).** After regen #3 landed, `campaign_is_reproducible_within_a_build` (running the
+  identical scripted campaign twice in one process) started failing intermittently (~1 run in 3) —
+  a defect per this project's own contract, never something to regenerate around. Using Bevy's
+  `ScheduleBuildSettings { ambiguity_detection: LogLevel::Error }` (temporarily enabled in
+  `Sim`, then reverted) to get a full, authoritative list of genuinely-ambiguous system pairs
+  (rather than guessing), several real, previously-unpinned races were found and fixed, all
+  systems that mutate shared state essentially every frame — not rare coincidences:
+  - `apply_damage`, `apply_heal`, `tick_invulnerability`, and `purgatory_cheat_death` were all
+    independently `.in_set(CombatSet::Apply)` with no order between them, despite all four reading
+    or writing `Health` — the dominant fix. Now an explicit chain: `apply_shield_gain → apply_damage
+    → apply_heal → tick_invulnerability`, with `purgatory_cheat_death` anchored after all of them
+    (core/plugin.rs, ability/plugin.rs).
+  - `spawn_unlocked_ability` (spawns an `AbilityInstance`) and `update_minion_lifecycle` (despawns
+    an expired minion + its instance) were both merely `.after(CombatSet::Death)`, with no order
+    between them — whichever ran first determined which Commands queued first, and thus which
+    entity indices got allocated, for the same semantic set of alive entities. Now
+    `update_minion_lifecycle.after(spawn_unlocked_ability)`.
+  - `resolve_health_and_healing`, `overkill_leech_on_kill`, `enforce_heal_cap`, and
+    `purgatory_cheat_death` are now all explicitly pinned `.after(install_acquired_talent)
+    .after(uninstall_removed_talent).after(apply_base_stats)` — all three of those can mutate
+    `AcquiredTalents`/`ActiveHooks`/`Health.max` the same frame these read them.
+  - The ability-grant chain (`grant_level_1_abilities, spawn_unlocked_ability`) is now also
+    `.after(handle_level_up)` — that system writes the `UnlockAbilityEvent` a band-ability unlock
+    reads, with no prior order between them.
+  - **After all of the above, reproducibility improved but is not yet 100%** — fine-grained
+    diagnostics (comparing full per-frame state, not just the rounded 60-frame snapshot) isolated
+    the remaining divergence to the player's own position drifting by ~1 unit around
+    second 23 of the 30s campaign, with every enemy's position/health bit-identical at that point —
+    ruling out entity-allocation order as the (remaining) cause. Ruled out by direct
+    enable/disable-and-retest: the new `resolve_zone_speed_bonus`/`ZoneSpeedModifier` mechanism, and
+    RNG-stream desync (the exact talent-offer sequence was verified byte-identical across repeated
+    runs). Root cause not yet found. Per an explicit product-owner decision (2026-07-07): the
+    scheduling fixes above are landed (they are correct and reduce risk regardless of whether they
+    fully close this bug); the **golden-master baseline is deliberately NOT regenerated this
+    session** — `campaign_matches_golden_baseline` is a **known, expected failure** against the
+    stale regen-#3 baseline until the remaining reproducibility source is found and a regen #4 done
+    in a follow-up session. See `docs/architecture-plan.md` §8.5 for the tracked debt row.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,

@@ -37,10 +37,6 @@ pub struct EnemySpawner {
     pub radius: i32,
 }
 
-/// Per-entity movement speed (world units/sec). Set from the enemy's `EnemyDef` at spawn.
-#[derive(Component)]
-pub struct MoveSpeed(pub f32);
-
 /// Experience awarded to the killer when this enemy dies. Set from the `EnemyDef` at spawn
 /// (scaled by depth via `resolve_enemy_stats`).
 #[derive(Component)]

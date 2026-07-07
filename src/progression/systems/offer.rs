@@ -19,6 +19,8 @@ use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
 use crate::ability::components::AbilityInstance;
 use crate::game::state::GameState;
+use crate::hero::assets::{HeroDef, HeroLibrary};
+use crate::hero::components::HeroIdentity;
 use crate::player::components::Player;
 use crate::progression::state::LevelUpFlowState;
 use crate::run::rng::RunRng;
@@ -27,17 +29,6 @@ use crate::talent::components::AcquiredTalents;
 use crate::talent::offer::{generate_offer, OfferContext};
 use crate::talent::systems::apply::TalentAcquiredEvent;
 use crate::talent::systems::merchant::TradeUpRewardEvent;
-
-// PHASE 2 STUB: hardcoded Blood Death Knight class passive pool. These have no TalentDef RON
-// files yet, so they self-filter out of offers; listed here so the pool is faithful once the
-// content pass adds them. Phase 4 sources this from HeroDef.class_passive_pool.
-const BDK_CLASS_PASSIVES: &[&str] = &[
-    "bdk_passive_no_heal_cap",
-    "bdk_passive_dnd_damage_boost",
-    "bdk_passive_overkill_leech",
-    "bdk_passive_health_and_healing",
-    "bdk_passive_blood_boil_spawns_dnd",
-];
 
 // Emitted by the ThroneRoom encounter (Phase 7, run/systems/transitions.rs::load_encounter).
 #[derive(Event, Debug)]
@@ -51,12 +42,14 @@ pub fn refill_offer(
     mut flow: ResMut<LevelUpFlowState>,
     mut next_state: ResMut<NextState<GameState>>,
     mut rng: ResMut<RunRng>,
-    players: Query<(Entity, &AcquiredTalents), With<Player>>,
+    players: Query<(Entity, &AcquiredTalents, &HeroIdentity), With<Player>>,
     instances: Query<&AbilityInstance>,
     ability_library: Res<AbilityLibrary>,
     ability_defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
     talent_library: Res<TalentLibrary>,
+    hero_library: Res<HeroLibrary>,
+    hero_defs: Res<Assets<HeroDef>>,
 ) {
     if flow.owed_choices == 0 {
         flow.pending_offer = None;
@@ -66,10 +59,10 @@ pub fn refill_offer(
     if flow.pending_offer.is_some() {
         return; // already showing an offer
     }
-    let Ok((player, acquired)) = players.single() else {
+    let Ok((player, acquired, hero_id)) = players.single() else {
         return;
     };
-    let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
+    let eligible = build_eligible_pool(player, &hero_id.0, &instances, &ability_library, &ability_defs, &hero_library, &hero_defs);
     let offer = generate_offer(
         OfferContext::LevelUp,
         &eligible,
@@ -137,21 +130,23 @@ pub fn handle_throne_room_reward(
     mut flow: ResMut<LevelUpFlowState>,
     mut next_state: ResMut<NextState<GameState>>,
     mut rng: ResMut<RunRng>,
-    players: Query<(Entity, &AcquiredTalents), With<Player>>,
+    players: Query<(Entity, &AcquiredTalents, &HeroIdentity), With<Player>>,
     instances: Query<&AbilityInstance>,
     ability_library: Res<AbilityLibrary>,
     ability_defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
     talent_library: Res<TalentLibrary>,
+    hero_library: Res<HeroLibrary>,
+    hero_defs: Res<Assets<HeroDef>>,
 ) {
     if events.is_empty() {
         return;
     }
     events.clear();
-    let Ok((player, acquired)) = players.single() else {
+    let Ok((player, acquired, hero_id)) = players.single() else {
         return;
     };
-    let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
+    let eligible = build_eligible_pool(player, &hero_id.0, &instances, &ability_library, &ability_defs, &hero_library, &hero_defs);
     let offer = generate_offer(
         OfferContext::ThroneRoom,
         &eligible,
@@ -173,21 +168,23 @@ pub fn handle_tradeup_reward(
     mut flow: ResMut<LevelUpFlowState>,
     mut next_state: ResMut<NextState<GameState>>,
     mut rng: ResMut<RunRng>,
-    players: Query<(Entity, &AcquiredTalents), With<Player>>,
+    players: Query<(Entity, &AcquiredTalents, &HeroIdentity), With<Player>>,
     instances: Query<&AbilityInstance>,
     ability_library: Res<AbilityLibrary>,
     ability_defs: Res<Assets<AbilityDef>>,
     talent_defs: Res<Assets<TalentDef>>,
     talent_library: Res<TalentLibrary>,
+    hero_library: Res<HeroLibrary>,
+    hero_defs: Res<Assets<HeroDef>>,
 ) {
     let min_rarity = match events.read().last() {
         Some(ev) => ev.min_rarity.clone(),
         None => return,
     };
-    let Ok((player, acquired)) = players.single() else {
+    let Ok((player, acquired, hero_id)) = players.single() else {
         return;
     };
-    let eligible = build_eligible_pool(player, &instances, &ability_library, &ability_defs);
+    let eligible = build_eligible_pool(player, &hero_id.0, &instances, &ability_library, &ability_defs, &hero_library, &hero_defs);
     let offer = generate_offer(
         OfferContext::MerchantTradeUp { min_rarity },
         &eligible,
@@ -202,11 +199,15 @@ pub fn handle_tradeup_reward(
 }
 
 /// Builds the union of talent ids the player could currently be offered.
+#[allow(clippy::too_many_arguments)]
 fn build_eligible_pool(
     player: Entity,
+    hero_id: &str,
     instances: &Query<&AbilityInstance>,
     ability_library: &AbilityLibrary,
     ability_defs: &Assets<AbilityDef>,
+    hero_library: &HeroLibrary,
+    hero_defs: &Assets<HeroDef>,
 ) -> Vec<TalentId> {
     let mut pool: Vec<TalentId> = Vec::new();
 
@@ -222,9 +223,13 @@ fn build_eligible_pool(
         }
     }
 
-    // Class passives (+ general passives, none yet).
-    for t in BDK_CLASS_PASSIVES {
-        push_unique(&mut pool, t);
+    // Class passives (+ general passives, none yet) — sourced from the active hero's own
+    // `class_passive_pool` (Phase 9.2; was a hardcoded BDK-only const before). Ids with no loaded
+    // TalentDef still self-filter out in generate_offer, so unimplemented content stays inert.
+    if let Some(hero_def) = hero_library.get(hero_id).and_then(|h| hero_defs.get(h)) {
+        for t in &hero_def.class_passive_pool {
+            push_unique(&mut pool, t);
+        }
     }
 
     pool

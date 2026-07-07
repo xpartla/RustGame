@@ -7,8 +7,8 @@
 // itself is locked by tests/combat.rs::grunt_contact_attack_cadence.
 
 use bevy::math::Vec2;
-use rust_game::core::components::{Faction, Hurtbox};
-use rust_game::enemy::components::{MoveSpeed, XpReward};
+use rust_game::core::components::{Faction, Hurtbox, MoveSpeed};
+use rust_game::enemy::components::XpReward;
 use rust_game::sim::Sim;
 
 #[test]
@@ -39,7 +39,7 @@ fn enemy_contact_hits_player_not_other_enemies() {
     let bystander = sim.spawn_grunt((5, 0)); // 160 units away, out of contact range
     sim.step(1);
 
-    assert_eq!(sim.player_health(), 95.0, "grunt contact hit the Friendly player (100-5)");
+    assert_eq!(sim.player_health(), 195.0, "grunt contact hit the Friendly player (200-5)");
     assert_eq!(sim.enemy_health(bystander), Some(10.0), "contact did not hit another Hostile");
     assert_eq!(sim.enemy_health(attacker), Some(10.0), "and did not hit itself");
 }
@@ -63,10 +63,11 @@ fn ranged_caster_stops_at_range_and_shoots() {
     let mut sim = Sim::new_arena(3);
     // 128 units away — already inside the Spitter's 140 stand-off, so it holds position and fires.
     let spitter = sim.spawn_enemy("spitter", (4, 0));
+    let hp_before = sim.player_health();
     sim.step_seconds(2.5);
 
     assert!(
-        sim.player_health() < 100.0,
+        sim.player_health() < hp_before,
         "spitter bolt reached and damaged the player, got {}",
         sim.player_health()
     );
@@ -83,6 +84,7 @@ fn enemy_projectile_hits_player_through_a_hostile() {
     // reaches the player in ~0.5s, well before the slow grunt (15 u/s) closes to contact.
     let _spitter = sim.spawn_enemy("spitter", (4, 0));
     let blocker = sim.spawn_grunt((2, 0));
+    let hp_before = sim.player_health();
     sim.step_seconds(0.7);
 
     assert_eq!(
@@ -91,7 +93,7 @@ fn enemy_projectile_hits_player_through_a_hostile() {
         "enemy bolt ignored the Hostile blocker in its path (faction filter)"
     );
     assert!(
-        sim.player_health() < 100.0,
+        sim.player_health() < hp_before,
         "enemy bolt passed through the enemy and hit the Friendly player"
     );
 }
@@ -111,7 +113,7 @@ fn enemy_scaling_scales_health_and_damage() {
     let _hitter = sim.spawn_enemy_at_depth("grunt", (0, 0), 4);
     sim.step(1);
     let hp = sim.player_health();
-    assert!((hp - 92.6).abs() < 1e-3, "depth-4 contact hit for 7.4 (100-7.4), got {hp}");
+    assert!((hp - 192.6).abs() < 1e-3, "depth-4 contact hit for 7.4 (200-7.4), got {hp}");
 }
 
 #[test]

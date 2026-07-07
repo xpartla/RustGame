@@ -25,6 +25,12 @@ pub struct WorldPosition(pub Vec2);
 #[derive(Component, Default)]
 pub struct Velocity(pub Vec2);
 
+/// Per-entity movement speed (world units/sec) — the raw dial WASD/AI multiplies a direction by.
+/// Shared between the player (Phase 9.2 base_stats — `HeroDef.base_stats.move_speed`) and enemies
+/// (set from `EnemyDef.base_stats.move_speed` at spawn). Was enemy-only before Phase 9.2.
+#[derive(Component)]
+pub struct MoveSpeed(pub f32);
+
 /// Multiplies how far an entity is moved per frame (1.0 = normal). Generic actor stat, owned by
 /// whoever writes it — currently `status::resolve_actor_status` folds in frostbite's 0.8 slow;
 /// later buffs/haste use the same channel. `apply_velocity` scales the integration step by it, so
@@ -32,10 +38,34 @@ pub struct Velocity(pub Vec2);
 #[derive(Component, Debug, Copy, Clone)]
 pub struct MoveSpeedModifier(pub f32);
 
+/// A second, independent speed multiplier `apply_velocity` folds in alongside
+/// `MoveSpeedModifier` (1.0 = neutral). Kept separate rather than sharing that channel because
+/// `MoveSpeedModifier` is entirely OWNED/overwritten each frame by `status::resolve_actor_status`
+/// from the entity's OWN active statuses — a second, independently-driven source (Phase 9.2's
+/// AMZ's "move faster while standing in your own zone" talent, driven by zone presence, not
+/// status effects) would race that ownership if it wrote the same component. Managed by
+/// `zone::systems::speed_bonus::resolve_zone_speed_bonus`. Absent ⇒ 1.0.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct ZoneSpeedModifier(pub f32);
+
 /// Multiplies incoming damage (1.0 = normal). `apply_damage` reads it; `resolve_actor_status`
 /// folds in frostbite's 1.1 amplify. Absent ⇒ 1.0.
 #[derive(Component, Debug, Copy, Clone)]
 pub struct DamageTakenModifier(pub f32);
+
+/// Multiplies incoming healing (1.0 = normal). `apply_heal` reads it (Phase 9.2 —
+/// `bdk_passive_health_and_healing`'s "+healing taken%" half, folded by
+/// `talent::systems::passives::resolve_health_and_healing`). Absent ⇒ 1.0.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct HealingTakenModifier(pub f32);
+
+/// The hero's pristine, un-talent-boosted max health (Phase 9.2), set once at
+/// `player::systems::base_stats::apply_base_stats` alongside the real `Health.max`. The reference
+/// point `talent::systems::passives::resolve_health_and_healing` recomputes
+/// `bdk_passive_health_and_healing`'s max-health bonus FROM on every stack change, so re-acquiring
+/// (or a future respec) never compounds against an already-boosted value.
+#[derive(Component, Debug, Copy, Clone)]
+pub struct BaseHealth(pub f32);
 
 /// Multiplies damage an actor *deals* (1.0 = normal). The mirror of `DamageTakenModifier`, read on
 /// the `DamageEvent.source` by `apply_damage`. Enemy scaling inserts it at spawn (depth > 0) so a
@@ -66,6 +96,13 @@ pub struct AbilitiesSuppressed;
 pub struct Absorb {
     pub amount: f32,
 }
+
+/// Marker: this entity takes zero damage while present (`apply_damage` skips it entirely — the
+/// incoming hit is discarded, not merely absorbed). Phase 9.2's Purgatory (BDK cheat-death) is the
+/// first grantor; a generic primitive any future timed-immunity mechanic can reuse. Ticked down and
+/// removed by `core::systems::invulnerability::tick_invulnerability`.
+#[derive(Component, Debug)]
+pub struct Invulnerable(pub Timer);
 
 /// A one-shot positional impulse (Phase 9.1, §8.1(6)) that overrides an entity's `Velocity` for its
 /// duration, then removes itself. Grip (pull toward a point — Abomination Limb) and knockback

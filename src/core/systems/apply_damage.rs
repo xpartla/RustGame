@@ -1,5 +1,5 @@
 use bevy::prelude::{Commands, EventReader, Query};
-use crate::core::components::{Absorb, DamageDealtModifier, DamageTakenModifier, Health, LastHitBy};
+use crate::core::components::{Absorb, DamageDealtModifier, DamageTakenModifier, Health, Invulnerable, LastHitBy};
 use crate::core::events::DamageEvent;
 
 /// Drains up to `incoming` from `*absorb`, returning the leftover that spills through to `Health`.
@@ -13,20 +13,30 @@ pub fn drain_absorb(absorb: &mut f32, incoming: f32) -> f32 {
 
 /// The single point that mutates `Health`. Drains `DamageEvent`s and subtracts from the target's
 /// health, scaled by the source's `DamageDealtModifier` (enemy scaling; 1.0 when absent) and the
-/// target's `DamageTakenModifier` (frostbite +10%, etc.; 1.0 when absent). An `Absorb` shield (Phase
-/// 9.1) drains BEFORE the health write, between the modifier scaling and the subtraction; a hit
-/// larger than the pool spills the remainder to `Health`, and an emptied shield is removed. Also
-/// records the dealer in the target's `LastHitBy` (if it tracks one) for kill-credit. Death is
-/// handled separately (per-entity death systems read `Health`).
+/// target's `DamageTakenModifier` (frostbite +10%, etc.; 1.0 when absent). An `Invulnerable` target
+/// (Phase 9.2 — Purgatory) discards the hit entirely, before the `Absorb` shield even drains. An
+/// `Absorb` shield (Phase 9.1) drains BEFORE the health write, between the modifier scaling and the
+/// subtraction; a hit larger than the pool spills the remainder to `Health`, and an emptied shield
+/// is removed. Also records the dealer in the target's `LastHitBy` (if it tracks one) for kill-
+/// credit. Death is handled separately (per-entity death systems read `Health`).
 pub fn apply_damage(
     mut commands: Commands,
     mut events: EventReader<DamageEvent>,
     dealers: Query<&DamageDealtModifier>,
-    mut targets: Query<(&mut Health, Option<&mut LastHitBy>, Option<&DamageTakenModifier>, Option<&mut Absorb>)>,
+    mut targets: Query<(
+        &mut Health,
+        Option<&mut LastHitBy>,
+        Option<&DamageTakenModifier>,
+        Option<&mut Absorb>,
+        Option<&Invulnerable>,
+    )>,
 ) {
     for event in events.read() {
         let dealt_mult = dealers.get(event.source).map(|m| m.0).unwrap_or(1.0);
-        if let Ok((mut health, last_hit_by, taken_mod, absorb)) = targets.get_mut(event.target) {
+        if let Ok((mut health, last_hit_by, taken_mod, absorb, invulnerable)) = targets.get_mut(event.target) {
+            if invulnerable.is_some() {
+                continue;
+            }
             let taken_mult = taken_mod.map(|m| m.0).unwrap_or(1.0);
             let mut incoming = event.amount * dealt_mult * taken_mult;
             if let Some(mut shield) = absorb {

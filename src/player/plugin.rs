@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::player::components::Player;
+use crate::player::systems::base_stats::apply_base_stats;
 use crate::player::systems::input::player_input;
 use crate::player::systems::spawn_player::spawn_player;
 use crate::player::systems::update_player_facing::update_player_facing;
@@ -28,6 +29,9 @@ impl Plugin for PlayerPlugin {
             OnEnter(GameState::InRun),
             spawn_player.run_if(not(any_with_component::<Player>)),
         );
+        // Deferred, ungated base_stats application (Phase 9.2) — mirrors
+        // ability/plugin.rs::grant_level_1_abilities's HeroDef-load deferral.
+        app.add_systems(Update, apply_base_stats);
         app.add_systems(
             Update,
             (

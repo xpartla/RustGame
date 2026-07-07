@@ -1,0 +1,11 @@
+// "Blood Boil automatically spawns a Death and Decay" (Mechanics, class passive). A targeted
+// special-case in ability/systems/execute.rs (not a generalized Post-hook spawn mechanism — see
+// that file's doc comment on `bdk_blood_boil_spawns_dnd`), gated on this hook id.
+(
+    id: "bdk_passive_blood_boil_spawns_dnd",
+    display_name: "Boiling Decay",
+    ability_scope: None,
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("bdk_blood_boil_spawns_dnd"),
+)

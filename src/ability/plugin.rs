@@ -13,16 +13,24 @@
 
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
-use crate::ability::behavior::{BehaviorRegistry, Blink, ContactMelee, DroppedZone, MeleeCone, ProjectileBehavior, SelfNova};
-use crate::ability::hooks::{BloodBoilDndRange, HookRegistry};
+use crate::ability::behavior::{
+    BehaviorRegistry, Blink, ContactMelee, DroppedZone, Grip, MeleeCone, NearestMelee, ProjectileBehavior, SelfNova, Summon,
+};
+use crate::ability::hooks::{BdkDndDamageBoost, BdkNoHealCapLeechBoost, BloodBoilDndRange, HeartStrikeExecuteBonus, HeartStrikeMissingHealth, HookRegistry};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::ability::systems::bone_shield::bone_shield_on_kill;
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
+use crate::ability::systems::purgatory::purgatory_cheat_death;
+use crate::ability::systems::summon::{minion_seek_and_face, update_minion_lifecycle};
 use crate::core::def_library::DefLibraryAppExt;
-use crate::core::sets::CombatSet;
+use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::HeroIdentity;
 use crate::player::components::Player;
+use crate::progression::systems::level_up::handle_level_up;
+use crate::player::systems::base_stats::apply_base_stats;
+use crate::talent::systems::apply::{install_acquired_talent, uninstall_removed_talent};
 
 pub struct AbilityPlugin;
 
@@ -36,9 +44,9 @@ impl Plugin for AbilityPlugin {
             .add_event::<CastVfxEvent>();
 
         // Built-in behaviors. melee_cone (Phase 1), projectile/self_nova (Phase 3), contact_melee
-        // (Phase 5), dropped_zone (Phase 6), blink (Phase 9.1 — the Movement-slot dash). orbit/
-        // summon/leap/channel register in their own phases; an ability whose behavior is
-        // unregistered stays inert.
+        // (Phase 5), dropped_zone (Phase 6), blink (Phase 9.1 — the Movement-slot dash), summon /
+        // nearest_melee (Phase 9.2 — Companion / Heart Strike). orbit/leap/channel register in
+        // their own phases; an ability whose behavior is unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
@@ -46,13 +54,21 @@ impl Plugin for AbilityPlugin {
         behaviors.register("contact_melee", ContactMelee);
         behaviors.register("dropped_zone", DroppedZone);
         behaviors.register("blink", Blink);
+        behaviors.register("summon", Summon);
+        behaviors.register("nearest_melee", NearestMelee);
+        behaviors.register("grip", Grip);
         app.insert_resource(behaviors);
 
-        // Code-driven ability hooks (Phase 6). A hook runs only when the caster has acquired the
-        // talent that installs it (ActiveHook) AND the ability lists it in `hooks`. bone_shield's
-        // Post hook stays unregistered until the shield/absorb system lands (§8.1(5)) → inert.
+        // Code-driven ability hooks (Phase 6). Talent-gated hooks (in an ability's `hooks` list)
+        // run only when the caster has acquired the talent that installs them (ActiveHook);
+        // innate hooks (`innate_hooks`) always run if registered — see AbilityDef's doc comment.
+        // bone_shield's kill-counting is its own system, not a HookRegistry entry (§8.1(5)/Phase 9.2).
         let mut hooks = HookRegistry::default();
         hooks.register("blood_boil_dnd_range", BloodBoilDndRange);
+        hooks.register("heart_strike_missing_health", HeartStrikeMissingHealth);
+        hooks.register("heart_strike_execute_bonus", HeartStrikeExecuteBonus);
+        hooks.register("bdk_dnd_damage_boost", BdkDndDamageBoost);
+        hooks.register("bdk_no_heal_cap", BdkNoHealCapLeechBoost);
         app.insert_resource(hooks);
 
         // Ungated by GameState: when several level-ups land in one frame and cross from the
@@ -60,15 +76,90 @@ impl Plugin for AbilityPlugin {
         // frame the state flips to TalentPicker. A reader gated on InRun would skip that frame
         // and the events would expire unread — silently losing the band abilities. Same
         // reasoning as the ungated talent install systems.
+        //
+        // `.after(CombatSet::Death)` (Phase 9.2 pin): neither system is set-assigned, so absent an
+        // explicit anchor its placement relative to the MovementSet/CombatSet chain is decided by
+        // the scheduler's internal tie-break — which merely *adding* unrelated systems elsewhere
+        // (found via the Companion/summon work) was enough to shift, making a same-frame grant
+        // newly visible to that same frame's `execute_ready_abilities` (a whiff-cast burning its
+        // cooldown before any target could exist) where before it wasn't. Pinning it to the very
+        // end of the per-frame chain — mirroring `gain_experience.after(CombatSet::Death)` below —
+        // restores the deterministic "granted this frame ⇒ first fireable next frame" contract the
+        // whole ability system (and its tests) already assume, instead of leaving it to chance.
+        //
+        // `.after(handle_level_up)`: found via Bevy's ambiguity checker while hunting a golden-
+        // campaign reproducibility flake. `handle_level_up` writes `UnlockAbilityEvent` (a band
+        // ability unlock) that `spawn_unlocked_ability` reads; with no order between them, whether a
+        // same-frame band unlock's `AbilityInstance` appears THIS frame or only the NEXT was free to
+        // vary between separate schedule builds.
         app.add_systems(
             Update,
-            (grant_level_1_abilities, spawn_unlocked_ability).chain(),
+            (grant_level_1_abilities, spawn_unlocked_ability)
+                .chain()
+                .after(CombatSet::Death)
+                .after(handle_level_up),
         );
         app.add_systems(
             Update,
             (tick_ability_cooldowns, auto_cast_abilities, execute_ready_abilities)
                 .chain()
                 .in_set(CombatSet::Damage)
+                .run_if(in_state(GameState::InRun)),
+        );
+
+        // Purgatory's cheat-death interceptor (Phase 9.2): must see Health AFTER apply_damage has
+        // applied a (possibly lethal/negative) hit, and must run before CombatSet::Death's despawn.
+        // `.after(apply_heal).after(tick_invulnerability)`: placed at the very end of the
+        // core/plugin.rs CombatSet::Apply chain (found via Bevy's ambiguity checker — see that
+        // chain's own comment) so it sees the fully-resolved health for the frame, not a value a
+        // same-frame heal or invulnerability tick might still race. `.after(install_acquired_talent)
+        // .after(uninstall_removed_talent).after(apply_base_stats)`: same reasoning as
+        // talent/plugin.rs's class-passive consumers — resolve_params reads AcquiredTalents/
+        // Health.max, both of which these can mutate the same frame.
+        app.add_systems(
+            Update,
+            purgatory_cheat_death
+                .in_set(CombatSet::Apply)
+                .after(crate::core::systems::apply_damage::apply_damage)
+                .after(crate::core::systems::apply_heal::apply_heal)
+                .after(crate::core::systems::invulnerability::tick_invulnerability)
+                .after(install_acquired_talent)
+                .after(uninstall_removed_talent)
+                .after(apply_base_stats)
+                .run_if(in_state(GameState::InRun)),
+        );
+
+        // Bone Shield's kill counter (Phase 9.2, Death Strike's epic talent): reads Health/
+        // LastHitBy on dying enemies before enemy_death despawns them — same set, order-agnostic
+        // (both only read the victim; enemy_death's despawn is a deferred Command).
+        app.add_systems(
+            Update,
+            bone_shield_on_kill.in_set(CombatSet::Death).run_if(in_state(GameState::InRun)),
+        );
+
+        // Minion lifecycle (Phase 9.2 — Companion). Seeking/facing is AI-shaped, so it belongs in
+        // MovementSet::Intent alongside the enemy flow-field follower / ranged-caster AI; the
+        // lifecycle reaper runs after death resolves so a killing hit this frame is seen.
+        //
+        // `.after(spawn_unlocked_ability)` (found via the golden-master reproducibility flake this
+        // pins): both this system and `spawn_unlocked_ability` are merely anchored
+        // `.after(CombatSet::Death)`, with NO order between the two of them — and both issue
+        // entity-spawning/despawning Commands (a granted ability spawns an AbilityInstance; an
+        // expired minion despawns itself + its owned instance). Whichever ran first determined
+        // which Commands got queued (and thus which entity indices got allocated) first — an
+        // unpinned ambiguity Bevy can resolve differently between separate schedule builds, so two
+        // runs of the identical seeded script could allocate DIFFERENT entity indices for the SAME
+        // semantic set of alive entities. That divergence is invisible until it flips a
+        // nearest-neighbor tie-break somewhere downstream (here: the golden-campaign bot's "nearest
+        // enemy" scan), at which point it becomes a real, observable trace difference. Exactly the
+        // same underlying risk class as the Companion grant/execute race fixed earlier this phase —
+        // an unordered pair of Command-issuing systems sharing an anchor point, not a set.
+        app.add_systems(
+            Update,
+            (
+                minion_seek_and_face.in_set(MovementSet::Intent),
+                update_minion_lifecycle.after(CombatSet::Death).after(spawn_unlocked_ability),
+            )
                 .run_if(in_state(GameState::InRun)),
         );
     }

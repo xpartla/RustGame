@@ -101,17 +101,15 @@ fn offers_respect_uniqueness_against_current_acquisitions() {
     sim.step(2);
     assert_eq!(sim.game_state(), GameState::TalentPicker);
 
-    // Offer 1: only leech + range remain eligible.
+    // Offer 1: the exhausted Exclusive epic and capped Stack(3) common are filtered out. (Not
+    // asserting the full eligible set here — it grows as later Phase-9 sub-phases add more BDK
+    // content the level-7 band unlocks now also own; see offer2's identical style below.)
     let offer1 = sim.level_flow().pending_offer.clone().expect("offer 1");
-    let mut opts1 = offer1.options.clone();
-    opts1.sort();
-    assert_eq!(
-        opts1,
-        vec![
-            "death_strike_leech_common".to_string(),
-            "death_strike_range_common".to_string()
-        ],
-        "capped/exclusive talents filtered from the offer"
+    assert!(
+        !offer1.options.contains(&"death_strike_bone_shield_epic".to_string())
+            && !offer1.options.contains(&"death_strike_damage_common".to_string()),
+        "capped/exclusive talents filtered from the offer: {:?}",
+        offer1.options
     );
 
     // Pick one; the next offer (same backlog) must reflect that acquisition immediately —
@@ -135,6 +133,7 @@ fn offers_respect_uniqueness_against_current_acquisitions() {
 #[test]
 fn damage_talent_multiplies_death_strike_output() {
     let mut sim = Sim::new_arena(11);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own damage from the pet
 
     // Three copies of +20% damage: 10 * (1 + 0.6) = 16 per hit.
     acquire(&mut sim, "death_strike_damage_common");
@@ -157,6 +156,7 @@ fn damage_talent_multiplies_death_strike_output() {
 #[test]
 fn leech_talent_multiplies_leech_only() {
     let mut sim = Sim::new_arena(11);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own damage/leech from the pet
     sim.set_player_health(50.0);
 
     // Two copies of +20% leech: 5% * 1.4 = 7% of 10 damage = 0.7 healed.

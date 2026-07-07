@@ -31,7 +31,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 
 use crate::ability::assets::{AbilityDef, AbilityLibrary};
-use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
+use crate::ability::components::{AbilityCooldown, AbilityInstance, Level1Granted, Minion, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::core::components::{Absorb, DamageDealtModifier, Facing, Faction, ForcedImpulse, GridPosition, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag, GainShieldEvent};
 use crate::enemy::assets::{resolve_enemy_stats, EnemyDef, EnemyLibrary, ThemeDef, ThemeLibrary};
@@ -804,6 +804,47 @@ impl Sim {
         let world = self.app.world_mut();
         world.resource_mut::<EnemySpawner>().timer.pause();
         world.resource_mut::<PickUpSpawner>().timer.pause();
+    }
+
+    /// Test-only: neutralizes the Companion ability (Phase 9.2) for scenarios that isolate a
+    /// different mechanic from its DPS — the Blood Death Knight's `companion` is a real, always-
+    /// active level-1 auto-cast, so `new_arena`'s default player already has (or will soon spawn)
+    /// a minion that can land unrelated hits on a scenario's own test enemy. Removes the player's
+    /// `companion` `AbilityInstance` (so it can never recast) and despawns any minion that already
+    /// exists, plus its own owned `AbilityInstance`. Mirrors `pause_ambient_spawners`'s role: keep
+    /// a scenario to the one mechanic it names (docs/testing.md); the golden campaign is where
+    /// Companion's cross-system contribution is meant to show up.
+    pub fn disable_companion(&mut self) {
+        let world = self.app.world_mut();
+        let player = {
+            let mut q = world.query_filtered::<Entity, With<Player>>();
+            q.iter(world).next()
+        };
+        let mut doomed: Vec<Entity> = Vec::new();
+        {
+            let mut q = world.query::<(Entity, &AbilityInstance)>();
+            for (e, inst) in q.iter(world) {
+                if inst.def_id == "companion" && Some(inst.owner) == player {
+                    doomed.push(e);
+                }
+            }
+        }
+        {
+            let mut q = world.query_filtered::<Entity, With<Minion>>();
+            doomed.extend(q.iter(world));
+        }
+        let owners: std::collections::HashSet<Entity> = doomed.iter().copied().collect();
+        {
+            let mut q = world.query::<(Entity, &AbilityInstance)>();
+            for (e, inst) in q.iter(world) {
+                if owners.contains(&inst.owner) {
+                    doomed.push(e);
+                }
+            }
+        }
+        for e in doomed {
+            world.despawn(e);
+        }
     }
 
     /// Replaces the generated map with an empty arena of the same extents: border walls only,

@@ -6,3 +6,4 @@ pub mod apply_damage;
 pub mod apply_heal;
 pub mod apply_shield;
 pub mod debug;
+pub mod invulnerability;

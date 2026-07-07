@@ -1,0 +1,13 @@
+// "Increase health by X% and healing taken by Y%" (Mechanics, common). +10% max health and +15%
+// healing taken per stack (Stack(3): up to +30%/+45%). Both numbers recomputed from BaseHealth by
+// talent::systems::passives::resolve_health_and_healing whenever AcquiredTalents changes (a talent
+// effect is one Modifier OR one Behavior — bundling two independent numeric knobs needs the
+// Behavior-hook escape hatch, same as bdk_passive_dnd_damage_boost).
+(
+    id: "bdk_passive_health_and_healing",
+    display_name: "Vital Bloodlines",
+    ability_scope: None,
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Behavior("bdk_health_and_healing"),
+)

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
-use crate::core::components::{Facing, FlowField, GridPosition, Velocity, WorldPosition};
-use crate::enemy::components::{AiBehavior, Enemy, MoveSpeed};
+use crate::core::components::{Facing, FlowField, GridPosition, MoveSpeed, Velocity, WorldPosition};
+use crate::enemy::components::{AiBehavior, Enemy};
 use crate::player::components::Player;
 
 /// Drives `RangedCaster` enemies (Phase 5): approach the player along the flow field until within

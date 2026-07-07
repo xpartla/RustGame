@@ -8,9 +8,11 @@
 // (an enemy bolt aimed at the Friendly player), acting as a barrier. Per Mechanics, a projectile
 // EMITTED from inside the zone is not blocked — handled by zone/systems/block.rs.
 //
-// The epic "the zone gets attached to you as you move" talent (anchor → FollowCaster) is DEFERRED
-// to the BDK content pass (Phase 9); base AMZ is a Fixed drop. The FollowCaster mechanism itself is
-// built + tested this phase.
+// amz_movespeed_rare (Phase 9.2) grants a move-speed bonus while standing inside — via the new
+// `ZoneSpeedModifier` core component (core/systems/movement.rs), not this ability's own resolved
+// params (it's a standing character effect keyed on zone presence, not a per-cast number).
+// amz_follow_epic overrides "follow_caster" (see ability/systems/execute.rs::spawn_dropped_zone)
+// to Follow the caster instead of the base Fixed drop.
 (
     id: "amz",
     display_name: "AMZ",
@@ -22,11 +24,19 @@
         "zone_radius": 90.0,
         "zone_duration": 6.0,
         "cooldown": 12.0,
+        "regen_percent_per_second": 0.0,
+        "follow_caster": 0.0,
     },
     zone: Some((
         zone_type: "amz",
         anchor: Fixed,
         blocks_projectiles: true,
     )),
-    talent_pool: [],
+    talent_pool: [
+        "amz_size_common",
+        "amz_duration_common",
+        "amz_regen_rare",
+        "amz_movespeed_rare",
+        "amz_follow_epic",
+    ],
 )

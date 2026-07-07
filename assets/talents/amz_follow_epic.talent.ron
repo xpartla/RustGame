@@ -1,0 +1,13 @@
+// "The zone gets attached to you as you move" (Mechanics, epic, unique). Overrides "follow_caster"
+// to 1.0 — see amz.ability.ron's doc comment and spawn_dropped_zone's anchor-selection logic.
+(
+    id: "amz_follow_epic",
+    display_name: "Bound Barrier",
+    ability_scope: Some("amz"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "follow_caster",
+        op: Override(1.0),
+    )),
+)

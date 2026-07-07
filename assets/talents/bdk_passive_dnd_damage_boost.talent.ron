@@ -1,0 +1,11 @@
+// BDK class passive (Mechanics: "Your damage is lowered by 60%, your damage inside D&D is
+// increased by 500%"). Effect: Behavior hook "bdk_dnd_damage_boost" (ability/hooks.rs), listed on
+// death_strike/heart_strike/blood_boil's talent-gated `hooks`. Net: ×0.4 outside D&D, ×2.4 inside.
+(
+    id: "bdk_passive_dnd_damage_boost",
+    display_name: "Blood Pact",
+    ability_scope: None,
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("bdk_dnd_damage_boost"),
+)

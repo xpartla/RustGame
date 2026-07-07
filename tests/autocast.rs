@@ -10,6 +10,7 @@ use rust_game::sim::Sim;
 #[test]
 fn blood_boil_auto_casts_on_cooldown_without_input_or_aim() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Blood Boil's own damage from the DK's pet
     sim.set_player_pos(Vec2::ZERO);
     sim.grant_ability("blood_boil");
     sim.step(1); // instance spawned (starts ready)
@@ -31,6 +32,7 @@ fn blood_boil_auto_casts_on_cooldown_without_input_or_aim() {
 #[test]
 fn needs_aim_ability_does_not_fire_without_facing() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Death Strike's own cast from the DK's pet
     let enemy = sim.spawn_grunt((1, 0)); // 32 units dead ahead, well inside Death Strike's range
     // Facing is left at zero (no mouse aim yet).
     sim.trigger_ability("death_strike");

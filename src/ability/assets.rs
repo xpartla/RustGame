@@ -84,6 +84,17 @@ pub enum ZoneAnchorKind {
     FollowCaster,
 }
 
+/// A minion an ability spawns (Phase 9.2 — Companion). The `summon` behavior returns a spawn
+/// request; the execute system builds the minion entity from this spec + the caster's `Faction`
+/// (mirrors the `ZoneSpec`/`dropped_zone` precedent). `mimic` is a real `AbilityId` — replaces the
+/// old `"mimicked_ability_id": 0.0` f32 hack (§8.5) — pointing at the minion's OWN attack ability
+/// (its own stats, not the caster's talent-modified ones; see `companion_attack.ability.ron`).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct SummonSpec {
+    /// The AbilityId the minion casts (auto-cast, with its own independent stats).
+    pub mimic: AbilityId,
+}
+
 /// Which entities from the behavior's CastOutcome an EffectSpec applies to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 pub enum EffectTarget {
@@ -118,6 +129,13 @@ pub struct AbilityDef {
     /// corresponding ActiveHook component (i.e. the talent that installs it is acquired).
     /// Not yet consumed — hook execution lands with the talent system (Phase 2).
     pub hooks: Vec<(HookPhase, HookId)>,
+    /// Base kit hooks that always run when registered — NOT gated by the caster's `ActiveHooks`
+    /// (Phase 9.2). Reserved for an ability's own innate identity (Heart Strike's missing-health
+    /// damage scaling, D&D's cross-ability buffs to Death Strike/Heart Strike), as distinct from
+    /// `hooks`' talent-conditional ones. `#[serde(default)]` so every pre-9.2 ability parses
+    /// unchanged (empty).
+    #[serde(default)]
+    pub innate_hooks: Vec<(HookPhase, HookId)>,
     /// Base numeric parameters consumed by the behavior and modifier stack.
     /// Keys are StatIds; values are the unmodified base values.
     pub base_params: HashMap<StatId, f32>,
@@ -133,6 +151,10 @@ pub struct AbilityDef {
     /// ability; `#[serde(default)]` so they parse unchanged.
     #[serde(default)]
     pub zone: Option<ZoneSpec>,
+    /// Minion-spawn spec for `summon` abilities (Phase 9.2 — Companion). `None` for every
+    /// non-summon ability; `#[serde(default)]` so they parse unchanged.
+    #[serde(default)]
+    pub summon: Option<SummonSpec>,
 }
 
 /// How an ability is triggered.
@@ -173,6 +195,16 @@ impl DefAsset for AbilityDef {
     const MANIFEST: &'static [(&'static str, &'static str)] = &[
         ("death_strike", "abilities/death_strike.ability.ron"),
         ("dnd", "abilities/dnd.ability.ron"),
+        // Companion (Phase 9.2) — the BDK's level-1 `summon` ability + its minion's own attack.
+        ("companion", "abilities/companion.ability.ron"),
+        ("companion_attack", "abilities/companion_attack.ability.ron"),
+        // Heart Strike (Phase 9.2) — BDK band-2/3 nearest_melee.
+        ("heart_strike", "abilities/heart_strike.ability.ron"),
+        // Abomination Limb (Phase 9.2) — BDK band-4/6 grip.
+        ("abomination_limb", "abilities/abomination_limb.ability.ron"),
+        // Purgatory (Phase 9.2) — BDK band-4/6 cheat-death (never fires through the normal
+        // TriggerAbilityEvent pipeline; see ability/systems/purgatory.rs).
+        ("purgatory", "abilities/purgatory.ability.ron"),
         // Phase 3 demonstrators. Fireblast/Frostbolt are bound to the Mage's Fire/Ice stances
         // in Phase 4; Scratch stays an unbound demonstrator until the Druid (later phase).
         ("fireblast", "abilities/fireblast.ability.ron"),
@@ -225,8 +257,13 @@ mod tests {
         assert_eq!(def.base_params.get("damage"), Some(&10.0));
         assert_eq!(def.base_params.get("range"), Some(&60.0));
         assert_eq!(def.base_params.get("leech_percent"), Some(&5.0));
-        assert_eq!(def.hooks.len(), 1);
-        assert_eq!(def.hooks[0], (HookPhase::Post, "bone_shield_on_kill".to_string()));
+        // bone_shield_on_kill is its own system (not per-cast HookRegistry-driven), so it's not
+        // listed here — see the RON file's own doc comment.
+        assert_eq!(def.hooks.len(), 2);
+        assert_eq!(def.hooks[0], (HookPhase::Pre, "bdk_dnd_damage_boost".to_string()));
+        assert_eq!(def.hooks[1], (HookPhase::Pre, "bdk_no_heal_cap".to_string()));
+        assert_eq!(def.base_params.get("bone_shield_kill_threshold"), Some(&5.0));
+        assert_eq!(def.base_params.get("bone_shield_amount"), Some(&20.0));
         assert!(def.talent_pool.contains(&"death_strike_leech_common".to_string()));
         // Phase 3 generic-effect list: physical damage to all hits + leech.
         assert_eq!(def.effects.len(), 2);
@@ -289,6 +326,9 @@ mod tests {
         let zone = def.zone.as_ref().unwrap();
         assert_eq!(zone.zone_type, "amz");
         assert!(zone.blocks_projectiles, "AMZ is a projectile-blocking zone");
+        assert_eq!(def.base_params.get("regen_percent_per_second"), Some(&0.0));
+        assert_eq!(def.base_params.get("follow_caster"), Some(&0.0));
+        assert_eq!(def.talent_pool.len(), 5);
     }
 
     #[test]
@@ -296,6 +336,51 @@ mod tests {
         // A regular ability parses with `zone: None` via serde(default).
         let def = load("assets/abilities/death_strike.ability.ron");
         assert!(def.zone.is_none());
+    }
+
+    #[test]
+    fn companion_parses_with_a_typed_summon_spec() {
+        let def = load("assets/abilities/companion.ability.ron");
+        assert_eq!(def.id, "companion");
+        assert_eq!(def.behavior, "summon");
+        assert_eq!(def.activation, Activation::AutoCast);
+        let spec = def.summon.as_ref().expect("companion defines a summon spec");
+        assert_eq!(spec.mimic, "companion_attack", "a real AbilityId, not the old f32 hack");
+        assert_eq!(def.base_params.get("companion_duration"), Some(&8.0));
+    }
+
+    #[test]
+    fn companion_attack_parses_as_its_own_independent_ability() {
+        let def = load("assets/abilities/companion_attack.ability.ron");
+        assert_eq!(def.id, "companion_attack");
+        assert_eq!(def.behavior, "melee_cone");
+        assert_eq!(def.base_params.get("damage"), Some(&6.0));
+        assert_ne!(
+            def.base_params.get("damage"),
+            load("assets/abilities/death_strike.ability.ron").base_params.get("damage"),
+            "the minion's own stats, not the player's talent-modified Death Strike"
+        );
+    }
+
+    #[test]
+    fn abomination_limb_parses_as_a_grip_behavior() {
+        let def = load("assets/abilities/abomination_limb.ability.ron");
+        assert_eq!(def.id, "abomination_limb");
+        assert_eq!(def.behavior, "grip");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert_eq!(def.base_params.get("range"), Some(&150.0));
+        assert_eq!(def.base_params.get("ranged_only"), Some(&0.0));
+        assert!(def.effects.is_empty(), "grip has no damage/heal/status effects");
+    }
+
+    #[test]
+    fn purgatory_parses_with_cheat_death_params() {
+        let def = load("assets/abilities/purgatory.ability.ron");
+        assert_eq!(def.id, "purgatory");
+        assert_eq!(def.activation, Activation::Input, "never auto-cast — reacted to, not triggered");
+        assert_eq!(def.base_params.get("restore_percent"), Some(&5.0));
+        assert_eq!(def.base_params.get("immunity_secs"), Some(&5.0));
+        assert_eq!(def.base_params.get("cooldown"), Some(&45.0));
     }
 
     #[test]

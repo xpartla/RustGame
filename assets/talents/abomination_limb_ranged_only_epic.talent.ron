@@ -1,0 +1,13 @@
+// "Grip only ranged enemies" (Mechanics, epic unique). Overrides the "ranged_only" param to 1.0,
+// which the grip behavior reads to filter candidates to AiBehavior::RangedCaster only.
+(
+    id: "abomination_limb_ranged_only_epic",
+    display_name: "Selective Grasp",
+    ability_scope: Some("abomination_limb"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "ranged_only",
+        op: Override(1.0),
+    )),
+)

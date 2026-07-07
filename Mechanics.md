@@ -16,12 +16,26 @@
 
 High durability, Leech, Increase damage as health lowers, melee, strong AoE, control
 
+_Phase 9.2 (implemented): the full kit below is live for the default (only) hero. Per-hero
+`base_stats` now applies too — the DK plays at its own 200 hp / 35 move speed, not the prototype's
+shared player constants (architecture-plan §8.5, now empty)._
+
 * Blood boil \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Periodic AoE, circle around character, leech  
     * (common) Increase damage by X%  
+      * _Phase 9.2 (implemented): `blood_boil_damage_common`, Stack(3)._  
     * (common) Increase range by X%  
+      * _Phase 9.2 (implemented): `blood_boil_range_common`, Stack(3)._  
     * (rare, unique\[3\]) Blood boil deals additional X% of damage to enemies based on their current health for Y seconds  
+      * _Phase 9.2 (implemented as a simplification — `blood_boil_health_scaling_rare`): applies the
+        existing "bleed" physical DoT status to every hit, instead of a true percent-of-current-health
+        DoT (no such primitive exists in the status system yet). A targeted execute.rs special-case,
+        not a generalized mechanic — Post hooks are deliberately read-only and can't emit a follow-up
+        ApplyStatusEvent._  
     * (epic, unique) If an enemy affected by blood boil DoT dies, the DoT gets transferred to X additional enemies within Y range  
+      * _Deferred (Phase 9.2): needs a new "on-death status transfer" mechanic (watch a death for a
+        blood-boil-sourced DoT, reapply to nearby enemies) that doesn't fit any existing hook/behavior
+        shape. No talent RON references it, so it stays invisible to the offer generator._  
     * (rare, unique) Blood boil has double range when cast inside D\&D  
       * _Phase 6 (implemented): a code-driven Pre hook (`blood_boil_dnd_range`) doubles Blood Boil's radius while the caster stands in the D\&D zone — the first zone-conditioned ability hook. Kept out of the offerable talent pool for now; validated by tests/zone.rs._  
 * Death Strike \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
@@ -29,48 +43,96 @@ High durability, Leech, Increase damage as health lowers, melee, strong AoE, con
     * (common) Increase leech by X%  
     * (common) Increase range by X%  
     * (epic, unique) After Death Strike kills X enemies, gain bone shield that blocks 1 next attack / projectile  
-      * _Phase 9.1 (implemented): the underlying primitive — a generic `Absorb` damage-absorbing pool, drained by `apply_damage` before `Health`. The bone-shield kill-counter + grant (its Post-hook plumbing has existed since Phase 6) is still Phase 9.2 content._
+      * _Phase 9.2 (implemented as a simplification): `ability::systems::bone_shield::bone_shield_on_kill`
+        counts the killer's kills from **any** source, not specifically Death-Strike-attributed ones —
+        `DamageEvent` carries no ability provenance to distinguish them. Grants the existing `Absorb`
+        pool (Phase 9.1) via `GainShieldEvent` once the count wraps past the threshold._
 * Heart Strike \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Melee, hit X nearest enemies within Y range, dealing Z damage,, the lower your health \- higher the damage  
+    * _Phase 9.2 (implemented): a new `nearest_melee` behavior (up to `target_count` nearest within
+      `range`); the missing-health damage scaling is an **innate** hook (always active, not a talent —
+      `AbilityDef.innate_hooks`), up to +100% at 0 hp._  
     * (common) Hit \+1 more enemies  
+      * _Phase 9.2 (implemented): `heart_strike_extra_target_common`, Stack(2)._  
     * (common) Increase range by X  
+      * _Phase 9.2 (implemented): `heart_strike_range_common`, Stack(3)._  
     * (epic) Deal additional X% damage if you are under 25% health  
+      * _Phase 9.2 (implemented): `heart_strike_execute_epic`, +50% damage, Exclusive._  
 * Abomination limb \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
   * Periodically grip enemy from X radius  
-    * _Phase 9.1 (implemented): the underlying primitive — `ForcedImpulse` (a one-shot velocity
-      override respecting wall collision), with a `toward_point` constructor for exactly this
-      pull-toward-caster shape. The periodic-cast wiring is still Phase 9.2 content._
+    * _Phase 9.2 (implemented): a new `grip` behavior wraps the Phase-9.1 `ForcedImpulse` primitive
+      (its `toward_point` constructor) into a periodic auto-cast — pure crowd control, no damage._  
     * (common) Increase grip range by X  
+      * _Phase 9.2 (implemented): `abomination_limb_range_common`, Stack(3)._  
     * (rare) Grip additional X targets  
+      * _Phase 9.2 (implemented): `abomination_limb_targets_rare`, Stack(2)._  
     * (rare, unique) After gripping an enemy gets stunned for X seconds  
+      * _Phase 9.2 (implemented): `abomination_limb_stun_rare` — a targeted execute.rs special-case
+        (same reasoning as Blood Boil's health-scaling talent above)._  
     * (epic, unique) Grip only ranged enemies  
+      * _Phase 9.2 (implemented): `abomination_limb_ranged_only_epic` — `Target` gained an `is_ranged`
+        field (from the actor's `AiBehavior`) for this filter._  
 * D\&D \- Special Attack (X second cooldown) (Unlocked at level 1\)  
   * Periodically drop an area where enemies take increased Death Strike damage and Heart Strike hits additional target \+ you heal X% more when standing inside  
-    * _Phase 6 (implemented): D\&D drops a persistent "death_and_decay" zone (RMB Special). The owner-regen effect is live (heals % max health per second while inside). The cross-ability buffs (increased Death Strike damage / +1 Heart Strike target inside) are deferred to the BDK content pass — they need Heart Strike + a Death-Strike zone hook._  
+    * _Phase 6 (implemented): D\&D drops a persistent "death_and_decay" zone (RMB Special). The owner-regen effect is live (heals % max health per second while inside). Still deferred past Phase 9.2: this bullet's own BASE cross-ability buffs (Death Strike/Heart Strike get stronger by simply standing in D&D, no talent required) — 9.2 landed the zone-conditioned Blood Boil range hook (Phase 6) and the separate `bdk_passive_dnd_damage_boost` **talent** (a different mechanic — a talent-gated damage tradeoff, not this baseline zone buff), but not this specific baseline effect. Needs a Heart-Strike-in-zone target-count hook + a Death-Strike-in-zone damage hook, same shape as the existing `blood_boil_dnd_range` one._  
 * Purgatory (cheat death) \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
-  * _Phase 9.1 (implemented): the underlying primitive — the same `Absorb` pool as bone shield can
-    model a timed damage immunity; the cheat-death (restore to 5%) interceptor and the ability
-    itself are still Phase 9.2 content._
+  * _Phase 9.2 (implemented): a new core `Invulnerable(Timer)` component — `apply_damage` discards a
+    hit entirely while present, before the Absorb shield even drains. A new
+    `ability::systems::purgatory::purgatory_cheat_death` system (`CombatSet::Apply`, after
+    `apply_damage`) reads `Health.current` **after** a lethal hit (rather than predicting lethality
+    beforehand) and restores/grants immunity on a ready owned instance. Purgatory's own AbilityDef
+    never fires through the normal cast pipeline — it exists only so this system can read its
+    talent-modified resolved params and share `AbilityCooldown`._  
   * Restore to 5% health, immune to damage for 5 seconds, long CD (rare, unique)  
     * (rare) Increase restored health by X%  
+      * _Phase 9.2 (implemented): `purgatory_restore_rare`, +2 percentage points per stack, Stack(3)._  
     * (epic, \[3\]) Increase damage immunity by X seconds  
+      * _Phase 9.2 (implemented): `purgatory_immunity_epic`, +2s per stack, Stack(3)._  
     * (rare) lower cooldown by X seconds  
+      * _Phase 9.2 (implemented): `purgatory_cooldown_rare`, -10s per stack, Stack(2)._  
 * Companion \- passive (permanent, no cooldown) (Unlocked at level 1\)  
   * Each X seconds spawn a companion for Y seconds that is going to mimic death strike  
+    * _Phase 9.2 (implemented): a new `summon` behavior spawns a `Minion` entity owning its own
+      `AbilityInstance` (mimicking a standalone `companion_attack` ability, Death-Strike-shaped). The
+      faction-aware ability engine needed zero changes for the minion to act as an independent
+      attacker; it seeks the nearest hostile with its own straight-line logic (the shared FlowField
+      is built from the player outward and is the wrong direction for a minion chasing enemies)._  
 * AMZ \- passive (X second cooldown) (Unlocked randomly at level 4/5/6)  
   * Periodically drop a zone around character that blocks projectiles (rare) (if enemies emit projectiles from inside the zone it has no effect \- it acts as a barrier)  
-    * _Phase 6 (implemented): base AMZ drops a fixed projectile-blocking zone that destroys enemy bolts entering it, except those emitted from inside (the barrier exception). The (epic) "attached to you as you move" variant is deferred — but the follow-anchor mechanism it needs is built + tested._  
+    * _Phase 6 (implemented): base AMZ drops a fixed projectile-blocking zone that destroys enemy bolts entering it, except those emitted from inside (the barrier exception)._  
     * (common) Increase the size of the zone by X%  
+      * _Phase 9.2 (implemented): `amz_size_common`, Stack(3)._  
     * (rare) Increase your movement speed by X% when inside the zone  
+      * _Phase 9.2 (implemented): `amz_movespeed_rare` — a new, independent `ZoneSpeedModifier` core
+        component (kept separate from the status-owned `MoveSpeedModifier` to avoid a two-writer
+        race), +20% while standing inside._  
     * (rare) You regenerate X% health each second you are inside the zone  
+      * _Phase 9.2 (implemented): `amz_regen_rare` reuses the existing D&D-style occupant regen
+        (`ZoneEffects.regen_fraction`) purely by overriding AMZ's own params — zero new zone-tick code._  
     * (common) Increase the duration of the zone by Y seconds  
+      * _Phase 9.2 (implemented): `amz_duration_common`, Stack(3)._  
     * (epic, unique) The zone gets attached to you as you move  
+      * _Phase 9.2 (implemented): `amz_follow_epic` overrides a new `follow_caster` param that
+        `spawn_dropped_zone` checks ahead of the ability's own static anchor, forcing
+        `ZoneAnchor::Follow` — the follow-anchor mechanism itself was built + tested back in Phase 6._  
 * Passive Talents  
   * (epic, unique) You can no longer heal above 35% max health, your leech is increased by 50%  
+    * _Phase 9.2 (implemented): `bdk_passive_no_heal_cap` — the leech half is a Pre hook on Death
+      Strike/Blood Boil; the cap half is a separate always-running clamp
+      (`talent::systems::passives::enforce_heal_cap`), since it must catch every heal source
+      uniformly, not just one ability's cast._  
   * (epic, unique) Your damage is lowered by 60%, your damage inside D\&D is increased by 500%  
+    * _Phase 9.2 (implemented): `bdk_passive_dnd_damage_boost`, net ×2.4 inside D&D, ×0.4 outside._  
   * (rare, unique) 20% overkill damage is leeched  
+    * _Phase 9.2 (implemented): `bdk_passive_overkill_leech` heals the killer for 20% of a kill's
+      negative "overkill" Health.current._  
   * (common) Increase health by X% and healing taken by Y%  
-  * (rare, unique) Blood boil automatically spawns D\&D zone
+    * _Phase 9.2 (implemented): `bdk_passive_health_and_healing`, +10% max health / +15% healing
+      taken per stack, Stack(3) — recomputed from a new `BaseHealth` reference each time so
+      re-acquiring a stack never compounds against an already-boosted value._  
+  * (rare, unique) Blood boil automatically spawns D\&D zone  
+    * _Phase 9.2 (implemented): `bdk_passive_blood_boil_spawns_dnd` — a targeted execute.rs
+      special-case, same reasoning as the health-scaling/stun talents above._
 
 # Druid
 

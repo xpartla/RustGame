@@ -126,6 +126,7 @@ fn pierced_projectile_passes_through_and_hits_one_more_enemy() {
 #[test]
 fn scratch_cone_applies_bleed_to_all_hits() {
     let mut sim = Sim::new_arena(42);
+    sim.disable_companion(); // Phase 9.2: isolate Scratch's own damage from the DK's pet
     sim.set_player_pos(Vec2::ZERO);
     sim.grant_ability("scratch");
     sim.step(1);

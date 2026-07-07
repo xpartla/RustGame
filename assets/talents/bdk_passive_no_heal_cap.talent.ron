@@ -1,0 +1,13 @@
+// "You can no longer heal above 35% max health, your leech is increased by 50%" (Mechanics, epic,
+// unique). Split across two consumers (a talent effect is one Modifier OR one Behavior, not both):
+// the leech half is the `bdk_no_heal_cap` Pre hook on death_strike/blood_boil; the cap-enforcement
+// half is talent::systems::passives::enforce_heal_cap (must clamp every heal source, not just one
+// ability's cast).
+(
+    id: "bdk_passive_no_heal_cap",
+    display_name: "Sanguine Thirst",
+    ability_scope: None,
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("bdk_no_heal_cap"),
+)

@@ -1,0 +1,29 @@
+// WORKING NAME: "Abomination Limb"
+// Class: Blood Death Knight
+// Slot: passive (auto-cast on cooldown)
+// Unlock: randomly at level 4/5/6 (band ability, alongside Purgatory and AMZ).
+//
+// Behavior: grip (Phase 9.2) — periodically pulls up to "target_count" of the nearest enemies
+// within "range" toward the caster (a ForcedImpulse per target). Pure crowd control, no damage.
+(
+    id: "abomination_limb",
+    display_name: "Abomination Limb",
+    unlock_schedule: Band(4, 6),
+    activation: AutoCast,
+    behavior: "grip",
+    hooks: [],
+    base_params: {
+        "range": 150.0,
+        "target_count": 1.0,
+        "grip_speed": 120.0,
+        "grip_duration": 0.4,
+        "ranged_only": 0.0,
+        "cooldown": 6.0,
+    },
+    talent_pool: [
+        "abomination_limb_range_common",
+        "abomination_limb_targets_rare",
+        "abomination_limb_stun_rare",
+        "abomination_limb_ranged_only_epic",
+    ],
+)

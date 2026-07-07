@@ -1,0 +1,12 @@
+// "Increase your movement speed while inside the zone" (Mechanics, rare). Installs the
+// "amz_movespeed" flag (checked directly, not through HookRegistry — a standing character effect
+// keyed on zone presence, not a per-cast resolved param) — see
+// core/systems/movement.rs::resolve_zone_speed_bonus.
+(
+    id: "amz_movespeed_rare",
+    display_name: "Swift Sanctuary",
+    ability_scope: Some("amz"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("amz_movespeed"),
+)

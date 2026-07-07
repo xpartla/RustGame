@@ -20,7 +20,7 @@
 
 use bevy::prelude::*;
 use crate::talent::assets::{TalentDef, TalentEffect, TalentId, TalentLibrary};
-use crate::talent::components::{AcquiredTalents, ActiveHooks};
+use crate::talent::components::{AcquiredTalents, ActiveHooks, BoneShieldProgress};
 use crate::player::components::Player;
 
 #[derive(Event, Debug)]
@@ -50,7 +50,7 @@ pub fn attach_talent_components(
     for entity in &players {
         commands
             .entity(entity)
-            .insert((AcquiredTalents::default(), ActiveHooks::default()));
+            .insert((AcquiredTalents::default(), ActiveHooks::default(), BoneShieldProgress::default()));
     }
 }
 

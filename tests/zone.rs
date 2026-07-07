@@ -120,15 +120,15 @@ fn consecrated_ground_dot_damages_opposing_faction_only() {
     assert_eq!(sim.enemy_health(outside), Some(1000.0), "an enemy outside took nothing");
     // The zone is Friendly (player-owned) → the player (Friendly) inside is unharmed by its own DoT
     // (and the stunned enemies never reached the player), so it stays at full health.
-    assert_eq!(sim.player_health(), 100.0, "the owner's own zone never damages the owner's side");
+    assert_eq!(sim.player_health(), 200.0, "the owner's own zone never damages the owner's side (Phase 9.2 base_stats: 200 max)");
 }
 
 #[test]
 fn dnd_regen_heals_owner_inside() {
     let mut sim = Sim::new_arena(4);
     sim.set_player_pos(Vec2::ZERO);
-    sim.set_player_health(50.0); // below max (100) so regen is visible
-    sim.trigger_ability("dnd"); // D&D at origin: regen 0.5%/s of max (100) = 0.5 hp per tick
+    sim.set_player_health(50.0); // well below max (200 — Phase 9.2 base_stats) so regen is visible
+    sim.trigger_ability("dnd"); // D&D at origin: regen 0.5%/s of max (200) = 1.0 hp per tick
     sim.step(70); // one tick while standing inside
     assert!(sim.player_in_zone("death_and_decay"));
     let healed = sim.player_health();

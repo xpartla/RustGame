@@ -1,0 +1,12 @@
+// "Increase damage by X%" (Mechanics, common).
+(
+    id: "blood_boil_damage_common",
+    display_name: "Boiling Rage",
+    ability_scope: Some("blood_boil"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.20),
+    )),
+)

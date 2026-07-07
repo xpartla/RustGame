@@ -8,6 +8,7 @@
 //       tick_zone_lifetimes    — reap expired zones (so a dead zone can't grant presence)
 //       move_anchored_zones    — Follow-anchored zones catch up to their owner
 //       build_player_zone_presence — rebuild PlayerZonePresence from the surviving zones
+//       resolve_zone_speed_bonus  — AMZ's move-speed talent (Phase 9.2), reacts to that snapshot
 //   - (6D/6E add zone_tick_effects + block_projectiles_in_zones in CombatSet::Damage.)
 //
 // All systems run in InState(GameState::InRun). Placing maintenance after `world_to_grid`
@@ -24,6 +25,7 @@ use crate::zone::components::PlayerZonePresence;
 use crate::zone::systems::block::block_projectiles_in_zones;
 use crate::zone::systems::lifetime::{move_anchored_zones, tick_zone_lifetimes};
 use crate::zone::systems::presence::build_player_zone_presence;
+use crate::zone::systems::speed_bonus::resolve_zone_speed_bonus;
 use crate::zone::systems::tick::zone_tick_effects;
 
 pub struct ZonePlugin;
@@ -36,7 +38,7 @@ impl Plugin for ZonePlugin {
             (
                 // Zone maintenance at the end of MovementSet::Integrate: reap expired, follow the
                 // owner, then rebuild the presence snapshot — all before CombatSet reads it.
-                (tick_zone_lifetimes, move_anchored_zones, build_player_zone_presence)
+                (tick_zone_lifetimes, move_anchored_zones, build_player_zone_presence, resolve_zone_speed_bonus)
                     .chain()
                     .in_set(MovementSet::Integrate)
                     .after(world_to_grid),

@@ -104,6 +104,35 @@ impl DefAsset for TalentDef {
         ("death_strike_damage_common", "talents/death_strike_damage_common.talent.ron"),
         ("death_strike_bone_shield_epic", "talents/death_strike_bone_shield_epic.talent.ron"),
         ("blood_boil_dnd_range_rare", "talents/blood_boil_dnd_range_rare.talent.ron"),
+        // Heart Strike (Phase 9.2).
+        ("heart_strike_extra_target_common", "talents/heart_strike_extra_target_common.talent.ron"),
+        ("heart_strike_range_common", "talents/heart_strike_range_common.talent.ron"),
+        ("heart_strike_execute_epic", "talents/heart_strike_execute_epic.talent.ron"),
+        // Blood Boil (Phase 9.2).
+        ("blood_boil_damage_common", "talents/blood_boil_damage_common.talent.ron"),
+        ("blood_boil_range_common", "talents/blood_boil_range_common.talent.ron"),
+        ("blood_boil_health_scaling_rare", "talents/blood_boil_health_scaling_rare.talent.ron"),
+        // BDK class passives (Phase 9.2).
+        ("bdk_passive_dnd_damage_boost", "talents/bdk_passive_dnd_damage_boost.talent.ron"),
+        ("bdk_passive_blood_boil_spawns_dnd", "talents/bdk_passive_blood_boil_spawns_dnd.talent.ron"),
+        ("bdk_passive_no_heal_cap", "talents/bdk_passive_no_heal_cap.talent.ron"),
+        ("bdk_passive_overkill_leech", "talents/bdk_passive_overkill_leech.talent.ron"),
+        ("bdk_passive_health_and_healing", "talents/bdk_passive_health_and_healing.talent.ron"),
+        // Abomination Limb (Phase 9.2).
+        ("abomination_limb_range_common", "talents/abomination_limb_range_common.talent.ron"),
+        ("abomination_limb_targets_rare", "talents/abomination_limb_targets_rare.talent.ron"),
+        ("abomination_limb_stun_rare", "talents/abomination_limb_stun_rare.talent.ron"),
+        ("abomination_limb_ranged_only_epic", "talents/abomination_limb_ranged_only_epic.talent.ron"),
+        // Purgatory (Phase 9.2).
+        ("purgatory_restore_rare", "talents/purgatory_restore_rare.talent.ron"),
+        ("purgatory_immunity_epic", "talents/purgatory_immunity_epic.talent.ron"),
+        ("purgatory_cooldown_rare", "talents/purgatory_cooldown_rare.talent.ron"),
+        // AMZ (Phase 9.2).
+        ("amz_size_common", "talents/amz_size_common.talent.ron"),
+        ("amz_duration_common", "talents/amz_duration_common.talent.ron"),
+        ("amz_regen_rare", "talents/amz_regen_rare.talent.ron"),
+        ("amz_movespeed_rare", "talents/amz_movespeed_rare.talent.ron"),
+        ("amz_follow_epic", "talents/amz_follow_epic.talent.ron"),
     ];
 }
 
@@ -161,5 +190,58 @@ mod tests {
         let def = load("assets/talents/blood_boil_dnd_range_rare.talent.ron");
         assert_eq!(def.rarity, TalentRarity::Rare);
         assert_eq!(def.ability_scope.as_deref(), Some("blood_boil"));
+    }
+
+    #[test]
+    fn amz_regen_rare_overrides_regen_percent_per_second() {
+        let def = load("assets/talents/amz_regen_rare.talent.ron");
+        match def.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Override(v) }) => {
+                assert_eq!(stat, "regen_percent_per_second");
+                assert_eq!(v, 0.5);
+            }
+            _ => panic!("expected an Override modifier"),
+        }
+    }
+
+    #[test]
+    fn amz_follow_epic_overrides_follow_caster() {
+        let def = load("assets/talents/amz_follow_epic.talent.ron");
+        assert_eq!(def.rarity, TalentRarity::Epic);
+        match def.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Override(v) }) => {
+                assert_eq!(stat, "follow_caster");
+                assert_eq!(v, 1.0);
+            }
+            _ => panic!("expected an Override modifier"),
+        }
+    }
+
+    #[test]
+    fn amz_movespeed_rare_is_a_behavior_flag() {
+        let def = load("assets/talents/amz_movespeed_rare.talent.ron");
+        match def.effect {
+            TalentEffect::Behavior(ref hook) => assert_eq!(hook, "amz_movespeed"),
+            _ => panic!("expected a Behavior effect"),
+        }
+    }
+
+    #[test]
+    fn bdk_class_passives_parse_with_expected_effects() {
+        let no_heal_cap = load("assets/talents/bdk_passive_no_heal_cap.talent.ron");
+        assert_eq!(no_heal_cap.ability_scope, None, "class-wide passive");
+        assert!(matches!(no_heal_cap.effect, TalentEffect::Behavior(ref h) if h == "bdk_no_heal_cap"));
+
+        let overkill = load("assets/talents/bdk_passive_overkill_leech.talent.ron");
+        assert_eq!(overkill.rarity, TalentRarity::Rare);
+        assert!(matches!(overkill.effect, TalentEffect::Behavior(ref h) if h == "bdk_overkill_leech"));
+
+        let health_healing = load("assets/talents/bdk_passive_health_and_healing.talent.ron");
+        assert_eq!(health_healing.rarity, TalentRarity::Common);
+        assert!(matches!(health_healing.uniqueness, UniquenessConstraint::Stack(3)));
+        assert!(matches!(health_healing.effect, TalentEffect::Behavior(ref h) if h == "bdk_health_and_healing"));
+
+        let spawns_dnd = load("assets/talents/bdk_passive_blood_boil_spawns_dnd.talent.ron");
+        assert!(matches!(spawns_dnd.effect, TalentEffect::Behavior(ref h) if h == "bdk_blood_boil_spawns_dnd"));
     }
 }
