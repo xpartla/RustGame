@@ -1,0 +1,12 @@
+// "Increase range by X" (Mechanics, common) — the leap search range. Stack(3).
+(
+    id: "ferocious_bite_range_common",
+    display_name: "Long Pounce",
+    ability_scope: Some("ferocious_bite"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "leap_range",
+        op: Add(25.0),
+    )),
+)

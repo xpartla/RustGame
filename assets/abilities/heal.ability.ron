@@ -1,0 +1,31 @@
+// WORKING NAME: "Heal"
+// Class: Druid (Human) — special attack, channeled while moving. Level 1.
+//
+// Behavior: channel_while_moving (reused from Phase 9.3's Flash of Light) — heals the caster for
+// "heal_percent"% of max health on completion. Talent-gated extras (all resolved by
+// ability::systems::channel::tick_channels):
+//   - heal_bleed_bonus_rare: heal_amount scales up by "bleed_bonus_percent"% per bleeding enemy
+//     within "bleed_bonus_range" of the caster, counted at completion.
+//   - heal_grants_enhanced_rare: grants 1 hero::components::Charges on completion.
+//   - heal_heals_ents_rare: every owned Minion (the Druid's Ent) also receives the same flat heal.
+(
+    id: "heal",
+    display_name: "Heal",
+    unlock_schedule: Level1,
+    behavior: "channel_while_moving",
+    hooks: [],
+    base_params: {
+        "cast_time": 1.0,
+        "heal_percent": 25.0,
+        "cooldown": 7.0,
+        // Inert (0) unless heal_bleed_bonus_rare is taken.
+        "bleed_bonus_percent": 15.0,
+        "bleed_bonus_range": 150.0,
+    },
+    talent_pool: [
+        "heal_bleed_bonus_rare",
+        "heal_grants_enhanced_rare",
+        "heal_heals_ents_rare",
+        "heal_cast_time_common",
+    ],
+)

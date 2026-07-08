@@ -159,6 +159,35 @@ impl DefAsset for TalentDef {
         ("smite_extra_target_rare", "talents/smite_extra_target_rare.talent.ron"),
         ("smite_spawns_consecrated_rare", "talents/smite_spawns_consecrated_rare.talent.ron"),
         ("smite_mark_radius_epic", "talents/smite_mark_radius_epic.talent.ron"),
+        // Scratch (Phase 9.4).
+        ("scratch_damage_common", "talents/scratch_damage_common.talent.ron"),
+        ("scratch_size_common", "talents/scratch_size_common.talent.ron"),
+        ("scratch_bleed_closest_common", "talents/scratch_bleed_closest_common.talent.ron"),
+        ("scratch_root_bonus_rare", "talents/scratch_root_bonus_rare.talent.ron"),
+        ("scratch_bleed_bonus_rare", "talents/scratch_bleed_bonus_rare.talent.ron"),
+        // Ferocious Bite (Phase 9.4).
+        ("ferocious_bite_damage_common", "talents/ferocious_bite_damage_common.talent.ron"),
+        ("ferocious_bite_range_common", "talents/ferocious_bite_range_common.talent.ron"),
+        // Primal Pounce (Phase 9.4).
+        ("primal_pounce_range_common", "talents/primal_pounce_range_common.talent.ron"),
+        ("primal_pounce_root_triple_rare", "talents/primal_pounce_root_triple_rare.talent.ron"),
+        ("primal_pounce_bloom_flower_rare", "talents/primal_pounce_bloom_flower_rare.talent.ron"),
+        // Roots (Phase 9.4).
+        ("roots_damage_common", "talents/roots_damage_common.talent.ron"),
+        ("roots_pierce_rare", "talents/roots_pierce_rare.talent.ron"),
+        // Heal (Phase 9.4).
+        ("heal_bleed_bonus_rare", "talents/heal_bleed_bonus_rare.talent.ron"),
+        ("heal_grants_enhanced_rare", "talents/heal_grants_enhanced_rare.talent.ron"),
+        ("heal_heals_ents_rare", "talents/heal_heals_ents_rare.talent.ron"),
+        ("heal_cast_time_common", "talents/heal_cast_time_common.talent.ron"),
+        // Tree Conduit (Phase 9.4).
+        ("tree_conduit_radius_common", "talents/tree_conduit_radius_common.talent.ron"),
+        ("tree_conduit_duration_rare", "talents/tree_conduit_duration_rare.talent.ron"),
+        // Bloom (Phase 9.4).
+        ("bloom_extra_charge_rare", "talents/bloom_extra_charge_rare.talent.ron"),
+        ("bloom_movespeed_common", "talents/bloom_movespeed_common.talent.ron"),
+        // Spawn Ent (Phase 9.4).
+        ("spawn_ent_cooldown_common", "talents/spawn_ent_cooldown_common.talent.ron"),
     ];
 }
 
@@ -349,5 +378,69 @@ mod tests {
 
         let mark = load("assets/talents/smite_mark_radius_epic.talent.ron");
         assert!(matches!(mark.effect, TalentEffect::Behavior(ref h) if h == "smite_mark_radius"));
+    }
+
+    /// Every Druid talent (Phase 9.4) parses through the same RON path the AssetLoader uses —
+    /// mirrors `all_paladin_talents_parse` above.
+    #[test]
+    fn all_druid_talents_parse() {
+        let ids = [
+            "scratch_damage_common",
+            "scratch_size_common",
+            "scratch_bleed_closest_common",
+            "scratch_root_bonus_rare",
+            "scratch_bleed_bonus_rare",
+            "ferocious_bite_damage_common",
+            "ferocious_bite_range_common",
+            "primal_pounce_range_common",
+            "primal_pounce_root_triple_rare",
+            "primal_pounce_bloom_flower_rare",
+            "roots_damage_common",
+            "roots_pierce_rare",
+            "heal_bleed_bonus_rare",
+            "heal_grants_enhanced_rare",
+            "heal_heals_ents_rare",
+            "heal_cast_time_common",
+            "tree_conduit_radius_common",
+            "tree_conduit_duration_rare",
+            "bloom_extra_charge_rare",
+            "bloom_movespeed_common",
+            "spawn_ent_cooldown_common",
+        ];
+        for id in ids {
+            let def = load(&format!("assets/talents/{id}.talent.ron"));
+            assert_eq!(def.id, id);
+        }
+    }
+
+    #[test]
+    fn scratch_bleed_closest_and_root_bonus_override_their_flags() {
+        let closest = load("assets/talents/scratch_bleed_closest_common.talent.ron");
+        match closest.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Override(v) }) => {
+                assert_eq!(stat, "bleed_target_count");
+                assert_eq!(v, 1.0);
+            }
+            _ => panic!("expected an Override modifier on bleed_target_count"),
+        }
+
+        let root_bonus = load("assets/talents/scratch_root_bonus_rare.talent.ron");
+        assert_eq!(root_bonus.ability_scope.as_deref(), Some("scratch"));
+        match root_bonus.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, .. }) => assert_eq!(stat, "root_bonus_damage_percent"),
+            _ => panic!("expected a Modifier effect"),
+        }
+    }
+
+    #[test]
+    fn primal_pounce_and_heal_behavior_talents_install_the_expected_flags() {
+        let triple = load("assets/talents/primal_pounce_root_triple_rare.talent.ron");
+        assert!(matches!(triple.effect, TalentEffect::Behavior(ref h) if h == "primal_pounce_root_triple"));
+
+        let heals_ents = load("assets/talents/heal_heals_ents_rare.talent.ron");
+        assert!(matches!(heals_ents.effect, TalentEffect::Behavior(ref h) if h == "heal_heals_ents"));
+
+        let grants_enhanced = load("assets/talents/heal_grants_enhanced_rare.talent.ron");
+        assert!(matches!(grants_enhanced.effect, TalentEffect::Behavior(ref h) if h == "heal_grants_enhanced"));
     }
 }

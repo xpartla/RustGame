@@ -1,10 +1,15 @@
 // WORKING NAME: "Scratch"
-// Class: Druid (animal) — Basic attack. NOT yet class/stance-bound (Phase 4).
-// Unlock: Level 1 (in the eventual Druid kit).
+// Class: Druid (Animal) — Basic attack. Level 1; also the ability `cast_on_enter` fires when
+// swapping INTO Animal form ("change from human to animal form and cast Scratch").
 //
-// Behavior: melee_cone — hits every enemy in a frontal cone for Physical damage and applies bleed
-// (physical DoT). Added in Phase 3 to demonstrate a cone that applies a status to all hits (the
-// "enhanced Scratch applies bleed" baseline; talent variants arrive with the Druid, Phase 4).
+// Behavior: melee_cone — hits every enemy in a frontal cone for Physical damage (declarative
+// `effects`, below). Bleed is NOT part of the unconditional effects list (Phase 9.4 correction to
+// the Phase-3 demonstrator, which applied it on every hit): per Mechanics, "Enhanced — Scratch
+// applies a bleed on all enemies hit" is the Enhanced-attack state's own consequence, not Scratch's
+// baseline — so it's a targeted special-case in execute.rs that spends one `hero::components::
+// Charges` (if any) and applies bleed to the `bleed_target_count` nearest hits. The root/bleeding
+// bonus-damage params below are also read there (per-target conditionals the declarative `effects`
+// list can't express — same shape as Spinning Hammer's holy-mark top-up).
 (
     id: "scratch",
     display_name: "Scratch",
@@ -16,10 +21,20 @@
         "range": 70.0,
         "half_angle": 0.9,
         "cooldown": 1.0,
+        // Enhanced-state bleed spread — default "unlimited" (every hit); the common talent narrows it.
+        "bleed_target_count": 99.0,
+        // Both inert (0) unless their talent is taken.
+        "root_bonus_damage_percent": 0.0,
+        "bleeding_bonus_damage_percent": 0.0,
     },
-    talent_pool: [],
+    talent_pool: [
+        "scratch_damage_common",
+        "scratch_size_common",
+        "scratch_bleed_closest_common",
+        "scratch_root_bonus_rare",
+        "scratch_bleed_bonus_rare",
+    ],
     effects: [
         Damage(amount: "damage", tags: [Physical], target: AllHits),
-        ApplyStatus(status: "bleed", stacks: 1, target: AllHits),
     ],
 )

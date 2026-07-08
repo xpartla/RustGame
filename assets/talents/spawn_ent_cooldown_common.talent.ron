@@ -1,0 +1,12 @@
+// "Reduce cooldown by X" (Mechanics, common). Stack(3).
+(
+    id: "spawn_ent_cooldown_common",
+    display_name: "Hasty Growth",
+    ability_scope: Some("spawn_ent"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "cooldown",
+        op: MultiplyAdd(-0.15),
+    )),
+)

@@ -1,3 +1,4 @@
+pub mod enhanced;
 pub mod input_slot;
 pub mod resource;
 pub mod stance;

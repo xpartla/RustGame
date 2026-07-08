@@ -1,0 +1,11 @@
+// "Create a Bloom flower at the point you jumped from" (Mechanics, rare, unique). Installs the
+// "primal_pounce_bloom_flower" ActiveHooks flag, read in ability/systems/execute.rs to drop a
+// PickUpKind::Enhance pickup at the cast-time origin (reuses Bloom's own primitive).
+(
+    id: "primal_pounce_bloom_flower_rare",
+    display_name: "Blooming Pounce",
+    ability_scope: Some("primal_pounce"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("primal_pounce_bloom_flower"),
+)

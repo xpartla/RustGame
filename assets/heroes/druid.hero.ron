@@ -1,0 +1,53 @@
+// WORKING NAME: "Druid" — Phase 9.4, the arc's second (and hardest) new hero.
+// Internal id is stable; display_name can change freely.
+//
+// Stance: Human / Animal (has_stance = true), like the Mage's Fire/Ice — but unlike the Mage,
+// entering a stance doesn't just apply a buff status: it CASTS that stance's own Basic ability
+// (`cast_on_enter`, hero/assets.rs) — "change from human to animal form and cast Scratch," "change
+// from animal to human and cast Roots" (Mechanics). Starts in Human (stance_a).
+//
+// Resource model: Charges { max: 3 } — the Enhanced-attack state (hero/components.rs::Charges,
+// spent one at a time by Scratch/Ferocious Bite via `Charges::spend_one`). Granted by Bloom
+// (pickup), Tree Conduit (zone presence), and Primal Pounce's Bloom-flower talent.
+//
+// Level 1: all four Basic/Special abilities across both stances (scratch/ferocious_bite for
+// Animal, roots/heal for Human) are granted together, mirroring the Mage's "both stances' basics
+// owned immediately" pattern — so swapping stance at level 1 already has a working kit.
+// Band pools: Primal Pounce + Spawn Ent (level 2/3, Animal/Human respectively), then Tree Conduit +
+// Bloom (level 4/5, both Human). class_passive_pool is intentionally empty — the "Passive Abilities"
+// bullet list (Mega Bleed, Unstable Form, Master of the Forest, form-swap cost) is deferred; see
+// CHANGELOG "Phase 9.4" for why each needs a primitive this pass doesn't build.
+(
+    id: "druid",
+    display_name: "Druid",
+    base_stats: (
+        max_health: 150.0,
+        move_speed: 38.0,
+    ),
+    resource_model: Charges(max: 3),
+    has_stance: true,
+    stance_a: Some("human"),
+    stance_b: Some("animal"),
+    level_1_abilities: ["scratch", "ferocious_bite", "roots", "heal"],
+    band_2_3_pool: ["primal_pounce", "spawn_ent"],
+    band_4_6_pool: ["tree_conduit", "bloom"],
+    class_passive_pool: [],
+    stance_slots: [
+        (
+            stance: "human",
+            basic: Some("roots"),
+            special: Some("heal"),
+            movement: None,
+            swap_effect: None,
+            cast_on_enter: true,
+        ),
+        (
+            stance: "animal",
+            basic: Some("scratch"),
+            special: Some("ferocious_bite"),
+            movement: None,
+            swap_effect: None,
+            cast_on_enter: true,
+        ),
+    ],
+)

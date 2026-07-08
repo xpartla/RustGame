@@ -1,0 +1,12 @@
+// "Lower cast time by X%" (Mechanics, common, unique[3]). Stack(3).
+(
+    id: "heal_cast_time_common",
+    display_name: "Quick Renewal",
+    ability_scope: Some("heal"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "cast_time",
+        op: MultiplyAdd(-0.15),
+    )),
+)

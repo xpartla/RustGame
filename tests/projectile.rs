@@ -124,7 +124,12 @@ fn pierced_projectile_passes_through_and_hits_one_more_enemy() {
 }
 
 #[test]
-fn scratch_cone_applies_bleed_to_all_hits() {
+fn scratch_cone_deals_physical_damage_to_all_hits_without_bleed_by_default() {
+    // Phase 9.4 correction: bleed is the Enhanced-attack state's own consequence (Mechanics:
+    // "Enhanced — Scratch applies a bleed"), not Scratch's unconditional baseline — see
+    // tests/druid.rs for the Enhanced-consumes-a-charge-and-bleeds scenario. The DK player used
+    // here carries no `Charges` component at all (HealthBased resource model), so this also proves
+    // a non-Charges hero casting Scratch never panics/bleeds.
     let mut sim = Sim::new_arena(42);
     sim.disable_companion(); // Phase 9.2: isolate Scratch's own damage from the DK's pet
     sim.set_player_pos(Vec2::ZERO);
@@ -142,5 +147,5 @@ fn scratch_cone_applies_bleed_to_all_hits() {
 
     assert_eq!(sim.enemy_health(near), Some(93.0), "7 physical damage to near");
     assert_eq!(sim.enemy_health(far), Some(93.0), "7 physical damage to far");
-    assert!(sim.has_status(near, "bleed") && sim.has_status(far, "bleed"), "bleed on both cone hits");
+    assert!(!sim.has_status(near, "bleed") && !sim.has_status(far, "bleed"), "no bleed without Enhanced");
 }

@@ -1,0 +1,34 @@
+// WORKING NAME: "Primal Pounce"
+// Class: Druid (Animal) — passive (AutoCast), band ability (Unlocked randomly at level 2/3,
+// alongside Spawn Ent).
+//
+// Behavior: leap_to_target (Phase 9.4), highest-health mode (`select_highest_health: 1.0` —
+// "automatically leap towards the highest-health enemy within a radius"). Unconditional damage +
+// bleed (not gated by the Enhanced-attack state — Mechanics doesn't call Primal Pounce out as
+// "Enhanced" the way Scratch/Ferocious Bite are).
+(
+    id: "primal_pounce",
+    display_name: "Primal Pounce",
+    unlock_schedule: Band(2, 3),
+    activation: AutoCast,
+    behavior: "leap_to_target",
+    hooks: [],
+    base_params: {
+        "damage": 9.0,
+        "leap_range": 180.0,
+        "half_angle": 0.0,
+        "select_highest_health": 1.0,
+        "leap_speed": 500.0,
+        "leap_duration": 0.2,
+        "cooldown": 4.0,
+    },
+    talent_pool: [
+        "primal_pounce_range_common",
+        "primal_pounce_root_triple_rare",
+        "primal_pounce_bloom_flower_rare",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: PrimaryHit),
+        ApplyStatus(status: "bleed", stacks: 1, target: PrimaryHit),
+    ],
+)

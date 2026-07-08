@@ -1,0 +1,38 @@
+// WORKING NAME: "Ferocious Bite"
+// Class: Druid (Animal) — Special attack. Level 1.
+//
+// Behavior: leap_to_target (Phase 9.4), cursor mode (`select_highest_health: 0.0` — "jump to the
+// closest target near your cursor"). "Always critically strikes if the target is bleeding"
+// (Mechanics) is BASE KIT identity (deterministic — no RunRng roll, phase9-plan.md DP5), not a
+// talent: `bleed_crit_mult` defaults active (2.0) and execute.rs's targeted special-case tops up
+// the base damage to `damage * bleed_crit_mult` whenever the leap target is bleeding.
+//
+// Enhanced (spends one `hero::components::Charges` if any are held): "cleaves in a circle around
+// you, applying X% of the damage as bleed" — simplified to plain "bleed" application within
+// "cleave_radius" of the landing spot (no true percent-of-damage DoT primitive exists yet, same
+// simplification Blood Boil's health-scaling talent used in Phase 9.2).
+(
+    id: "ferocious_bite",
+    display_name: "Ferocious Bite",
+    unlock_schedule: Level1,
+    behavior: "leap_to_target",
+    hooks: [],
+    base_params: {
+        "damage": 12.0,
+        "leap_range": 150.0,
+        "half_angle": 0.6,
+        "select_highest_health": 0.0,
+        "leap_speed": 450.0,
+        "leap_duration": 0.2,
+        "cooldown": 2.5,
+        "bleed_crit_mult": 2.0,
+        "cleave_radius": 60.0,
+    },
+    talent_pool: [
+        "ferocious_bite_damage_common",
+        "ferocious_bite_range_common",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: PrimaryHit),
+    ],
+)

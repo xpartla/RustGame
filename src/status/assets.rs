@@ -105,6 +105,8 @@ impl DefAsset for StatusEffectDef {
         ("ice_barrier", "status_effects/ice_barrier.status.ron"),
         // Phase 9.3 — Consecrated Ground's slow talent.
         ("consecrated_slow", "status_effects/consecrated_slow.status.ron"),
+        // Phase 9.4 — Bloom's movespeed talent.
+        ("bloom_swiftness", "status_effects/bloom_swiftness.status.ron"),
     ];
 }
 

@@ -1,0 +1,11 @@
+// "If the target is rooted, deal triple damage" (Mechanics, rare, unique). Installs the
+// "primal_pounce_root_triple" ActiveHooks flag, read as a per-hit top-up (+200%, on top of the
+// base 100% = 300% total) in ability/systems/execute.rs.
+(
+    id: "primal_pounce_root_triple_rare",
+    display_name: "Pinning Pounce",
+    ability_scope: Some("primal_pounce"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("primal_pounce_root_triple"),
+)

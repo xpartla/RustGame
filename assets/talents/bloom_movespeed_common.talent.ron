@@ -1,0 +1,12 @@
+// "You gain X% movement speed after pickup" (Mechanics, common). Installs the "bloom_movespeed"
+// ActiveHooks flag, read by pickup/systems/collect_pickups.rs to apply the "bloom_swiftness"
+// status. A boolean flag, so Exclusive despite the Common rarity (same shape as
+// consecrated_ground_slow_common, Phase 9.3).
+(
+    id: "bloom_movespeed_common",
+    display_name: "Blooming Swiftness",
+    ability_scope: Some("bloom"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Behavior("bloom_movespeed"),
+)

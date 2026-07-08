@@ -1,0 +1,13 @@
+// "Projectile can pass through enemies" (Mechanics, rare, unique). Overrides "pierce" — the
+// projectile behavior already supports piercing (Phase 3D); this just raises Roots' own count.
+(
+    id: "roots_pierce_rare",
+    display_name: "Piercing Roots",
+    ability_scope: Some("roots"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "pierce",
+        op: Override(1.0),
+    )),
+)

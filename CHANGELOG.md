@@ -1370,6 +1370,169 @@ further this sub-phase, per the product owner's instruction.
   the no-primary-means-empty edge case), and `consecrated_slow.status.ron`'s parse. Build
   warning-free.
 
+### Phase 9.4 — Druid: the Arc's Hard Class (complete)
+The fourth sub-phase of the Phase-9 content-pass arc: the Druid — two forms, an Enhanced-attack
+charge state, target-leaping, a taunting summon, and a pickup-driven enhancement. **Runless-neutral,
+like the Paladin**: the golden campaign is the BDK bot and never touches any Druid content.
+`campaign_matches_golden_baseline`'s pre-existing divergence (open, tracked, since Phase 9.2 — §8.5)
+was explicitly **reverified unchanged** this sub-phase: reproduced byte-for-byte on a clean
+pre-Phase-9.4 checkout before any Druid work landed, then confirmed identical after — not
+investigated further, per the same standing instruction Phase 9.3 operated under.
+
+- **`druid.hero.ron`** — `has_stance: true` (Human/Animal via Q), `resource_model: Charges(max: 3)`
+  (the Enhanced-attack state), base_stats 150 hp / 38 move speed (a reasonable default, same
+  not-yet-balance-tested caveat every prior sub-phase flagged for its own numbers). All four
+  Basic/Special abilities across both stances (`scratch`/`ferocious_bite`/`roots`/`heal`) are level-1,
+  mirroring the Mage's "both stances' basics owned immediately" pattern. `band_2_3_pool:
+  [primal_pounce, spawn_ent]`, `band_4_6_pool: [tree_conduit, bloom]` (matching Mechanics' own level
+  2/3 vs. 4/5 split). `class_passive_pool` is empty — the four class-wide "Passive Abilities" are
+  deferred in full (see below), mirroring Paladin's own empty pool in Phase 9.3.
+- **`cast_on_enter` (new `StanceSlotMapping` field) — the Druid's actual swap model.** Unlike the
+  Mage's `swap_effect` (a self-applied buff STATUS on entering a stance), the Druid's Mechanics text
+  is literal: "change from human to animal form and **cast Scratch**." A new opt-in bool field on
+  `StanceSlotMapping` (`#[serde(default)]`, so every pre-9.4 hero RON parses unchanged): when set,
+  `hero::systems::stance::handle_stance_swap` emits a normal `TriggerAbilityEvent` for the entered
+  stance's own `basic` ability alongside (or instead of) a `swap_effect` — a real cast that respects
+  the ability's own cooldown/aim gate, not a bespoke mechanic.
+- **`leap_to_target` (new behavior) — Ferocious Bite / Primal Pounce.** Picks ONE target within
+  `leap_range`, requests a `ForcedImpulse` toward it (the Phase-9.1 primitive — a short dash, not a
+  guaranteed landing-on-top) as `primary` for the ability's own declarative `effects`. Two selection
+  modes toggled by a numeric param flag (the established "escape-hatch" pattern —
+  `follow_caster`/`slow_active` precedent): `select_highest_health: 0.0` (Ferocious Bite —
+  nearest-in-aim-arc, degrading gracefully to omnidirectional with no aim) or `1.0` (Primal Pounce —
+  highest health in range, ties broken by distance, fully deterministic — no RunRng). `needs_aim()` is
+  `false` for BOTH modes, since Primal Pounce is a self-centred AutoCast that must fire with no aim at
+  all; mode 0's own angle filter is what makes it prefer the cursor direction.
+  - **Ferocious Bite** (L1 Special): "always critically strikes if bleeding" is BASE KIT identity
+    (deterministic, matching DP5 — no roll), a flat top-up to `damage * bleed_crit_mult` when the
+    target is bleeding. Enhanced (spends one `Charges`, see below): cleaves — approximated as bleed
+    applied to every other target within `cleave_radius` of the PRIMARY's landing spot (the caster's
+    own post-leap position isn't known this frame; the primary is where it's about to land) — a
+    documented simplification of "X% of damage as bleed" (no percent-of-damage DoT primitive exists;
+    same simplification class as Phase 9.2's Blood Boil health-scaling talent). 2 numeric talents
+    (damage/range); 4 deferred (consume-bleed-per-stack — bleed has no stack count; on-kill
+    stance-swap-reset+charge — needs kill attribution, the same gap bone shield/Hammer of Justice hit;
+    Tree-Conduit-multiplies-bleed-applications — same no-stack-count gap; no-damage-instead-bleed-
+    transfer — needs a path-AoE shape + a base-effect override, neither exists).
+  - **Primal Pounce** (band 2/3, AutoCast): unconditional damage + bleed (not Enhanced-gated —
+    Mechanics never calls it out as "Enhanced"). 3 talents implemented: range (Modifier),
+    root-triple-damage (a flat +200% top-up, same shape as the bleed crit above), and
+    create-a-Bloom-flower (a direct reuse of Bloom's own pickup-spawn primitive at the cast-time
+    origin — the point jumped FROM). 2 deferred (movespeed-on-rooted-leap — needs a new stacking
+    buff status, time-boxed out; no-damage-path-bleed epic — a new line-AoE shape).
+- **The Enhanced-attack state reuses the Phase-9.1 `Charges` primitive exactly as the phase-9 plan
+  sketched** ("reuse the charge primitive + a small per-caster marker"). A new
+  `Charges::spend_one()` (spends exactly one if available, distinct from Frost Impale's future
+  `spend_all()`) backs Scratch and Ferocious Bite's per-cast Enhanced consumption — both targeted
+  execute.rs special-cases (mutable `Query<&mut Charges>` folded into the existing grouped tuple
+  param to stay under Bevy's 16-param cap), the same per-target-conditional shape every prior
+  sub-phase has used for effects the generic `EffectSpec`/hook pipelines can't express. The holy-mark
+  read helper (`is_marked`, Phase 9.3) is generalized to `has_status(entity, status_id, ...)`, reused
+  here for Scratch's root/bleed-conditional bonus damage and Primal Pounce's root-triple talent.
+  - **Scratch** (L1 Basic, also `cast_on_enter` on → Animal): bleed is **removed from the
+    unconditional `effects` list** — a correction to the Phase-3 demonstrator, which applied it on
+    every hit; per Mechanics, bleed is the Enhanced state's OWN consequence, not Scratch's baseline.
+    Enhanced (spend one charge if held) applies bleed to the `bleed_target_count` nearest hits
+    (default unlimited). 5 of 7 Mechanics talents implemented (damage/size Modifiers,
+    bleed-to-closest-N via `bleed_target_count`, root-bonus-damage and bleeding-bonus-damage — both
+    per-hit top-ups); 2 deferred (bleed-duration-bonus, half-damage-triple-bleed epic — both rescale
+    the STATUS's own magnitude; see the general note below).
+  - **`tests/projectile.rs`'s pre-existing Scratch scenario updated** to match: renamed to
+    `scratch_cone_deals_physical_damage_to_all_hits_without_bleed_by_default`, now asserting NO bleed
+    (the DK player it runs against carries no `Charges` at all — also proves a non-Charges hero
+    casting Scratch is safe).
+- **`bloom` (new behavior) + `PickUpKind::Enhance` — Bloom (band 4/5).** A new `CastOutcome.pickup:
+  Option<PickupSpawn>` signal (mirrors `ZoneSpawn`/`SummonSpawn`'s minimal-signal shape); execute.rs
+  drops a `PickUp` at the caster's origin carrying `PickUpKind::Enhance(bloom_charges)`. The first
+  ability whose reward lands on PICKUP COLLECTION (`collect_pickups.rs`, proximity-tested), not at
+  cast time — `collect_pickups` gained `Option<&mut Charges>` + `Option<&ActiveHooks>` on the player
+  to grant the charge and (talent-gated) apply a new `bloom_swiftness` movespeed status. 2 of 3
+  talents implemented (`bloom_extra_charge_rare` — `+1 bloom_charges`; `bloom_movespeed_common` — a
+  targeted special-case in `collect_pickups.rs`); 1 deferred (heal-over-time — `StatusEffectDef.tick`
+  only supports damage, never healing).
+- **Minion body params generalized from shared constants to ability data — Spawn Ent (band 2/3).**
+  Reuses `summon` (Phase 9.2); Spawn Ent needed a tankier/slower body than the DK's Companion pet, so
+  `MINION_HEALTH`/`_SPEED`/`_RADIUS` moved from hardcoded constants read unconditionally in
+  execute.rs's summon-spawn block into each summon ability's OWN resolved params
+  (`minion_health`/`minion_speed`/`minion_radius`) — falling back to the old constants only if a
+  summon ability omits them. `companion.ability.ron` now declares the identical numbers explicitly
+  (byte-identical). A new `ent_attack.ability.ron` gives the Ent a minimal independent attack (mirrors
+  `companion_attack.ability.ron`). 1 of 5 Mechanics talents implemented (`spawn_ent_cooldown_common`);
+  4 deferred — a continuous nearby-enemy-debuff aura, the Fiery/Earth Ent `MutuallyExcludes` sub-tree
+  (on-death explosion + a minion-owned zone, neither primitive exists), and Ent-picks-up-Bloom (no
+  minion ever interacts with a pickup today) — each a substantial new mechanic, time-boxed out.
+  - **The taunt itself is new.** A positive `taunt_radius` resolved param (0 for Companion) makes
+    execute.rs insert a new `enemy::components::Taunt { radius }` on the spawned minion. A new
+    `enemy::systems::taunt::apply_ent_taunt` (in `MovementSet::Intent`, before the flow-field
+    follower) marks any Hostile `MeleeChaser` within range with a new `Taunted(Entity)`; the flow-field
+    follower (`enemy_follow_flow_field`) checks for it first and steers straight-line toward the
+    Taunt source instead — mirroring the Companion minion's own straight-line seek (`minion_seek_
+    and_face`), for the identical reason: the shared `FlowField` is built FROM the player outward, so
+    it can never point an enemy at anything else. Contact-range abilities needed **zero** changes —
+    `ContactMelee`/`NearestMelee`/etc. already hit any opposing-faction target within range, not
+    specifically the player, so a taunted enemy standing next to the Ent already damages it.
+    `RangedCaster`/`Stationary` AI are deliberately untouched (out of scope; every shipped enemy that
+    matters for this is a `MeleeChaser`).
+- **`heal` (Human Special, L1) reuses `channel_while_moving` (Phase 9.3) verbatim.** All 4 Mechanics
+  talents implemented, each resolved in `ability::systems::channel::tick_channels` at completion (the
+  `Channeling` component gained 4 new fields, default-inert for Flash of Light's own channel):
+  `heal_bleed_bonus_rare` (heal scales up per bleeding enemy within range, counted at completion —
+  same "read fresh, not cast-time" reasoning as Flash of Light's radiate), `heal_grants_enhanced_rare`
+  (grants 1 Charge), `heal_heals_ents_rare` (the same flat heal to every owned `Minion` — a new
+  `MinionOwner.0` read, the field's first real consumer), `heal_cast_time_common` (a plain Modifier,
+  no code).
+- **`roots` (Human Basic, L1, also `cast_on_enter` on → Human) reuses `projectile` verbatim** (Physical
+  damage, same shape as Frostbolt/Fireblast). 2 of 4 talents implemented (damage Modifier, pierce
+  Override); 2 deferred — stun-on-hit needs a talent-conditional declarative effect on the PROJECTILE
+  IMPACT path (`projectile/systems/motion.rs`), which — unlike execute.rs's instant-hit path — has no
+  talent/`ActiveHooks` access today; extra-projectile needs multi-projectile spawn (`CastOutcome.
+  projectile` is a single `Option`, not a list).
+- **`tree_conduit` promoted from its Phase-6 marker demonstrator to the real Druid band ability**
+  (mirrors Consecrated Ground's Phase 9.3 promotion — the mechanic itself is unchanged; its stale
+  `unlock_schedule: Band(2, 3)` metadata is corrected to `Band(4, 5)`, matching its real
+  `band_4_6_pool` membership — cosmetic only, `unlock_schedule` isn't consumed by any live system).
+  The "next animal attack enhanced while in range" consumer: a new
+  `hero::systems::enhanced::tree_conduit_enhances_animal_attacks` tops `Charges` up to 1 every frame
+  the player stands inside the zone in Animal form with zero held — which, because the top-up re-fires
+  the instant a charge is spent, already delivers "continuously enhanced while in range" for free.
+  2 of 4 talents implemented (radius/duration Modifiers); 2 deferred — "reduce spawn range" doesn't
+  map onto any mechanic (a dropped zone always spawns at the caster), and the "all attacks enhanced"
+  epic is a documented no-op on top of the base consumer's own behavior under this model.
+- **A real, previously-latent scheduling gap found and fixed — the same class of bug every
+  sub-phase's first genuine use of an inert primitive has surfaced** (Companion's grant/execute race
+  in 9.2, the hero-aware band-pool bug in 9.3). `hero::systems::resource::
+  sync_charges_to_class_resource` (Phase 9.1; always inert — no hero carried `Charges` until now) had
+  no explicit order against any of the three systems that can now mutate `Charges` in the same frame
+  (`execute_ready_abilities`, `tick_channels`, `collect_pickups`), so Bevy's scheduler could freely run
+  the HUD mirror BEFORE a same-frame grant/spend, reading `Changed<Charges>` a frame stale — caught by
+  `tests/druid.rs`'s own Enhanced-charge assertions failing intermittently by exactly one frame's
+  worth of state. Fixed: `sync_charges_to_class_resource.after(CombatSet::Damage)` (every mutator
+  lives in or before that set).
+- **The four class-wide "Passive Abilities" are deferred in full** (`class_passive_pool: []`): Mega
+  Bleed (needs a talent that rewrites a `StatusEffectDef`'s own `StackingRule` — no such primitive),
+  Unstable Form (a per-player cast counter distinct from `Charges`, plus a random stance-flip hook),
+  Master of the Forest (depends on the deferred Ent-picks-up-Bloom talent, plus disabling a stance
+  outright), and the form-swap-costs-health passive (no primitive spends health as an ability cost
+  outside the normal damage pipeline) — each a genuinely new mechanic, time-boxed out of this pass.
+- **`Mechanics.md`** Druid section flipped to implemented, with inline deferral notes at every skipped
+  talent (roughly half the tree) explaining exactly which missing primitive it needs — the same
+  per-item discipline every prior sub-phase has used, at a larger scale (Druid's talent tree is the
+  arc's biggest).
+- **Tests: 288 total, 287 passing** (was 258; the one non-passing test remains Phase 9.2's own
+  tracked, unchanged `campaign_matches_golden_baseline` divergence — independently reverified this
+  sub-phase, see above; `campaign_is_reproducible_within_a_build` stays green). New `tests/druid.rs`
+  (10 scenarios): stance swap remaps slots AND casts the entered stance's own Basic; Enhanced Scratch
+  spends exactly one charge and bleeds only the nearest hits, a second cast with no charge left deals
+  base damage only; Ferocious Bite leaps and crits a bleeding target vs. a clean non-crit baseline;
+  Enhanced Ferocious Bite cleaves bleed onto a nearby target but not the primary itself; Primal Pounce
+  auto-leaps past a nearer/weaker target to the higher-health one and always bleeds it; Bloom's flower
+  grants a charge on contact; Spawn Ent taunts a nearby enemy off the player; the Ent is a genuine
+  `Minion` (reused lifecycle/reaping); the headline hero-band-pool regression test (mirrors Paladin's
+  own). Plus new unit tests: `HeroDef`/all 7 new `AbilityDef` RON parses + all 21 new `TalentDef` RON
+  parses, `LeapToTarget`'s two selection modes (cursor-arc nearest; highest-health ignoring arc/
+  distance) + its clean whiff, `Bloom`'s pickup-signal request, and `Charges::spend_one`. Build
+  warning-free.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,

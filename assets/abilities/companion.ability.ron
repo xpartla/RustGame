@@ -7,6 +7,12 @@
 // "companion_duration" seconds. `summon.mimic` names the minion's OWN attack ability
 // (companion_attack.ability.ron) — its own independent stats, not the player's talent-modified
 // Death Strike (replaces the old "mimicked_ability_id": 0.0 f32 hack — §8.5).
+//
+// "minion_health"/"minion_speed"/"minion_radius" (Phase 9.4): the minion's own body stats,
+// declared explicitly now that Spawn Ent is a second, differently-statted `summon` consumer (was
+// previously the shared MINION_* constants unconditionally — see execute.rs's summon-spawn block).
+// Same numbers as those constants, so this is byte-identical to before. No "taunt_radius" — the
+// Companion pet doesn't redirect enemy targeting.
 (
     id: "companion",
     display_name: "Companion",
@@ -17,6 +23,9 @@
     base_params: {
         "cooldown": 10.0,           // spawn interval
         "companion_duration": 8.0,  // how long the minion lives
+        "minion_health": 20.0,
+        "minion_speed": 45.0,
+        "minion_radius": 10.0,
     },
     summon: Some((
         mimic: "companion_attack",

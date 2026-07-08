@@ -15,6 +15,7 @@ use crate::core::def_library::DefLibraryAppExt;
 use crate::core::sets::CombatSet;
 use crate::game::state::GameState;
 use crate::hero::assets::HeroDef;
+use crate::hero::systems::enhanced::tree_conduit_enhances_animal_attacks;
 use crate::hero::systems::input_slot::resolve_input_to_ability;
 use crate::hero::systems::resource::sync_charges_to_class_resource;
 use crate::hero::systems::stance::handle_stance_swap;
@@ -27,15 +28,23 @@ impl Plugin for HeroPlugin {
 
         app.add_systems(
             Update,
-            (handle_stance_swap, resolve_input_to_ability)
+            (handle_stance_swap, resolve_input_to_ability, tree_conduit_enhances_animal_attacks)
                 .before(CombatSet::Damage)
                 .run_if(in_state(GameState::InRun)),
         );
         // Class-resource bridge (Phase 9.1): mirrors Charges into the HUD's ClassResource whenever
-        // content grants/spends them. No shipped hero carries Charges yet — inert.
+        // content grants/spends them. Pinned `.after(CombatSet::Damage)` (Phase 9.4 — found once the
+        // Druid became the first real `Charges` consumer): every current mutator
+        // (`execute_ready_abilities`'s Scratch/Ferocious Bite spend, `tick_channels`'s Heal grant,
+        // `collect_pickups`'s Bloom grant) lives in or before that set, and this system carried no
+        // explicit order against any of them — Bevy's scheduler was free to run the mirror BEFORE a
+        // same-frame mutation, leaving `ClassResource` (and the HUD) one frame stale. `Changed<Charges>`
+        // then means "changed as of last frame" instead of "changed this frame."
         app.add_systems(
             Update,
-            sync_charges_to_class_resource.run_if(in_state(GameState::InRun)),
+            sync_charges_to_class_resource
+                .after(CombatSet::Damage)
+                .run_if(in_state(GameState::InRun)),
         );
 
         // Debug-only: press M to become the Mage for manual playtesting (no character-select yet).

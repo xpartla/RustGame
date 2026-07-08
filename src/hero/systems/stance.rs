@@ -16,6 +16,7 @@
 // Runs before CombatSet::Damage.
 
 use bevy::prelude::*;
+use crate::ability::components::TriggerAbilityEvent;
 use crate::core::components::AbilitiesSuppressed;
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::{ActiveStance, HeroIdentity};
@@ -28,6 +29,7 @@ pub fn handle_stance_swap(
     hero_library: Res<HeroLibrary>,
     hero_defs: Res<Assets<HeroDef>>,
     mut apply_status: EventWriter<ApplyStatusEvent>,
+    mut trigger_ability: EventWriter<TriggerAbilityEvent>,
 ) {
     if !kb.just_pressed(KeyCode::KeyQ) {
         return;
@@ -53,6 +55,14 @@ pub fn handle_stance_swap(
                     effect_id: effect_id.clone(),
                     stacks: 1,
                 });
+            }
+            // Phase 9.4 — the Druid: entering a stance also casts its own Basic ability
+            // (Scratch on -> Animal, Roots on -> Human). Just a normal TriggerAbilityEvent, so it
+            // respects the ability's own cooldown/aim gate like any other cast.
+            if mapping.cast_on_enter {
+                if let Some(ability_id) = &mapping.basic {
+                    trigger_ability.write(TriggerAbilityEvent { ability_id: ability_id.clone(), owner });
+                }
             }
         }
     }

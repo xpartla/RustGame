@@ -1,0 +1,12 @@
+// "Increase duration by X seconds" (Mechanics, rare). Stack(2).
+(
+    id: "tree_conduit_duration_rare",
+    display_name: "Ancient Roots",
+    ability_scope: Some("tree_conduit"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "zone_duration",
+        op: Add(3.0),
+    )),
+)

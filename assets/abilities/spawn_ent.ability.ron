@@ -1,0 +1,32 @@
+// WORKING NAME: "Spawn Ent"
+// Class: Druid (Human) — passive, band ability (Unlocked randomly at level 2/3, alongside Primal
+// Pounce). Periodically spawns an Ent that runs toward the nearest enemy, forcing enemies within
+// its taunt radius to attack it instead of the caster.
+//
+// Behavior: summon (reused from Phase 9.2's Companion) — its own body stats ("minion_health"/
+// "minion_speed"/"minion_radius") are much tankier/slower than the DK's pet, and "taunt_radius" > 0
+// is what makes execute.rs insert the `enemy::components::Taunt` component on it (Companion's own
+// ability omits the param, so it never taunts). See `enemy::systems::taunt::apply_ent_taunt` for
+// the redirect mechanic itself.
+(
+    id: "spawn_ent",
+    display_name: "Spawn Ent",
+    unlock_schedule: Band(2, 3),
+    activation: AutoCast,
+    behavior: "summon",
+    hooks: [],
+    base_params: {
+        "cooldown": 15.0,             // spawn interval
+        "companion_duration": 12.0,   // how long the Ent lives
+        "minion_health": 60.0,
+        "minion_speed": 30.0,
+        "minion_radius": 14.0,
+        "taunt_radius": 120.0,
+    },
+    summon: Some((
+        mimic: "ent_attack",
+    )),
+    talent_pool: [
+        "spawn_ent_cooldown_common",
+    ],
+)

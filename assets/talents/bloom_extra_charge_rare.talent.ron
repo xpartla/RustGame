@@ -1,0 +1,13 @@
+// "Your next 2 attacks are enhanced" (Mechanics, rare, unique). Adds +1 to "bloom_charges" (base
+// 1 -> 2), read by ability/systems/execute.rs's pickup-spawn handling.
+(
+    id: "bloom_extra_charge_rare",
+    display_name: "Double Bloom",
+    ability_scope: Some("bloom"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "bloom_charges",
+        op: Add(1.0),
+    )),
+)

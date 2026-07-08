@@ -32,7 +32,10 @@ use crate::core::components::{
     WorldPosition,
 };
 use crate::core::events::{DamageEvent, DamageTag, HealEvent};
-use crate::enemy::components::AiBehavior;
+use crate::enemy::components::{AiBehavior, Taunt};
+use crate::hero::components::Charges;
+use crate::pickup::components::PickUpKind;
+use crate::pickup::spawn_pickup;
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 use crate::run::rng::RunRng;
@@ -96,8 +99,10 @@ pub fn execute_ready_abilities(
     // (Phase 9.3) feeds `AbilityContext.elapsed_secs` for `Orbiting`'s continuous rotation; `marks`
     // is the holy-mark read path (Spinning Hammer's double damage, Hammer of Justice's shockwave
     // talent) — both targeted execute.rs special-cases, like `blood_boil`'s below, since a per-
-    // target conditional doesn't fit the generic Pre/Post hook or effects pipeline.
-    (registry, hook_registry, zone_presence, room_mods, mut rng, time, marks): (
+    // target conditional doesn't fit the generic Pre/Post hook or effects pipeline. `charges`
+    // (Phase 9.4) is the Druid's Enhanced-attack state, mutably spent by Scratch/Ferocious Bite's
+    // own special-cases below.
+    (registry, hook_registry, zone_presence, room_mods, mut rng, time, marks, mut charges): (
         Res<BehaviorRegistry>,
         Res<HookRegistry>,
         Res<PlayerZonePresence>,
@@ -105,6 +110,7 @@ pub fn execute_ready_abilities(
         ResMut<RunRng>,
         Res<Time>,
         Query<&StatusEffectInstance>,
+        Query<&mut Charges>,
     ),
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
@@ -114,9 +120,10 @@ pub fn execute_ready_abilities(
     // Candidate targets are actors only — never zones (which also carry WorldPosition + Faction, so
     // without this guard a friendly zone could be gathered/targeted by an enemy's cast).
     // `Option<&AiBehavior>` (Phase 9.2) feeds `Target.is_ranged` for Abomination Limb's
-    // ranged-only grip talent — folded into this query rather than a separate one to stay under
-    // Bevy's per-system param cap.
-    actors: Query<(Entity, &WorldPosition, &Faction, Option<&AiBehavior>), Without<PersistentZone>>,
+    // ranged-only grip talent; `&Health` (Phase 9.4) feeds `Target.health` for Primal Pounce's
+    // highest-health leap target — both folded into this query rather than a separate one to stay
+    // under Bevy's per-system param cap.
+    actors: Query<(Entity, &WorldPosition, &Faction, Option<&AiBehavior>, &Health), Without<PersistentZone>>,
     suppressed: Query<(), With<AbilitiesSuppressed>>,
     mut instances: Query<(&AbilityInstance, &mut AbilityCooldown)>,
 ) {
@@ -124,9 +131,9 @@ pub fn execute_ready_abilities(
     // handed the list opposing its caster's faction (§Phase 5 faction-aware targeting).
     let mut friendly: Vec<Target> = Vec::new();
     let mut hostile: Vec<Target> = Vec::new();
-    for (entity, pos, faction, ai) in &actors {
+    for (entity, pos, faction, ai, health) in &actors {
         let is_ranged = matches!(ai, Some(AiBehavior::RangedCaster { .. }));
-        let t = Target { entity, pos: pos.0, is_ranged };
+        let t = Target { entity, pos: pos.0, is_ranged, health: health.current };
         match faction {
             Faction::Friendly => friendly.push(t),
             Faction::Hostile => hostile.push(t),
@@ -265,12 +272,18 @@ pub fn execute_ready_abilities(
                 } else {
                     0.0
                 };
+                // Druid Heal's own talent-gated extras (Phase 9.4), same "bake at cast start" rule.
+                let bleed_bonus_percent = if has_hook("heal_bleed_bonus") { params.get("bleed_bonus_percent") } else { 0.0 };
                 commands.entity(trigger.owner).insert(Channeling {
                     heal_percent: params.get("heal_percent"),
                     overheal_to_shield: has_hook("flash_of_light_overheal_shield"),
                     radiate_percent: if has_hook("flash_of_light_radiate") { params.get("radiate_percent") } else { 0.0 },
                     radiate_radius: params.get("radiate_radius"),
                     consecrated_radiate_damage,
+                    bleed_bonus_percent,
+                    bleed_bonus_range: params.get("bleed_bonus_range"),
+                    grants_enhanced_charge: has_hook("heal_grants_enhanced"),
+                    heals_ents: has_hook("heal_heals_ents"),
                     remaining: Timer::from_seconds(channel_spawn.cast_time, TimerMode::Once),
                 });
                 cast_vfx.write(CastVfxEvent {
@@ -336,6 +349,15 @@ pub fn execute_ready_abilities(
                 spawn_dropped_zone(&mut commands, spec, &params, spawn.center, trigger.owner, *owner_faction);
             }
 
+            // Collectible pickup drop (Phase 9.4 — Bloom). The behavior resolved only the drop
+            // point; "bloom_charges" (from the ability's own resolved params) is how many Enhanced
+            // charges it grants on pickup — a talent can raise it via a plain numeric Modifier
+            // (`bloom_extra_charge_rare`), no special-case needed.
+            if outcome.pickup.is_some() {
+                let charges = params.get("bloom_charges").max(1.0) as u32;
+                spawn_pickup(&mut commands, outcome.origin, PickUpKind::Enhance(charges));
+            }
+
             // Forced-movement impulse (Phase 9.1 — the Movement-slot dash/blink). Applied directly
             // to the caster, not the world, unlike the zone/projectile spawns above.
             if let Some(spawn) = outcome.forced_impulse {
@@ -371,26 +393,38 @@ pub fn execute_ready_abilities(
                 }
             }
 
-            // Minion spawn (Phase 9.2 — Companion). The behavior resolved only the drop point; the
-            // ability's `summon` spec supplies which ability the minion mimics, resolved params
-            // supply its lifetime. Carries the caster's own Faction (mirrors spawn_dropped_zone) so
-            // a future Hostile summoner's minion would fight for the right side.
+            // Minion spawn (Phase 9.2 — Companion; Phase 9.4 — Spawn Ent). The behavior resolved
+            // only the drop point; the ability's `summon` spec supplies which ability the minion
+            // mimics. Body stats (health/speed/radius) are read from the SUMMON ability's own
+            // resolved params rather than the shared MINION_* constants (Phase 9.4 — Spawn Ent's
+            // Ent is a much tankier body than Companion's pet; falling back to the Phase-9.2
+            // constants keeps `companion.ability.ron` byte-identical if it ever omitted them, but
+            // it now declares them explicitly). "taunt_radius" (Phase 9.4, Ent only) inserts a
+            // `Taunt` component read by `enemy::systems::taunt::apply_ent_taunt`; absent/0 for
+            // Companion, so it costs nothing there. Carries the caster's own Faction (mirrors
+            // spawn_dropped_zone) so a future Hostile summoner's minion would fight for the right side.
             if let (Some(_), Some(spec)) = (&outcome.summon, def.summon.as_ref()) {
-                let minion = commands
-                    .spawn((
-                        Minion,
-                        MinionOwner(trigger.owner),
-                        MinionLifetime(Timer::from_seconds(params.get("companion_duration"), TimerMode::Once)),
-                        Health::new(MINION_HEALTH),
-                        *owner_faction,
-                        WorldPosition(outcome.origin),
-                        GridPosition::from_world(outcome.origin),
-                        Velocity::default(),
-                        Facing(Vec2::default()),
-                        MoveSpeed(MINION_SPEED),
-                        Hurtbox { radius: MINION_RADIUS },
-                    ))
-                    .id();
+                let minion_health = if params.get("minion_health") > 0.0 { params.get("minion_health") } else { MINION_HEALTH };
+                let minion_speed = if params.get("minion_speed") > 0.0 { params.get("minion_speed") } else { MINION_SPEED };
+                let minion_radius = if params.get("minion_radius") > 0.0 { params.get("minion_radius") } else { MINION_RADIUS };
+                let mut minion_cmds = commands.spawn((
+                    Minion,
+                    MinionOwner(trigger.owner),
+                    MinionLifetime(Timer::from_seconds(params.get("companion_duration"), TimerMode::Once)),
+                    Health::new(minion_health),
+                    *owner_faction,
+                    WorldPosition(outcome.origin),
+                    GridPosition::from_world(outcome.origin),
+                    Velocity::default(),
+                    Facing(Vec2::default()),
+                    MoveSpeed(minion_speed),
+                    Hurtbox { radius: minion_radius },
+                ));
+                let taunt_radius = params.get("taunt_radius");
+                if taunt_radius > 0.0 {
+                    minion_cmds.insert(Taunt { radius: taunt_radius });
+                }
+                let minion = minion_cmds.id();
                 commands.spawn((
                     AbilityInstance { def_id: spec.mimic.clone(), owner: minion },
                     AbilityCooldown::new(0.0),
@@ -482,7 +516,7 @@ pub fn execute_ready_abilities(
                 let stun_active = active_hooks.map(|h| h.contains("spinning_hammer_stun")).unwrap_or(false);
                 let damage = params.get("damage");
                 for hit in &outcome.hits {
-                    if is_marked(hit.entity, &marks) {
+                    if has_status(hit.entity, "holy_mark", &marks) {
                         damage_events.write(DamageEvent {
                             target: hit.entity,
                             amount: damage,
@@ -508,7 +542,7 @@ pub fn execute_ready_abilities(
             if instance.def_id == "hammer_of_justice" {
                 if active_hooks.map(|h| h.contains("hammer_of_justice_shockwave")).unwrap_or(false) {
                     if let Some(primary) = outcome.primary {
-                        if is_marked(primary.entity, &marks) {
+                        if has_status(primary.entity, "holy_mark", &marks) {
                             let radius = params.get("shockwave_radius");
                             let damage = params.get("shockwave_damage");
                             let knock_speed = params.get("shockwave_knock_speed");
@@ -569,6 +603,122 @@ pub fn execute_ready_abilities(
                 }
             }
 
+            // Scratch (Phase 9.4 — Druid): base damage lands via `effects` above (AllHits). This
+            // block layers on the ability's own innate identity that a fixed-literal `EffectSpec`
+            // can't express: bonus damage to rooted/bleeding hits (a per-target conditional — same
+            // shape as Spinning Hammer's holy-mark top-up), and the Enhanced-attack consumer —
+            // spending one `Charges` (if any) applies "bleed" to the `bleed_target_count` nearest
+            // hits (default effectively unlimited; the `scratch_bleed_closest_common` talent lowers
+            // it to a specific N).
+            if instance.def_id == "scratch" {
+                let root_bonus_pct = params.get("root_bonus_damage_percent");
+                let bleed_bonus_pct = params.get("bleeding_bonus_damage_percent");
+                for hit in &outcome.hits {
+                    if root_bonus_pct > 0.0 && has_status(hit.entity, "root", &marks) {
+                        damage_events.write(DamageEvent {
+                            target: hit.entity,
+                            amount: params.get("damage") * root_bonus_pct / 100.0,
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Physical],
+                        });
+                    }
+                    if bleed_bonus_pct > 0.0 && has_status(hit.entity, "bleed", &marks) {
+                        damage_events.write(DamageEvent {
+                            target: hit.entity,
+                            amount: params.get("damage") * bleed_bonus_pct / 100.0,
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Physical],
+                        });
+                    }
+                }
+                if !outcome.hits.is_empty() {
+                    if let Ok(mut charges) = charges.get_mut(trigger.owner) {
+                        if charges.spend_one() {
+                            let bleed_target_count = params.get("bleed_target_count").max(1.0) as usize;
+                            let mut enhanced_hits = outcome.hits.clone();
+                            enhanced_hits.sort_by(|a, b| {
+                                let da = a.pos.distance_squared(outcome.origin);
+                                let db = b.pos.distance_squared(outcome.origin);
+                                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            for hit in enhanced_hits.into_iter().take(bleed_target_count) {
+                                status_events.write(ApplyStatusEvent {
+                                    target: hit.entity,
+                                    source: trigger.owner,
+                                    effect_id: "bleed".to_string(),
+                                    stacks: 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Ferocious Bite (Phase 9.4 — Druid): base damage to the leap target lands via
+            // `effects` (PrimaryHit) above. "Always critically strikes if bleeding" (Mechanics) is
+            // DETERMINISTIC (DP5, phase9-plan.md — no RunRng roll needed since it isn't chance-
+            // based): a flat top-up bringing the total to `damage * bleed_crit_mult`, mirroring
+            // Spinning Hammer's holy-mark top-up. Enhanced: cleaves in a circle — approximated as
+            // centred on the PRIMARY's position (the caster's own post-leap position isn't known
+            // this frame; the leap's `ForcedImpulse` resolves next frame in MovementSet::Integrate,
+            // and the primary is where the caster is about to land) — applying bleed to every other
+            // target within `cleave_radius` (a documented simplification of "X% of damage as bleed,"
+            // which needs a status-magnitude primitive that doesn't exist yet — see CHANGELOG).
+            if instance.def_id == "ferocious_bite" {
+                if let Some(primary) = outcome.primary {
+                    let bleed_crit_mult = params.get("bleed_crit_mult");
+                    if bleed_crit_mult > 1.0 && has_status(primary.entity, "bleed", &marks) {
+                        damage_events.write(DamageEvent {
+                            target: primary.entity,
+                            amount: params.get("damage") * (bleed_crit_mult - 1.0),
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Physical],
+                        });
+                    }
+                    if let Ok(mut charges) = charges.get_mut(trigger.owner) {
+                        if charges.spend_one() {
+                            let cleave_radius = params.get("cleave_radius");
+                            for t in targets {
+                                if t.entity != primary.entity && t.pos.distance(primary.pos) <= cleave_radius {
+                                    status_events.write(ApplyStatusEvent {
+                                        target: t.entity,
+                                        source: trigger.owner,
+                                        effect_id: "bleed".to_string(),
+                                        stacks: 1,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Primal Pounce (Phase 9.4 — Druid): base damage + bleed to the leap target land via
+            // `effects` above (unconditional — Primal Pounce isn't gated by Enhanced). "If the
+            // target is rooted, deal triple damage" (`primal_pounce_root_triple_rare`) — a flat
+            // top-up of +200% (base 100% + this 200% = 300%), same top-up shape as Ferocious Bite's
+            // bleed crit above. "Create a Bloom flower at the point you jumped from"
+            // (`primal_pounce_bloom_flower_rare`) — `outcome.origin` IS the pre-leap cast position
+            // (behaviors never mutate it), so this is a direct reuse of Bloom's own pickup-spawn
+            // primitive, no new mechanic.
+            if instance.def_id == "primal_pounce" {
+                if let Some(primary) = outcome.primary {
+                    if active_hooks.map(|h| h.contains("primal_pounce_root_triple")).unwrap_or(false)
+                        && has_status(primary.entity, "root", &marks)
+                    {
+                        damage_events.write(DamageEvent {
+                            target: primary.entity,
+                            amount: params.get("damage") * 2.0,
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Physical],
+                        });
+                    }
+                }
+                if active_hooks.map(|h| h.contains("primal_pounce_bloom_flower")).unwrap_or(false) {
+                    spawn_pickup(&mut commands, outcome.origin, PickUpKind::Enhance(1));
+                }
+            }
+
             cooldown.elapsed = 0.0;
             // Attack speed (Phase 9.1, §8.1(4)): effective_cd = resolved_cd / (1 + attack_speed).
             // attack_speed defaults to 0.0 (talent/modifier.rs's universal baseline) when no talent
@@ -586,12 +736,12 @@ pub fn execute_ready_abilities(
     }
 }
 
-/// Whether `entity` currently carries the "holy_mark" status (Phase 9.3's holy-mark read path —
-/// Spinning Hammer's double damage, Hammer of Justice's shockwave talent). A direct query scan
-/// rather than a cached per-frame resource: mark counts are small (a handful of enemies at most)
-/// and this is only called from the two ability-specific special-cases above.
-fn is_marked(entity: Entity, marks: &Query<&StatusEffectInstance>) -> bool {
-    marks.iter().any(|i| i.target == entity && i.def_id == "holy_mark")
+/// Whether `entity` currently carries the status effect `status_id` (Phase 9.3's holy-mark read
+/// path, generalized in Phase 9.4 for Druid's root/bleed-conditional damage talents). A direct
+/// query scan rather than a cached per-frame resource: status counts are small (a handful of
+/// enemies at most) and this is only called from the targeted per-ability special-cases above.
+fn has_status(entity: Entity, status_id: &str, statuses: &Query<&StatusEffectInstance>) -> bool {
+    statuses.iter().any(|i| i.target == entity && i.def_id == status_id)
 }
 
 /// Builds a `PersistentZone` entity for a `dropped_zone` cast, from the ability's `zone` spec +

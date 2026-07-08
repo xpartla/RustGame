@@ -1,0 +1,10 @@
+// "Your heal also heals your Ent" (Mechanics, rare, unique). Installs the "heal_heals_ents"
+// ActiveHooks flag, read by ability::systems::channel::tick_channels at channel completion.
+(
+    id: "heal_heals_ents_rare",
+    display_name: "Shared Roots",
+    ability_scope: Some("heal"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("heal_heals_ents"),
+)

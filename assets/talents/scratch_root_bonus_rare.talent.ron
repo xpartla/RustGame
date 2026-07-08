@@ -1,0 +1,14 @@
+// "Scratch deals X% more damage to enemies affected by root" (Mechanics, rare, unique). Overrides
+// "root_bonus_damage_percent", read as a per-hit conditional top-up in ability/systems/execute.rs
+// (the declarative `effects` list can't express a per-target condition).
+(
+    id: "scratch_root_bonus_rare",
+    display_name: "Rend the Rooted",
+    ability_scope: Some("scratch"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "root_bonus_damage_percent",
+        op: Override(30.0),
+    )),
+)

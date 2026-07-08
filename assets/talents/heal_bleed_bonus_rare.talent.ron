@@ -1,0 +1,11 @@
+// "You heal for X% more per bleeding enemy within Y range" (Mechanics, rare, unique). Installs the
+// "heal_bleed_bonus" ActiveHooks flag, read by ability::systems::channel::tick_channels at channel
+// completion.
+(
+    id: "heal_bleed_bonus_rare",
+    display_name: "Vital Bloom",
+    ability_scope: Some("heal"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("heal_bleed_bonus"),
+)

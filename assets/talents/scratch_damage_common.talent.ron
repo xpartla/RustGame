@@ -1,0 +1,12 @@
+// "Increase the damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "scratch_damage_common",
+    display_name: "Sharper Claws",
+    ability_scope: Some("scratch"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.15),
+    )),
+)

@@ -78,6 +78,18 @@ impl Charges {
     pub fn spend_all(&mut self) -> u32 {
         std::mem::replace(&mut self.current, 0)
     }
+
+    /// Consumes exactly one charge if any are available (Phase 9.4 — Druid's Enhanced-attack
+    /// state: Scratch/Ferocious Bite each spend at most one per cast, unlike Frost Impale's
+    /// `spend_all`). Returns whether a charge was spent.
+    pub fn spend_one(&mut self) -> bool {
+        if self.current > 0 {
+            self.current -= 1;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -102,5 +114,17 @@ mod tests {
         assert_eq!(charges.current, 0);
         // Spending an empty bar returns 0, not an underflow panic.
         assert_eq!(charges.spend_all(), 0);
+    }
+
+    #[test]
+    fn spend_one_consumes_a_single_charge_and_reports_availability() {
+        let mut charges = Charges::new(3);
+        assert!(!charges.spend_one(), "nothing to spend yet");
+        charges.gain(2);
+        assert!(charges.spend_one());
+        assert_eq!(charges.current, 1);
+        assert!(charges.spend_one());
+        assert_eq!(charges.current, 0);
+        assert!(!charges.spend_one(), "empty bar — no underflow, just false");
     }
 }

@@ -1,0 +1,10 @@
+// Bloom Swiftness — Druid's Bloom pickup talent (Phase 9.4). Mechanics: "(common) You gain X%
+// movement speed after pickup." A pure move-speed buff, same shape as the Mage's Boots of Fire —
+// no new machinery.
+(
+    id: "bloom_swiftness",
+    display_name: "Bloom Swiftness",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 3.0,
+    move_speed_mult: 1.25,
+)

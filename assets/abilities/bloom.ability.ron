@@ -1,0 +1,24 @@
+// WORKING NAME: "Bloom"
+// Class: Druid (Human) — passive, band ability (Unlocked randomly at level 4/5, alongside Tree
+// Conduit). Periodically drops a flower pickup under the caster; running over it grants Enhanced.
+//
+// Behavior: bloom (Phase 9.4) — drops a `pickup::components::PickUp` at the caster's origin,
+// carrying `PickUpKind::Enhance("bloom_charges" resolved params, default 1)`. Collected via the
+// normal pickup/collect_pickups.rs path (proximity, not a cast-time hit) — so, unlike every other
+// ability here, its grant doesn't happen at CAST time, only once the caster walks over it.
+(
+    id: "bloom",
+    display_name: "Bloom",
+    unlock_schedule: Band(4, 5),
+    activation: AutoCast,
+    behavior: "bloom",
+    hooks: [],
+    base_params: {
+        "cooldown": 10.0,
+        "bloom_charges": 1.0,
+    },
+    talent_pool: [
+        "bloom_extra_charge_rare",
+        "bloom_movespeed_common",
+    ],
+)

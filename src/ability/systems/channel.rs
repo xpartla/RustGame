@@ -6,9 +6,11 @@
 // other emitter.
 
 use bevy::prelude::*;
-use crate::ability::components::Channeling;
+use crate::ability::components::{Channeling, Minion, MinionOwner};
 use crate::core::components::{Faction, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag, GainShieldEvent, HealEvent};
+use crate::hero::components::Charges;
+use crate::status::components::StatusEffectInstance;
 use crate::zone::components::PersistentZone;
 
 /// Fixed radius the Flash of Light epic's consecrated-ground explosion reaches (Mechanics: "a
@@ -23,6 +25,9 @@ pub fn tick_channels(
     positions: Query<&WorldPosition>,
     factions: Query<&Faction>,
     actors: Query<(Entity, &WorldPosition, &Faction), Without<PersistentZone>>,
+    statuses: Query<&StatusEffectInstance>,
+    minions: Query<(Entity, &MinionOwner), With<Minion>>,
+    mut charges: Query<&mut Charges>,
     mut damage_events: EventWriter<DamageEvent>,
     mut heal_events: EventWriter<HealEvent>,
     mut shield_events: EventWriter<GainShieldEvent>,
@@ -33,10 +38,24 @@ pub fn tick_channels(
             continue;
         }
 
-        let heal_amount = healths
+        let mut heal_amount = healths
             .get(caster)
             .map(|h| h.max * channel.heal_percent / 100.0)
             .unwrap_or(0.0);
+
+        // Druid Heal's "heal X% more per bleeding enemy within range" (Phase 9.4) — counted at
+        // COMPLETION time (the caster may have moved throughout the channel), same reasoning as
+        // radiate's fresh-position read below.
+        if channel.bleed_bonus_percent > 0.0 {
+            if let Ok(caster_pos) = positions.get(caster) {
+                let bleeding_count = statuses
+                    .iter()
+                    .filter(|s| s.def_id == "bleed")
+                    .filter(|s| positions.get(s.target).map(|p| p.0.distance(caster_pos.0) <= channel.bleed_bonus_range).unwrap_or(false))
+                    .count();
+                heal_amount *= 1.0 + channel.bleed_bonus_percent / 100.0 * bleeding_count as f32;
+            }
+        }
 
         // Overheal -> shield, computed BEFORE the heal lands (apply_heal clamps to max, so the
         // spillover has to be read off the pre-heal current/max here, not derived after the fact).
@@ -51,6 +70,22 @@ pub fn tick_channels(
 
         if heal_amount > 0.0 {
             heal_events.write(HealEvent { target: caster, amount: heal_amount });
+            // Druid Heal's "your heal also heals your Ent" (Phase 9.4) — the same flat amount to
+            // every minion this caster owns.
+            if channel.heals_ents {
+                for (minion, owner) in &minions {
+                    if owner.0 == caster {
+                        heal_events.write(HealEvent { target: minion, amount: heal_amount });
+                    }
+                }
+            }
+        }
+
+        // Druid Heal's "your next attack in animal form is enhanced" (Phase 9.4).
+        if channel.grants_enhanced_charge {
+            if let Ok(mut charges) = charges.get_mut(caster) {
+                charges.gain(1);
+            }
         }
 
         if channel.radiate_percent > 0.0 {

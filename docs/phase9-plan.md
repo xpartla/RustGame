@@ -749,3 +749,97 @@ overheal→shield, `paladin.hero.ron`/new-ability-RON parses, golden master byte
 `Mechanics.md` Paladin section flipped to implemented with the three deferrals called out inline —
 met. No open items beyond the three explicitly-deferred talents above and the pre-existing,
 untouched §8.5 reproducibility row (Phase 9.2's, not this sub-phase's).
+
+## 16. Sub-phase 9.4 as-built (completed 2026-07-08)
+
+Landed at full scope against §5's own sketch — both new behaviors (`leap_to_target`, and `bloom`
+which §5's bullet list didn't separately name but implied via "Bloom (pickup-driven)"), the
+Enhanced-attack state machine, the taunting Ent, and the whole ability roster (Scratch/Ferocious
+Bite/Primal Pounce/Roots/Heal/Tree Conduit/Bloom/Spawn Ent) — plus a talent tree roughly half
+implemented, half deliberately deferred with a documented missing primitive per item (Druid's tree is
+the arc's largest, ~35 talents across 8 abilities + 4 class passives). Byte-identical against the
+golden master throughout, **independently reverified**: the pre-existing `campaign_matches_golden_
+baseline` divergence (§8.5, open since Phase 9.2) was reproduced byte-for-byte via `git stash` on a
+clean pre-9.4 checkout before any Druid code landed, confirming this sub-phase moved nothing beyond
+that already-tracked state — a stronger check than Phase 9.3's own "not investigated, per
+instruction," done because the scope of new systems touched this phase (new behaviors, a new AI
+steering branch, a rescheduled HUD-sync system) made "probably still just the same debt" worth
+actually confirming rather than assuming. See the CHANGELOG "Phase 9.4" section and architecture-plan
+§8.15 for full detail; deviations/surprises from the sketch here:
+
+- **The Enhanced state's charge-granting sources landed narrower than §5's own bullet implied.**
+  §5 sketched grants from "stance-swap / Bloom / Tree Conduit." Re-reading `Mechanics.md` closely
+  during implementation: nothing in the actual Mechanics text says entering Animal form grants a
+  charge — only Bloom, Tree Conduit, and (found while reading Primal Pounce/Ferocious Bite's own
+  talent lists) Ferocious Bite's own kill-epic talent (deferred, see below) ever grant one. Stance-
+  swap was dropped from the implementation as a grant source; it was the plan's own inference, not a
+  Mechanics requirement.
+- **Ferocious Bite's "always crits if bleeding" deliberately does NOT use the 9.1 `crit_chance`/
+  `crit_mult` universal stat sheet**, despite §5's sketch saying it "uses the 9.1 crit path
+  deterministically." Reading DP5 (phase9-plan.md's own risk table) more literally: "deterministic
+  crits... need no roll" — but the 9.1 crit path's `roll_crit` always draws from `RunRng` when
+  `crit_chance > 0`, even at a forced 100% (it just always resolves true, per `tests/effects.rs`'s
+  own `roll_crit_always_succeeds_at_100_percent`). Routing a CONDITIONAL (bleeding-only) ability
+  through that path would mean this ability's `RunRng` draw count differs depending on whether the
+  target happens to be bleeding — an asymmetry with real reproducibility risk the crit system's own
+  byte-identical guarantee was built to avoid. Implemented instead as a flat, RNG-free top-up
+  (`damage * (bleed_crit_mult - 1)`), the same shape as every other per-target-conditional special
+  case this arc has used (Spinning Hammer's holy-mark bonus, etc.) — zero RunRng cost, fully
+  deterministic, and arguably the MORE correct reading of DP5's own stated intent than the sketch's
+  literal wording.
+- **Minion body params generalized from constants to ability data** — not explicitly anticipated by
+  §5's own text, but a direct consequence of Spawn Ent being a SECOND `summon` consumer with visibly
+  different body stats than Companion's pet (§5 doesn't mention this at all, since it predates
+  knowing the Ent needed to feel tankier). `MINION_HEALTH`/`_SPEED`/`_RADIUS` moved from
+  execute.rs's hardcoded constants into each summon ability's own resolved params; `companion.
+  ability.ron` now declares the same numbers explicitly (byte-identical) rather than relying on the
+  constants silently. A reasonable generalization once a second consumer existed — the same
+  "generalize on the second real use" pattern the project has followed elsewhere (e.g. Phase 9.2's
+  `EffectTarget::SecondaryHits`/`DamageFraction` didn't exist until Hammer of Justice's cleave needed
+  it in 9.3).
+- **A real, previously-latent scheduling bug found: `sync_charges_to_class_resource` (Phase 9.1,
+  always inert) had no explicit order against its own mutators.** Exactly the class of bug this arc's
+  risk table warned about generally ("crit / summon / leap / roster introduce nondeterminism") but
+  applied here to a UI-mirror system, not gameplay RNG — `tests/druid.rs`'s Enhanced-charge
+  assertions failed intermittently by one frame's worth of staleness until `sync_charges_to_
+  class_resource` was pinned `.after(CombatSet::Damage)`. Caught by the test suite immediately (not a
+  silent bug), unlike Phase 9.2's Companion race, which needed the ambiguity-detection tooling to
+  surface. Byte-identical (this system only ever touches the presentation-facing `ClassResource`
+  mirror, never a gameplay component the golden campaign's snapshot reads).
+- **Tree Conduit's "next animal attack enhanced" vs. its own epic talent ("all attacks enhanced while
+  in range") collapse into the same mechanic under the per-frame top-up-to-one model** (documented in
+  both `hero/systems/enhanced.rs` and `Mechanics.md` inline) — §5 didn't specify the exact mechanic
+  closely enough to have anticipated this; the epic talent is deferred as a documented no-op rather
+  than built as a separate (redundant) code path.
+- **Ferocious Bite's Enhanced cleave is centred on the PRIMARY target's position, not the caster's
+  own post-leap position** — a deliberate approximation forced by frame timing: the leap's
+  `ForcedImpulse` resolves in `MovementSet::Integrate` the FOLLOWING frame, so the caster hasn't
+  actually arrived yet when the same-frame cleave check runs. Using the primary's landing spot (where
+  the caster is about to be) is the closest available proxy without restructuring the cast pipeline
+  to defer effect resolution by a frame — not anticipated by §5's own sketch, which didn't consider
+  the leap-then-cleave timing question at all.
+- **Roots' stun-on-hit and extra-projectile talents, deferred** — surfaces a real, previously-unnamed
+  gap: every existing "targeted execute.rs special-case" pattern (Blood Boil, Spinning Hammer,
+  Abomination Limb, Hammer of Justice, Smite, and now Scratch/Ferocious Bite/Primal Pounce) lives on
+  the INSTANT-hit path inside `execute_ready_abilities`; Roots' effects resolve on PROJECTILE IMPACT
+  (`projectile/systems/motion.rs`), a different system with no talent/`ActiveHooks` access today.
+  §5's own text didn't distinguish instant-hit from projectile-impact special-casing as a capability
+  gap — worth flagging for Mage completion (9.5), whose Frostbolt/Frost Impale are also projectiles
+  and may want the same kind of talent-conditional impact effect.
+
+**Tests: 288 total, 287 passing** (was 258; the one non-passing test is Phase 9.2's own tracked,
+unchanged `campaign_matches_golden_baseline` divergence — independently reverified this sub-phase, not
+a new regression). `campaign_is_reproducible_within_a_build` stays green. New `tests/druid.rs`
+(10 scenario tests) + new unit tests across `ability/behavior.rs` (`LeapToTarget`'s two modes +
+whiff, `Bloom`'s pickup signal), `ability/assets.rs` (all 7 new/updated ability RON parses),
+`talent/assets.rs` (all 21 new talent RON parses + a few targeted shape checks), `hero/assets.rs`
+(`druid.hero.ron`'s parse), and `hero/components.rs` (`Charges::spend_one`). Build warning-free.
+
+Deviations from the plan's Definition of Done (§5's own DoD line + the arc DoD in §0): form swap
+remaps slots AND casts the swap ability, enhanced Scratch applies bleed, Ferocious Bite leaps + crits
+a bleeding target, Primal Pounce auto-leaps, Bloom pickup grants Enhanced, Ent taunts an enemy off
+the player, `druid.hero.ron`/new-ability-RON parses, golden master byte-identical (independently
+reverified, not merely assumed) — all met. `Mechanics.md` Druid section flipped to implemented with
+every deferred talent's missing primitive named inline — met. No open items beyond the documented
+deferrals above and the pre-existing, untouched §8.5 reproducibility row (Phase 9.2's, not this
+sub-phase's).

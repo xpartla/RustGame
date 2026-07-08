@@ -1,13 +1,13 @@
 // WORKING NAME: "Tree Conduit"
-// Class: Druid (Human form) — DEMONSTRATOR ONLY this phase (no Druid hero yet, like the Phase-3
-// Fireblast/Frostbolt/Scratch demonstrators). Unbound; exercised by scenarios.
-// Unlock (design): randomly at level 4/5.
+// Class: Druid (Human) — band ability (Unlocked randomly at level 4/5, alongside Bloom).
 //
-// Behavior: dropped_zone — spawns a "tree_conduit" zone. Per Mechanics, while inside its range the
-// Druid's next animal attack is enhanced. That "enhanced next attack" consumer is a Druid
-// state-machine mechanic DEFERRED to the class content pass (Phase 9); this phase ships the zone as
-// a MARKER only (no occupant tick effects), to prove a second zone type coexists with D&D in
-// PlayerZonePresence and is queryable.
+// Behavior: dropped_zone — spawns a "tree_conduit" zone (Phase 6, as a marker-only demonstrator;
+// Phase 9.4 promotes it to the real Druid band ability, mirroring Consecrated Ground's Phase 9.3
+// promotion — the mechanic itself is unchanged). The "next animal attack is enhanced while in
+// range" consumer is `hero::systems::enhanced::tree_conduit_enhances_animal_attacks`: every frame
+// the player stands inside this zone in Animal form with zero `Charges`, top up to one. See that
+// system's own doc comment for why this same rule also covers the epic talent below without a
+// second code path.
 (
     id: "tree_conduit",
     display_name: "Tree Conduit",
@@ -24,5 +24,8 @@
         zone_type: "tree_conduit",
         anchor: Fixed,
     )),
-    talent_pool: [],
+    talent_pool: [
+        "tree_conduit_radius_common",
+        "tree_conduit_duration_rare",
+    ],
 )

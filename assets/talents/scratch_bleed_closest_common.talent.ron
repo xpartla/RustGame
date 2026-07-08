@@ -1,0 +1,14 @@
+// "Scratch applies bleed to the closest X targets" (Mechanics, common) — narrows the
+// Enhanced-attack bleed spread from "every hit" (the default) to the single nearest one. Overrides
+// "bleed_target_count", read by the Enhanced special-case in ability/systems/execute.rs.
+(
+    id: "scratch_bleed_closest_common",
+    display_name: "Focused Claws",
+    ability_scope: Some("scratch"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "bleed_target_count",
+        op: Override(1.0),
+    )),
+)

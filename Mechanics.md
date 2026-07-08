@@ -139,82 +139,216 @@ shared player constants (architecture-plan §8.5, now empty)._
 Human form \- ranged control, healing  
 Animal form \- high damage, enhanced attacks, movement
 
+_Phase 9.4 (implemented): the full kit below is live as its own hero (`druid.hero.ron`). `has_stance:
+true` (Human/Animal via Q), `resource_model: Charges(max: 3)` (the Enhanced-attack state), base_stats
+150 hp / 38 move speed (a reasonable default, same not-yet-balance-tested caveat every prior sub-phase
+flagged). Unlike the Mage's swap_effect status model, entering a stance **casts that stance's own
+Basic ability** (a new `cast_on_enter` flag on `StanceSlotMapping`) — Scratch on → Animal, Roots on →
+Human, per Mechanics. All four Basic/Special abilities (Scratch/Ferocious Bite/Roots/Heal) are granted
+at level 1, like the Mage's dual basics._
+
 * Stance Swap \- Q (X second cooldown) (Unlocked at level 1\)  
   * Change from human to animal form and cast Scratch  
   * Change from animal form to human and cast Roots  
+    * _Phase 9.4 (implemented): `cast_on_enter` — entering a stance emits a normal `TriggerAbilityEvent`
+      for that stance's own Basic slot, so it respects the ability's own cooldown/aim gate like any
+      other cast._  
 * Bleed (passive) (passive, no cooldown) (Unlocked at level 1\)  
   * Enemies affected by bleed suffer X damage every second  
-    * (common) Increase bleed damage by X%  
-    * (common) Increase bleed duration by X seconds  
-    * (common) Bleed ticks X% faster  
-    * (rare) Bleed slows enemies by X%  
-    * (epic) Hitting an enemy while bleeding increases the bleed duration by X seconds  
-    * (rare, unique) Bleeding targets take X% increased damage from Human abilities  
+    * _Phase 9.4: the `bleed` status effect itself has existed since Phase 3 (Scratch's original
+      demonstrator); this bullet's own talent tree is **deferred** — every one of its five talents
+      rescales the STATUS's own magnitude (damage/duration/tick-speed/slow), and no primitive exists
+      for a talent to modify a `StatusEffectDef`'s fields (the modifier stack only reaches ability
+      `base_params`). A generalized "status-magnitude talent" is the trigger to revisit this._  
 * Scratch (Animal) \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
   * Hit all enemies in a cone in front of you for X damage  
   * Enhanced \- Scratch applies a bleed on all enemies hit  
+    * _Phase 9.4 (implemented): bleed is NOT part of Scratch's unconditional `effects` (a correction to
+      the Phase-3 demonstrator, which applied it on every hit) — it's the Enhanced-attack state's own
+      consequence: a targeted execute.rs special-case spends one `hero::components::Charges` (if any
+      are held) and applies bleed to the `bleed_target_count` nearest hits (default unlimited)._  
     * (common) Increase the size by X%  
+      * _Phase 9.4 (implemented): `scratch_size_common`, Stack(3), scales `range`._  
     * (common) Increase the damage by X%  
+      * _Phase 9.4 (implemented): `scratch_damage_common`, Stack(3)._  
     * (common) Scratch applies bleed to the closest X targets  
+      * _Phase 9.4 (implemented): `scratch_bleed_closest_common` overrides `bleed_target_count` to 1 —
+        narrows the Enhanced spread from "every hit" to the single nearest one._  
     * (rare, unique) Scratch deals X% more damage to enemies affected by root  
+      * _Phase 9.4 (implemented): `scratch_root_bonus_rare` — a targeted per-hit top-up (the same
+        execute.rs special-case shape as Spinning Hammer's holy-mark bonus, Phase 9.3)._  
     * (rare) Increase bleed duration by X seconds  
+      * _Deferred (Phase 9.4): a status-magnitude talent — see the Bleed passive's own note above._  
     * (rare, unique) Scratch deals X% more damage to bleeding targets  
+      * _Phase 9.4 (implemented): `scratch_bleed_bonus_rare`, the same top-up shape as the root bonus._  
     * (epic, unique) Scratch deals only 50% damage, bleed deals triple damage  
+      * _Deferred (Phase 9.4): the "triple bleed damage" half is a status-magnitude talent (no
+        primitive); the "50% damage" half alone isn't worth shipping without it._  
 * Ferocious Bite (Animal) \- Special Attack (X second cooldown) (Unlocked at level 1\)  
   * Jump to the closest target near your cursor and deal X damage to the enemy. Always critically strikes if the target is bleeding  
+    * _Phase 9.4 (implemented): a new `leap_to_target` behavior, cursor-nearest mode (nearest target
+      within `leap_range` and `half_angle` of the caster's aim; the angle filter is skipped
+      defensively with no aim, so a self-centred AutoCast can reuse the same behavior — see Primal
+      Pounce). Requests a `ForcedImpulse` toward the target (the Phase-9.1 primitive) as the leap's
+      visual/positional dash. "Always crits if bleeding" is BASE KIT identity (deterministic — no
+      RunRng roll, matching DP5), not a talent: a flat top-up to `damage * bleed_crit_mult`._  
   * Enhanced \- Ferocious bite cleaves in a circle around you, applying X% of the damage as bleed  
+    * _Phase 9.4 (implemented as a simplification): spends one Enhanced charge (if any) and applies
+      plain "bleed" (not a true percent-of-damage DoT — no such primitive exists, the same
+      simplification Blood Boil's health-scaling talent used in Phase 9.2) to every OTHER target
+      within `cleave_radius` of the PRIMARY's landing spot (the caster's own post-leap position isn't
+      known this frame — the leap's `ForcedImpulse` resolves next frame — so the primary's position,
+      where the caster is about to land, stands in for "around you")._  
     * (common) Increase damage by X%  
+      * _Phase 9.4 (implemented): `ferocious_bite_damage_common`, Stack(3)._  
     * (common) Increase range by X  
+      * _Phase 9.4 (implemented): `ferocious_bite_range_common`, Stack(3), scales `leap_range`._  
     * (rare, unique) Ferocious bite consumes active bleed on the target, to deal X% increased damage per bleed stack  
+      * _Deferred (Phase 9.4): bleed is a single `RefreshOnReapply` instance (0 or 1 present, never a
+        counted stack), so "per bleed stack" doesn't map onto the current status model; a "consume and
+        deal bonus" version without the stack-count language would work but wasn't judged worth
+        shipping as a rename of the design._  
     * (epic, unique) If Ferocious bite kills an enemy, it resets the cooldown of your next stance swap, and grants 1 Enhanced charge  
+      * _Deferred (Phase 9.4): needs per-ability kill attribution (`DamageEvent` carries none — the
+        same gap Phase 9.2's bone shield and Phase 9.3's Hammer of Justice explosion talent hit)._  
     * (rare, unique) If cast while standing inside a Tree Conduit, the cleave applies bleed X times  
+      * _Deferred (Phase 9.4): bleed has no stacking-count concept to apply "X times" onto (see the
+        consume-bleed talent above)._  
     * (epic, unique) Ferocious bite deals no damage to the primary target, instead it deals all the remaining bleed from the current target instantly to enemies inside the cleave radius  
+      * _Deferred (Phase 9.4): needs a "remaining DoT magnitude" read + instant-transfer mechanic, and
+        a per-cast override to suppress the base declarative damage effect — neither exists._  
 * Primal Pounce (Animal) \- Passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Every X seconds automatically leap towards the highest-health enemy within a radius, dealing X damage and applying a bleed  
+    * _Phase 9.4 (implemented): `leap_to_target`'s highest-health mode (`select_highest_health: 1.0`) —
+      ties broken by nearest distance, deterministic, no RunRng. Unconditional damage + bleed (not
+      gated by Enhanced — Mechanics never calls Primal Pounce "Enhanced")._  
     * (common, unique \[5\]) If the target was Rooted, gain X% movement speed for Y seconds after leaping  
+      * _Deferred (Phase 9.4): needs a new stacking movement-speed-buff status distinct from the
+        simple Bloom Swiftness added this phase; time-boxed out._  
     * (rare, unique) Create a Bloom flower at the point you jumped from  
+      * _Phase 9.4 (implemented): `primal_pounce_bloom_flower_rare` — a direct reuse of Bloom's own
+        pickup-spawn primitive at the cast-time origin (the point jumped FROM)._  
     * (epic, unique) Primal pounce deals no direct damage, instead the bleed is applied to all targets in your path  
+      * _Deferred (Phase 9.4): "all targets in your path" is a new line-AoE targeting shape with no
+        existing analog to reuse._  
     * (common) Increase the range by X  
+      * _Phase 9.4 (implemented): `primal_pounce_range_common`, Stack(3), scales `leap_range`._  
     * (rare, unique) If the target is rooted, deal triple damage  
+      * _Phase 9.4 (implemented): `primal_pounce_root_triple_rare` — a flat +200% top-up (same shape
+        as Ferocious Bite's bleed crit)._  
 * Roots (Human) \- Basic Attack (X second cooldown) (Unlocked at level 1\)  
   * Shoot a projectile in front of you that deals X damage  
+    * _Phase 9.4 (implemented): reuses the `projectile` behavior verbatim (Physical damage), same
+      shape as Frostbolt/Fireblast/the Phase-3 demonstrator._  
     * (rare, unique) Projectile can pass through enemies  
+      * _Phase 9.4 (implemented): `roots_pierce_rare` overrides `pierce` to 1._  
     * (common, unique) Enemies hit by roots are stunned for X seconds  
+      * _Deferred (Phase 9.4): needs a talent-conditional `EffectSpec` — the existing "per-target
+        conditional" special-case pattern lives in execute.rs's INSTANT-hit path, but Roots' effects
+        resolve on projectile IMPACT (`projectile/systems/motion.rs`), a different code path with no
+        talent/`ActiveHooks` access today._  
     * (common) Increase damage by X%  
+      * _Phase 9.4 (implemented): `roots_damage_common`, Stack(3)._  
     * (rare, unique \[3\]) Shoot additional projectile towards the nearest enemy  
+      * _Deferred (Phase 9.4): needs multi-projectile spawn — `CastOutcome.projectile` is a single
+        `Option<ProjectileSpawn>`, not a list._  
 * Heal (Human) \- Special Attack (channeled while moving) (X second cooldown) (Unlocked at level 1\)  
   * Heals you for X% max health  
+    * _Phase 9.4 (implemented): reuses `channel_while_moving` (Phase 9.3) verbatim._  
     * (rare, unique) You heal for X% more per bleeding enemy within Y range  
+      * _Phase 9.4 (implemented): `heal_bleed_bonus_rare` — counted at channel COMPLETION (the caster
+        may have moved throughout), same reasoning as Flash of Light's radiate talent._  
     * (rare, unique) Your next attack in animal form is enhanced  
+      * _Phase 9.4 (implemented): `heal_grants_enhanced_rare` grants 1 Enhanced charge on completion._  
     * (rare, unique) Your heal also heals your Ent  
+      * _Phase 9.4 (implemented): `heal_heals_ents_rare` — the same flat heal amount to every owned
+        `Minion`._  
     * (common, unique\[3\]) Lower cast time by X%  
-* Tree conduit (human) \- passive (X second cooldown) (Unlocked randomly at level 4/5)  
+      * _Phase 9.4 (implemented): `heal_cast_time_common`, Stack(3), scales `cast_time`._  
+* Tree conduit (human) \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Spawn a tree for Y seconds, within X range of the tree, your next animal attack is enhanced  
-    * _Phase 6 (implemented as a marker demonstrator — no Druid hero yet): drops a "tree_conduit" zone queryable via PlayerZonePresence. The "enhanced next animal attack" consumer is deferred to the Druid content pass._  
+    * _Phase 6 (implemented as a marker demonstrator); Phase 9.4 (implemented): promoted to the real
+      Druid band ability (mirrors Consecrated Ground's Phase 9.3 promotion) — the mechanic itself is
+      unchanged. The "enhanced next animal attack" consumer is
+      `hero::systems::enhanced::tree_conduit_enhances_animal_attacks`: every frame the player stands
+      inside the zone in Animal form with zero Charges, top up to one — which, since the top-up re-
+      fires the instant a charge is spent, already provides continuous enhancement for as long as the
+      player stands in range (see the epic talent below)._  
     * (common) Increase tree radius by X%  
+      * _Phase 9.4 (implemented): `tree_conduit_radius_common`, Stack(3)._  
     * (rare) Reduce spawn range by X%  
+      * _Deferred (Phase 9.4): doesn't map onto any existing mechanic — a dropped zone always spawns
+        at the caster's own position; there is no "spawn range" to reduce._  
     * (rare) Increase duration by X seconds  
+      * _Phase 9.4 (implemented): `tree_conduit_duration_rare`, Stack(2)._  
     * (epic, unique) All animal attacks are enhanced while in tree range  
-* Bloom (Human) \- passive (X second cooldown) (Unlocked randomly at level 4/5)  
+      * _Deferred (Phase 9.4): the base consumer's per-frame top-up-to-one (above) already provides
+        exactly this — "no per-attack limit while standing in range" — under the chosen model, so a
+        separate talent implementing it would be a no-op on top of the base kit._  
+* Bloom (Human) \- passive (X second cooldown) (Unlocked randomly at level 2/3)  
   * Periodically spawn a flower that can be picked up when ran over, upon pickup your next animal form attack is enhanced  
+    * _Phase 9.4 (implemented): a new `bloom` behavior (drops a `pickup::components::PickUp` carrying
+      `PickUpKind::Enhance` at the caster's position) + `collect_pickups.rs` grants
+      `hero::components::Charges` on contact — unlike every other ability, the grant lands on PICKUP,
+      not at cast time._  
     * (rare) After picking up you heal for X% health over Y seconds  
+      * _Deferred (Phase 9.4): needs a heal-over-time primitive — `StatusEffectDef.tick` only supports
+        damage, never healing._  
     * (rare, unique) Your next 2 attacks are enhanced  
+      * _Phase 9.4 (implemented): `bloom_extra_charge_rare` adds +1 to `bloom_charges` (base 1 → 2)._  
     * (common) You gain X% movement speed after pickup  
+      * _Phase 9.4 (implemented): `bloom_movespeed_common` — a targeted special-case in
+        `collect_pickups.rs` applying the new `bloom_swiftness` status (a pure move-speed buff, same
+        shape as the Mage's Boots of Fire)._  
 * Spawn Ent (Human) \- passive (X second cooldown) (multiple ents can live simultaneously) (Unlocked randomly at level 2/3)  
   * Periodically spawn an Ent that runs towards the nearest enemy, forcing the enemy to attach the Ent instead of you  
+    * _Phase 9.4 (implemented): reuses the `summon` behavior (Phase 9.2 — Companion) with its own body
+      stats. Minion body params (`minion_health`/`minion_speed`/`minion_radius`) were generalized from
+      the shared `MINION_*` constants into the summon ability's own resolved params (Companion declares
+      the same numbers explicitly now — byte-identical), since the Ent needed a tankier/slower body
+      than the DK's pet. The taunt itself is new: a positive `taunt_radius` param inserts an
+      `enemy::components::Taunt` on the minion; `enemy::systems::taunt::apply_ent_taunt` (runs before
+      the flow-field follower) marks any Hostile `MeleeChaser` within range as `Taunted`, which steers
+      it straight-line toward the Ent instead of the flow field — mirroring the Companion minion's own
+      straight-line seek (the shared `FlowField` only ever points toward the player, exactly wrong for
+      "go fight the Ent"). Contact-range abilities needed no change: they already hit ANY opposing-
+      faction target in range, not just the player. Scoped to `MeleeChaser` enemies only —
+      `RangedCaster`/`Stationary` AI are untouched (a documented simplification)._  
     * (common) Ent lowers the max health of nearby enemies by X% while alive  
+      * _Deferred (Phase 9.4): needs a new continuous-aura-debuff mechanic — no existing primitive
+        applies a component to every enemy within range of an ARBITRARY entity (not the player)._  
     * (epic, unique\[Fiery Ent / Earth Ent\]) Fiery Ent \- Ent has 50% reduced health and explodes on death, dealing X damage to enemies around him  
+      * _Deferred (Phase 9.4): needs an on-minion-death explosion hook + the whole Fiery/Earth
+        `MutuallyExcludes` sub-tree below it — a substantial new mechanic, time-boxed out of this pass._  
       * (common) Increase Fiery Ent damage by X%  
+        * _Deferred (Phase 9.4): depends on the parent talent above._  
       * (rare, unique) Spawn a mini Fiery Ent for each enemy killed by the explosion, mini Ents are unkillable and live for X seconds, dealing Y damage per second to nearby enemies per Ent \- adding up  
+        * _Deferred (Phase 9.4): depends on the parent talent above._  
     * (epic, unique\[Earth Ent/ Fiery Ent\]) Earth Ent \- Ent has 200% increased health and casts entangling zone around himself, rooting the enemies in place   
+      * _Deferred (Phase 9.4): needs a minion-owned zone (every zone today is owned by the player/an
+        enemy actor, not a summoned minion) — time-boxed out of this pass._  
       * (rare, unique) After entangled enemy gets hit by roots, they transform into spiky roots, dealing X damage per second to enemies within Y range, multiplying  
+        * _Deferred (Phase 9.4): depends on the parent talent above._  
     * (common) Reduce cooldown by X  
+      * _Phase 9.4 (implemented): `spawn_ent_cooldown_common`, Stack(3)._  
     * (rare, unique) Ents can pick up bloom flowers, healing all summoned ents and granting them X% increased movement speed for Y seconds  
+      * _Deferred (Phase 9.4): needs Ent-AI pickup-collection behavior (minions never interact with
+        pickups today — only the player's own `collect_pickups` proximity check does)._  
 * Passive Abilities  
   * (rare, unique) Mega bleed \- enemies can bleed from the same ability up to 3 times, each new application refreshes the old one  
+    * _Deferred (Phase 9.4): needs a talent that rewrites a `StatusEffectDef`'s own `StackingRule` —
+      no such primitive exists (talents only ever touch ability `base_params`)._  
   * (rare, unique) Unstable form \- your first 3 casts in animal form are always enhanced, you have a 10% chance of turning to human form after casting an enhanced ability  
+    * _Deferred (Phase 9.4): "first 3 casts" needs a per-player counter distinct from `Charges`; the
+      10%-chance-to-swap-form needs an `ActiveHooks`-gated random stance flip on cast — both new
+      mechanics, time-boxed out._  
   * (epic, unique) Master of the Forest \- You can no longer turn into animal form, Spawn Ent spawns an additional 2 Ents, Blooming flowers explode after getting picked up by Ents, causing the flower to erupt, dealing X damage in a radius around the flower  
-  * (rare, unique) Swapping forms costs X% of your current health, for Y seconds after swapping forms, you deal Y% increased damage and your movement speed is doubled
+    * _Deferred (Phase 9.4): depends on the deferred Ent-picks-up-Bloom talent above, plus a way to
+      DISABLE a stance from `handle_stance_swap` — a substantial new mechanic._  
+  * (rare, unique) Swapping forms costs X% of your current health, for Y seconds after swapping forms, you deal Y% increased damage and your movement speed is doubled  
+    * _Deferred (Phase 9.4): needs a "spend health as an ability cost" primitive — nothing in the
+      engine currently deducts health outside the normal damage pipeline — plus a timed
+      damage+speed buff on the stance-swap system itself._
 
 # Mage
 

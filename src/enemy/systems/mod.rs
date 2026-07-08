@@ -5,3 +5,4 @@ pub mod ranged_caster;
 pub mod update_enemy_facing;
 pub mod death;
 pub mod visuals;
+pub mod taunt;

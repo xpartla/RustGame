@@ -11,6 +11,7 @@ use crate::enemy::systems::ranged_caster::ranged_caster_ai;
 use crate::enemy::systems::update_enemy_facing::update_enemy_facing;
 use crate::enemy::systems::spawner::spawn_enemy_over_time;
 use crate::enemy::systems::death::enemy_death;
+use crate::enemy::systems::taunt::apply_ent_taunt;
 
 // Presentation note: draw_enemy_attack_flash and enemy visuals (attach_enemy_visuals) are
 // registered by game::presentation::PresentationPlugin.
@@ -47,6 +48,7 @@ impl Plugin for EnemyPlugin {
                 Update,
                 (
                     rebuild_flow_field_from_player,
+                    apply_ent_taunt,
                     enemy_follow_flow_field,
                     ranged_caster_ai,
                     update_enemy_facing,

@@ -1,0 +1,12 @@
+// "Increase the range by X" (Mechanics, common). Stack(3).
+(
+    id: "primal_pounce_range_common",
+    display_name: "Farther Pounce",
+    ability_scope: Some("primal_pounce"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "leap_range",
+        op: Add(30.0),
+    )),
+)

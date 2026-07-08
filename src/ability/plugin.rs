@@ -14,8 +14,8 @@
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
 use crate::ability::behavior::{
-    BehaviorRegistry, Blink, ChannelWhileMoving, ContactMelee, DroppedZone, Grip, HammerCleave, MeleeCone,
-    NearestMelee, Orbiting, ProjectileBehavior, SelfNova, Summon,
+    BehaviorRegistry, Blink, Bloom, ChannelWhileMoving, ContactMelee, DroppedZone, Grip, HammerCleave,
+    LeapToTarget, MeleeCone, NearestMelee, Orbiting, ProjectileBehavior, SelfNova, Summon,
 };
 use crate::ability::hooks::{BdkDndDamageBoost, BdkNoHealCapLeechBoost, BloodBoilDndRange, HeartStrikeExecuteBonus, HeartStrikeMissingHealth, HookRegistry};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
@@ -49,8 +49,8 @@ impl Plugin for AbilityPlugin {
         // (Phase 5), dropped_zone (Phase 6), blink (Phase 9.1 — the Movement-slot dash), summon /
         // nearest_melee (Phase 9.2 — Companion / Heart Strike), orbiting / hammer_cleave /
         // channel_while_moving (Phase 9.3 — Paladin's Spinning Hammer / Hammer of Justice / Flash
-        // of Light). leap_to_target registers in its own later phase; an ability whose behavior is
-        // unregistered stays inert.
+        // of Light), leap_to_target / bloom (Phase 9.4 — Druid's Ferocious Bite+Primal Pounce /
+        // Bloom). An ability whose behavior is unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
@@ -64,6 +64,8 @@ impl Plugin for AbilityPlugin {
         behaviors.register("orbiting", Orbiting);
         behaviors.register("hammer_cleave", HammerCleave);
         behaviors.register("channel_while_moving", ChannelWhileMoving);
+        behaviors.register("leap_to_target", LeapToTarget);
+        behaviors.register("bloom", Bloom);
         app.insert_resource(behaviors);
 
         // Code-driven ability hooks (Phase 6). Talent-gated hooks (in an ability's `hooks` list)

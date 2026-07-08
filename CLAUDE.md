@@ -10,7 +10,7 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered; §8.14 Phase 9.3 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered; §8.14 Phase 9.3 delivered; §8.15 Phase 9.4 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
@@ -18,7 +18,7 @@ unrelated web project.)
 | `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
 | `docs/phase7.5-ui-plan.md` | Phase 7.5 plan + as-built notes (UI layer: HUD, menus, game-over/pause, map view, merchant, VFX bus) |
 | `docs/phase8-plan.md` | Phase 8 plan + as-built notes (persistence + meta: RunRng → ChaCha8, RunState/MetaState serde, save/resume, scoreboard, Log-In) |
-| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats); 9.3 done §15 (Paladin: Hammer of Justice/Flash of Light/Consecrated Ground promoted/Spinning Hammer/Smite + the holy-mark read/grant path + the hero-aware band-pool fix) |
+| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats); 9.3 done §15 (Paladin: Hammer of Justice/Flash of Light/Consecrated Ground promoted/Spinning Hammer/Smite + the holy-mark read/grant path + the hero-aware band-pool fix); 9.4 done §16 (Druid: Scratch/Ferocious Bite/Primal Pounce/Roots/Heal/Tree Conduit promoted/Bloom/Spawn Ent + the Enhanced-attack charge state + `leap_to_target`/`bloom` behaviors + the Ent taunt) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -50,8 +50,9 @@ unrelated web project.)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
 in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10, Phase-8 in §8.11, Phase-9.1 in §8.12,
-Phase-9.2 in §8.13, Phase-9.3 in §8.14) — **one open row: the golden-campaign reproducibility flake
-(Phase 9.2), unchanged by Phase 9.3.** Highlights a future session must not "rediscover":
+Phase-9.2 in §8.13, Phase-9.3 in §8.14, Phase-9.4 in §8.15) — **one open row: the golden-campaign
+reproducibility flake (Phase 9.2), unchanged by Phase 9.3 and Phase 9.4 (independently reverified
+both times, not just assumed).** Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -90,9 +91,10 @@ Phase-9.2 in §8.13, Phase-9.3 in §8.14) — **one open row: the golden-campaig
 - ~~Persistent zones + AMZ projectile-blocking~~ **DONE (Phase 6, §8.8)** — `zone` module live
   (`dropped_zone` + `PlayerZonePresence` + occupant DoT/regen + AMZ blocking). New zone abilities via
   `AbilityDef.zone: Option<ZoneSpec>`. The AMZ-follow talent **DONE (Phase 9.2, §8.13)** — a
-  `follow_caster` resolved-param override in `spawn_dropped_zone`. Still deferred: D&D's own BASE
-  cross-ability buffs (Death Strike/Heart Strike get stronger just standing in the zone, no talent
-  needed — see `Mechanics.md`'s D&D bullet); Tree Conduit's enhanced-attack consumer (Druid, Phase 9.4).
+  `follow_caster` resolved-param override in `spawn_dropped_zone`. Tree Conduit's enhanced-attack
+  consumer **DONE (Phase 9.4, §8.15)** — `hero::systems::enhanced::tree_conduit_enhances_animal_
+  attacks`. Still deferred: D&D's own BASE cross-ability buffs (Death Strike/Heart Strike get
+  stronger just standing in the zone, no talent needed — see `Mechanics.md`'s D&D bullet).
 - ~~`execute_ready_abilities` split (do it with the first code-driven hook)~~ **DONE (Phase 6)** —
   `ability/hooks.rs` (`HookRegistry`/`AbilityHook`); execute interleaves Pre/Post hooks gated on
   `ActiveHooks` + registration. First hook: `blood_boil_dnd_range`. `bone_shield` stays inert until
@@ -109,7 +111,9 @@ Phase-9.2 in §8.13, Phase-9.3 in §8.14) — **one open row: the golden-campaig
   baseline in `resolve_params`) all land inert; the `Override(0)` guard is resolved by attack
   speed's always-write cooldown formula (the guard is simply gone). Consumers **DONE (Phase 9.2,
   §8.13)**: bone shield (`Absorb`), Purgatory (a new `Invulnerable` component), Abomination Limb's
-  grip (`ForcedImpulse`). Still open: Ice Barrier, Mage/Druid charges (Phase 9.4/9.5+).
+  grip (`ForcedImpulse`). Charges **DONE for the Druid (Phase 9.4, §8.15)** — the Enhanced-attack
+  state (`Charges::spend_one`), consumed by Scratch/Ferocious Bite. Still open: Ice Barrier, Mage
+  frost charges (Phase 9.5).
 - ~~`HeroDef.base_stats` is data-only — per-hero HP/move-speed application~~ **DONE (Phase 9.2,
   §8.13)** — a deferred `apply_base_stats` system (mirrors `grant_level_1_abilities`'s async-asset-load
   pattern) + a synchronous path in `respawn_player` (restart/resume). The DK now plays at its own
@@ -142,6 +146,15 @@ Phase-9.2 in §8.13, Phase-9.3 in §8.14) — **one open row: the golden-campaig
   kill-inside-consecrated-ground explosion (the latter hits the same no-ability-provenance gap as
   Phase 9.2's bone shield); Flash of Light's next-Hammer-of-Justice buff (a one-shot cross-ability
   buff-consumption shape no existing primitive covers).
+- ~~Druid content (`leap_to_target`/`bloom` behaviors; the Enhanced-attack charge state; the Ent
+  taunt)~~ **DONE (Phase 9.4, §8.15)** — the arc's second brand-new hero, "the hard class." Roughly
+  half its ~35-talent tree is deferred with triggers (documented inline in `Mechanics.md`'s Druid
+  section, per-talent): status-magnitude talents (no primitive scales a `StatusEffectDef`'s own
+  fields), multi-projectile spawn, heal-over-time, a non-player aura debuff, a minion-owned zone,
+  on-kill ability attribution (same gap as bone shield/Hammer of Justice's kill-explosion), and the
+  four class-wide Passive Abilities in full (each a genuinely new mechanic). Also fixed: a latent
+  `sync_charges_to_class_resource` scheduling gap (Phase 9.1, inert until Druid's Charges made it a
+  real same-frame race) — now pinned `.after(CombatSet::Damage)`.
 
 §8.5 is checked and updated at the end of every phase. When a future phase's work creates a new
 deliberate gap, add it here and to §8.5 in the same change. When resolving the reproducibility row

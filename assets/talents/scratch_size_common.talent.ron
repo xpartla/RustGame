@@ -1,0 +1,12 @@
+// "Increase the size by X%" (Mechanics, common) — the cone's reach. Stack(3).
+(
+    id: "scratch_size_common",
+    display_name: "Wider Swing",
+    ability_scope: Some("scratch"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: MultiplyAdd(0.15),
+    )),
+)

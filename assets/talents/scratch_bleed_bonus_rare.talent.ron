@@ -1,0 +1,13 @@
+// "Scratch deals X% more damage to bleeding targets" (Mechanics, rare, unique). Overrides
+// "bleeding_bonus_damage_percent", same per-hit top-up shape as the root bonus above.
+(
+    id: "scratch_bleed_bonus_rare",
+    display_name: "Salt the Wound",
+    ability_scope: Some("scratch"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "bleeding_bonus_damage_percent",
+        op: Override(25.0),
+    )),
+)

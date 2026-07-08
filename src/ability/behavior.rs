@@ -19,7 +19,6 @@
 // Behaviors still pending (registered in their phase; until then execute_ready_abilities skips
 // any ability whose behavior id is not in the registry):
 //   "periodic_self_zone" — self-centred pulsing zone (later)
-//   "leap_to_target"    — Ferocious Bite (Phase 9.4)
 
 use bevy::prelude::*;
 use std::collections::HashMap;
@@ -62,6 +61,8 @@ pub struct Target {
     /// "grip only ranged enemies" epic talent). Always `false` for non-enemy targets (the player,
     /// a Companion minion), which carry no `AiBehavior`.
     pub is_ranged: bool,
+    /// Current health (Phase 9.4 — Primal Pounce's "leap toward the highest-health enemy").
+    pub health: f32,
 }
 
 /// One entity a behavior resolved as hit, with its position (for follow-up geometry / VFX).
@@ -141,6 +142,14 @@ pub struct ChannelSpawn {
     pub cast_time: f32,
 }
 
+/// A collectible pickup a behavior wants dropped at the caster's origin (Phase 9.4 — Druid's
+/// Bloom). Mirrors `ZoneSpawn`/`SummonSpawn`'s minimal-signal shape: the behavior only signals
+/// "drop one here"; the execute system builds the actual `pickup::components::PickUp` entity (the
+/// `Bloom` ability has no `EffectSpec`/spec type of its own to carry a payload — the grant amount
+/// is read straight from resolved params, see execute.rs's pickup-spawn handling).
+#[derive(Debug, Clone, Copy)]
+pub struct PickupSpawn;
+
 /// What a behavior resolves for one cast: the targeting result the execute system applies the
 /// ability's declarative `effects` against. Gameplay outcome (damage/heal/status) is data, not here.
 #[derive(Debug, Clone, Default)]
@@ -169,6 +178,9 @@ pub struct CastOutcome {
     /// Optional request to start a multi-frame channel (Phase 9.3). `None` for every other
     /// behavior.
     pub channel: Option<ChannelSpawn>,
+    /// Optional request to drop a collectible pickup at the caster's origin (Phase 9.4 — Bloom).
+    /// `None` for every other behavior.
+    pub pickup: Option<PickupSpawn>,
 }
 
 /// What a behavior is given each time it runs. Read-only view of the caster.
@@ -638,6 +650,110 @@ impl AbilityBehavior for ChannelWhileMoving {
     }
 }
 
+/// Leap to a single target (Phase 9.4 — Druid's Ferocious Bite / Primal Pounce). Picks ONE target
+/// within `leap_range`, requests a `ForcedImpulse` toward it (the visual/positional "jump" — a
+/// short dash, not a guaranteed landing-on-top), and resolves it as the `primary` hit for the
+/// ability's own `effects` (PrimaryHit damage, etc.) to apply. Two selection modes, chosen by the
+/// numeric flag `select_highest_health` (the same "escape-hatch param flag" pattern as
+/// `follow_caster`/`slow_active` elsewhere):
+///   - `0.0` (Ferocious Bite: "jump to the closest target near your cursor") — nearest target
+///     within `leap_range` AND within `half_angle` of the caster's aim. If the caster has no aim
+///     (`facing` ~ zero — e.g. an AutoCast leap with this mode, which no shipped ability uses today)
+///     the angle filter is skipped defensively, same as `MeleeCone`'s own degenerate-direction case.
+///   - `1.0` (Primal Pounce: "automatically leap towards the highest-health enemy within a radius")
+///     — the highest-`health` target within `leap_range`, ties broken by nearest distance then
+///     iteration order (deterministic, no RunRng).
+/// `needs_aim()` is `false` for BOTH modes — Primal Pounce is a self-centred AutoCast that must
+/// fire with no player aim at all, so the aim gate can't live at the execute-system level here;
+/// mode 0's own angle filter (above) is what actually makes it "prefer the cursor direction."
+///
+/// Params: "leap_range", "half_angle" (mode 0 only), "select_highest_health", "leap_speed",
+/// "leap_duration" (+ whatever the ability's effects reference, e.g. "damage").
+pub struct LeapToTarget;
+
+impl AbilityBehavior for LeapToTarget {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let leap_range = params.get("leap_range");
+        let half_angle = params.get("half_angle");
+        let leap_speed = params.get("leap_speed");
+        let leap_duration = params.get("leap_duration");
+        let highest_health_mode = params.get("select_highest_health") > 0.5;
+        let forward = ctx.facing;
+        let has_aim = forward.length_squared() >= 1e-6;
+
+        let in_range: Vec<&Target> = ctx
+            .targets
+            .iter()
+            .filter(|t| t.pos.distance(ctx.origin) <= leap_range)
+            .collect();
+
+        let picked = if highest_health_mode {
+            in_range.into_iter().min_by(|a, b| {
+                // Highest health first; ties broken by nearest distance (deterministic).
+                b.health
+                    .partial_cmp(&a.health)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        let da = a.pos.distance_squared(ctx.origin);
+                        let db = b.pos.distance_squared(ctx.origin);
+                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            })
+        } else {
+            in_range
+                .into_iter()
+                .filter(|t| {
+                    if !has_aim {
+                        return true;
+                    }
+                    let to = t.pos - ctx.origin;
+                    let dist = to.length();
+                    dist < 1e-6 || forward.angle_to(to / dist).abs() <= half_angle
+                })
+                .min_by(|a, b| {
+                    let da = a.pos.distance_squared(ctx.origin);
+                    let db = b.pos.distance_squared(ctx.origin);
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                })
+        };
+
+        let Some(target) = picked else {
+            return CastOutcome { origin: ctx.origin, ..Default::default() };
+        };
+
+        let velocity = (target.pos - ctx.origin).normalize_or_zero() * leap_speed;
+        CastOutcome {
+            origin: ctx.origin,
+            primary: Some(HitTarget { entity: target.entity, pos: target.pos }),
+            hits: vec![HitTarget { entity: target.entity, pos: target.pos }],
+            forced_impulse: Some(ForcedImpulseSpawn { velocity, duration: leap_duration }),
+            ..Default::default()
+        }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
+/// Drop a collectible pickup at the caster's origin (Phase 9.4 — Druid's Bloom). No targets, no
+/// aim — a passive, self-centred AutoCast like `Summon`/`DroppedZone`.
+pub struct Bloom;
+
+impl AbilityBehavior for Bloom {
+    fn resolve(&self, ctx: &AbilityContext, _params: &ResolvedParams) -> CastOutcome {
+        CastOutcome {
+            origin: ctx.origin,
+            pickup: Some(PickupSpawn),
+            ..Default::default()
+        }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,9 +769,9 @@ mod tests {
         let out_of_range = Entity::from_raw(3); // 100 to the side
         let outside_arc = Entity::from_raw(4); // ~53° off the aim, within range
         let targets = [
-            Target { entity: in_cone, pos: Vec2::new(30.0, 0.0), is_ranged: false },
-            Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0), is_ranged: false },
-            Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0), is_ranged: false },
+            Target { entity: in_cone, pos: Vec2::new(30.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0), is_ranged: false, health: 100.0 },
+            Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0), is_ranged: false, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]); // ~45°
@@ -679,8 +795,8 @@ mod tests {
         // Both dead ahead and inside a wide cone; `far` is listed first to prove primary is
         // chosen by distance, not iteration order.
         let targets = [
-            Target { entity: far, pos: Vec2::new(50.0, 0.0), is_ranged: false },
-            Target { entity: near, pos: Vec2::new(20.0, 0.0), is_ranged: false },
+            Target { entity: far, pos: Vec2::new(50.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: near, pos: Vec2::new(20.0, 0.0), is_ranged: false, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]);
@@ -699,10 +815,10 @@ mod tests {
         let out_of_range = Entity::from_raw(5);
         // Listed out of distance order to prove sorting, not iteration order, decides the cut.
         let targets = [
-            Target { entity: far_in_range, pos: Vec2::new(40.0, 0.0), is_ranged: false },
-            Target { entity: out_of_range, pos: Vec2::new(90.0, 0.0), is_ranged: false },
-            Target { entity: near, pos: Vec2::new(10.0, 0.0), is_ranged: false },
-            Target { entity: mid, pos: Vec2::new(20.0, 0.0), is_ranged: false },
+            Target { entity: far_in_range, pos: Vec2::new(40.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: out_of_range, pos: Vec2::new(90.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: near, pos: Vec2::new(10.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: mid, pos: Vec2::new(20.0, 0.0), is_ranged: false, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("target_count", 2.0)]);
@@ -726,9 +842,9 @@ mod tests {
         let far_in_range = Entity::from_raw(3);
         let out_of_range = Entity::from_raw(4);
         let targets = [
-            Target { entity: far_in_range, pos: Vec2::new(0.0, 100.0), is_ranged: false },
-            Target { entity: out_of_range, pos: Vec2::new(0.0, 300.0), is_ranged: false },
-            Target { entity: near, pos: Vec2::new(50.0, 0.0), is_ranged: false },
+            Target { entity: far_in_range, pos: Vec2::new(0.0, 100.0), is_ranged: false, health: 100.0 },
+            Target { entity: out_of_range, pos: Vec2::new(0.0, 300.0), is_ranged: false, health: 100.0 },
+            Target { entity: near, pos: Vec2::new(50.0, 0.0), is_ranged: false, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 150.0), ("target_count", 1.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 0.0)]);
@@ -749,8 +865,8 @@ mod tests {
         let melee = Entity::from_raw(2);
         let ranged = Entity::from_raw(3);
         let targets = [
-            Target { entity: melee, pos: Vec2::new(10.0, 0.0), is_ranged: false },
-            Target { entity: ranged, pos: Vec2::new(20.0, 0.0), is_ranged: true },
+            Target { entity: melee, pos: Vec2::new(10.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: ranged, pos: Vec2::new(20.0, 0.0), is_ranged: true, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 100.0), ("target_count", 5.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 1.0)]);
@@ -783,7 +899,7 @@ mod tests {
         // A single hammer orbits at radius 50, angular_speed pi/s -> at t=0 it's at (50, 0);
         // at t=1 (pi rad later, half a turn) it's at (-50, 0).
         let target = Entity::from_raw(2);
-        let targets = [Target { entity: target, pos: Vec2::new(50.0, 0.0), is_ranged: false }];
+        let targets = [Target { entity: target, pos: Vec2::new(50.0, 0.0), is_ranged: false, health: 100.0 }];
         let p = params(&[
             ("orbit_radius", 50.0),
             ("hit_radius", 10.0),
@@ -806,8 +922,8 @@ mod tests {
         let near_start = Entity::from_raw(2); // at (50, 0) -> hammer 0's t=0 position
         let near_opposite = Entity::from_raw(3); // at (-50, 0) -> hammer 1's t=0 position (offset by pi)
         let targets = [
-            Target { entity: near_start, pos: Vec2::new(50.0, 0.0), is_ranged: false },
-            Target { entity: near_opposite, pos: Vec2::new(-50.0, 0.0), is_ranged: false },
+            Target { entity: near_start, pos: Vec2::new(50.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: near_opposite, pos: Vec2::new(-50.0, 0.0), is_ranged: false, health: 100.0 },
         ];
         let p = params(&[
             ("orbit_radius", 50.0),
@@ -828,9 +944,9 @@ mod tests {
         let behind_primary = Entity::from_raw(3); // further along the same ray -> in the cleave cone
         let off_to_the_side = Entity::from_raw(4); // near the primary but off-axis -> outside the cleave cone
         let targets = [
-            Target { entity: primary, pos: Vec2::new(30.0, 0.0), is_ranged: false },
-            Target { entity: behind_primary, pos: Vec2::new(60.0, 0.0), is_ranged: false },
-            Target { entity: off_to_the_side, pos: Vec2::new(30.0, 40.0), is_ranged: false },
+            Target { entity: primary, pos: Vec2::new(30.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: behind_primary, pos: Vec2::new(60.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: off_to_the_side, pos: Vec2::new(30.0, 40.0), is_ranged: false, health: 100.0 },
         ];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[
@@ -853,7 +969,7 @@ mod tests {
     fn hammer_cleave_whiffs_cleanly_with_no_primary_in_arc() {
         let owner = Entity::from_raw(1);
         let out_of_range = Entity::from_raw(2);
-        let targets = [Target { entity: out_of_range, pos: Vec2::new(200.0, 0.0), is_ranged: false }];
+        let targets = [Target { entity: out_of_range, pos: Vec2::new(200.0, 0.0), is_ranged: false, health: 100.0 }];
         let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 50.0), ("half_angle", 0.2), ("cleave_range", 40.0), ("cleave_half_angle", 0.2)]);
 
@@ -878,5 +994,84 @@ mod tests {
     #[test]
     fn channel_while_moving_needs_no_aim() {
         assert!(!ChannelWhileMoving.needs_aim());
+    }
+
+    #[test]
+    fn leap_to_target_cursor_mode_picks_the_nearest_in_arc() {
+        let owner = Entity::from_raw(1);
+        let near = Entity::from_raw(2);
+        let far = Entity::from_raw(3);
+        let out_of_arc = Entity::from_raw(4);
+        let targets = [
+            Target { entity: far, pos: Vec2::new(80.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: near, pos: Vec2::new(30.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: out_of_arc, pos: Vec2::new(30.0, 40.0), is_ranged: false, health: 100.0 },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[
+            ("leap_range", 120.0),
+            ("half_angle", 0.3),
+            ("select_highest_health", 0.0),
+            ("leap_speed", 400.0),
+            ("leap_duration", 0.2),
+        ]);
+
+        let outcome = LeapToTarget.resolve(&ctx, &p);
+
+        assert_eq!(outcome.primary.map(|h| h.entity), Some(near));
+        let impulse = outcome.forced_impulse.expect("leap requests a forced impulse");
+        assert_eq!(impulse.velocity, Vec2::X * 400.0, "leaps straight toward the picked target");
+        assert_eq!(impulse.duration, 0.2);
+    }
+
+    #[test]
+    fn leap_to_target_highest_health_mode_ignores_arc_and_distance() {
+        let owner = Entity::from_raw(1);
+        let weak_and_near = Entity::from_raw(2);
+        let tanky_and_far = Entity::from_raw(3);
+        let targets = [
+            Target { entity: weak_and_near, pos: Vec2::new(10.0, 0.0), is_ranged: false, health: 5.0 },
+            Target { entity: tanky_and_far, pos: Vec2::new(-90.0, 0.0), is_ranged: false, health: 500.0 },
+        ];
+        // Facing perpendicular to both — proves mode 1 doesn't filter by aim at all.
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::Y, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[
+            ("leap_range", 120.0),
+            ("half_angle", 0.1),
+            ("select_highest_health", 1.0),
+            ("leap_speed", 300.0),
+            ("leap_duration", 0.2),
+        ]);
+
+        let outcome = LeapToTarget.resolve(&ctx, &p);
+        assert_eq!(outcome.primary.map(|h| h.entity), Some(tanky_and_far), "picks the highest health, not nearest/in-arc");
+    }
+
+    #[test]
+    fn leap_to_target_whiffs_cleanly_with_nothing_in_range() {
+        let owner = Entity::from_raw(1);
+        let out_of_range = Entity::from_raw(2);
+        let targets = [Target { entity: out_of_range, pos: Vec2::new(500.0, 0.0), is_ranged: false, health: 10.0 }];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[("leap_range", 50.0), ("half_angle", 0.3), ("select_highest_health", 0.0), ("leap_speed", 300.0), ("leap_duration", 0.2)]);
+
+        let outcome = LeapToTarget.resolve(&ctx, &p);
+        assert!(outcome.primary.is_none());
+        assert!(outcome.forced_impulse.is_none());
+    }
+
+    #[test]
+    fn leap_to_target_needs_no_aim() {
+        assert!(!LeapToTarget.needs_aim());
+    }
+
+    #[test]
+    fn bloom_requests_a_pickup_with_no_targets_or_aim() {
+        let owner = Entity::from_raw(1);
+        let ctx = AbilityContext { owner, origin: Vec2::new(5.0, 7.0), facing: Vec2::ZERO, targets: &[], elapsed_secs: 0.0 };
+        let outcome = Bloom.resolve(&ctx, &params(&[]));
+        assert!(outcome.pickup.is_some());
+        assert_eq!(outcome.origin, Vec2::new(5.0, 7.0));
+        assert!(!Bloom.needs_aim());
     }
 }

@@ -1,5 +1,5 @@
 use bevy::color::Color;
-use bevy::prelude::{Component, Resource, Timer};
+use bevy::prelude::{Component, Entity, Resource, Timer};
 use crate::enemy::assets::AiBehaviorId;
 
 #[derive(Component)]
@@ -68,3 +68,20 @@ impl AiBehavior {
         }
     }
 }
+
+/// Marks a Friendly minion as a taunt source (Phase 9.4 — Druid's Spawn Ent: "forcing the enemy to
+/// attack the Ent instead of you"). Inserted on the minion at spawn (`ability::systems::execute`)
+/// when its summon ability resolves a positive `"taunt_radius"` param; absent for every other
+/// minion (Companion). Read only by `enemy::systems::taunt::apply_ent_taunt`.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Taunt {
+    pub radius: f32,
+}
+
+/// Marks a Hostile enemy as currently redirected toward a `Taunt` source instead of the player
+/// (Phase 9.4). Reconciled every frame by `apply_ent_taunt`; consumed by `enemy_follow_flow_field`,
+/// which steers straight-line toward `.0`'s position instead of the flow field while present —
+/// `update_enemy_facing` needs no change, since it derives facing from the (now taunt-directed)
+/// velocity already. Scoped to `MeleeChaser` enemies only (see `apply_ent_taunt`'s doc comment).
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Taunted(pub Entity);

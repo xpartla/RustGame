@@ -19,6 +19,8 @@ pub fn attach_pickup_visuals(
     for (entity, pos, pickup) in &pickups {
         let (mesh_radius, color) = match pickup.kind {
             PickUpKind::Heal(_) => (HEAL_PACK_VISUAL_RADIUS, Color::srgb(0.1, 0.9, 0.2)),
+            // Bloom flower (Phase 9.4) — a distinct pink/violet from the green heal pack.
+            PickUpKind::Enhance(_) => (HEAL_PACK_VISUAL_RADIUS, Color::srgb(0.85, 0.4, 0.85)),
         };
         commands.entity(entity).insert((
             Transform::from_xyz(pos.0.x, pos.0.y, 0.5),

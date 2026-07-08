@@ -1487,6 +1487,74 @@ still the only open row (not investigated this sub-phase, by instruction); no ne
 hero-aware band-pool fix was a real bug, not a deliberately-deferred gap, and is now closed, not
 tracked).
 
+### 8.15 Phase 9.4 delivered (2026-07-08)
+
+The fourth sub-phase of the Phase-9 content-pass arc: the Druid, the arc's second new hero and — per
+the plan's own framing — "the hard class" (two forms, an Enhanced-attack charge state, leaps, a
+taunting summon, and a pickup-driven enhancement). Runless-neutral like the Paladin: the golden
+campaign is the BDK bot and never references any Druid content. **Verified, not just assumed** — the
+pre-existing `campaign_matches_golden_baseline` divergence (§8.5's tracked row, open since Phase 9.2)
+was reproduced byte-for-byte on a clean pre-Phase-9.4 checkout (`git stash` + rerun) before any Druid
+work landed, confirming this sub-phase moved nothing beyond that already-tracked state. See the
+CHANGELOG "Phase 9.4" section for full detail; highlights:
+
+- **Two new ability behaviors**, per DP2: `leap_to_target` (a caster-to-target dash via the Phase-9.1
+  `ForcedImpulse` primitive, with two selection modes toggled by a numeric param flag — cursor-nearest
+  for Ferocious Bite, highest-health for Primal Pounce — both deterministic, no RunRng) and `bloom` (a
+  new `CastOutcome.pickup` signal + `PickUpKind::Enhance`, the first ability whose reward lands on
+  pickup-collection rather than at cast time).
+- **The Enhanced-attack state machine reuses the Phase-9.1 `Charges` primitive exactly as sketched** —
+  a new `Charges::spend_one()` (spend exactly one, distinct from Frost Impale's future `spend_all()`)
+  backs Scratch/Ferocious Bite's per-cast Enhanced consumption, each a targeted execute.rs
+  special-case (the established per-target-conditional shape, now generalized: `is_marked` became
+  `has_status(entity, status_id, ...)`, reused for root/bleed checks across three abilities).
+- **`cast_on_enter`** (`StanceSlotMapping`, opt-in per stance): entering a stance fires that stance's
+  own Basic ability as a normal `TriggerAbilityEvent` — a genuinely different swap model from the
+  Mage's `swap_effect` status buff, kept as a separate opt-in field rather than replacing it.
+- **Minion body params generalized from constants to ability data.** Spawn Ent is a second `summon`
+  consumer needing a tankier/slower body than the DK's Companion pet; `MINION_HEALTH`/`_SPEED`/
+  `_RADIUS` moved from hardcoded constants into each summon ability's own resolved params
+  (`companion.ability.ron` now declares the same numbers explicitly — byte-identical). A new
+  `taunt_radius` param (0 for Companion) inserts `enemy::components::Taunt` on the minion; a new
+  `enemy::systems::taunt::apply_ent_taunt` (before the flow-field follower in `MovementSet::Intent`)
+  marks any `MeleeChaser` within range as `Taunted`, which steers straight-line toward the Ent instead
+  of the flow field — mirroring the Companion minion's own straight-line seek, for the same reason
+  (the shared `FlowField` only ever points toward the player). Contact-range abilities needed zero
+  changes — they already hit any opposing-faction target in range, not just the player.
+- **A real, previously-inert-primitive scheduling gap found and fixed**, the same class of bug every
+  prior sub-phase's first-real-consumer has surfaced: `hero::systems::resource::
+  sync_charges_to_class_resource` (Phase 9.1, always inert — no hero carried `Charges` until now) had
+  no explicit order against any of its now-three mutators (`execute_ready_abilities`'s Scratch/
+  Ferocious Bite spend, `tick_channels`'s Heal grant, `collect_pickups`'s Bloom grant), so Bevy's
+  scheduler was free to run the HUD mirror before a same-frame mutation, reading `Charges` a frame
+  stale. Fixed by pinning `.after(CombatSet::Damage)` (every mutator lives in or before that set).
+- **Deliberate deferrals, documented inline in `Mechanics.md` at each point** (the established
+  discipline every sub-phase has used) rather than silently dropped: roughly half of the Druid's
+  ~35-talent tree, all keyed to one of a few missing primitives — status-magnitude talents (no
+  mechanism scales a `StatusEffectDef`'s own fields, only ability `base_params`), multi-projectile
+  spawn (`CastOutcome.projectile` is a single `Option`, not a list), heal-over-time (`TickSpec` only
+  deals damage), an aura debuff around an arbitrary (non-player) entity, a minion-owned zone, and
+  on-kill ability attribution (the same `DamageEvent`-carries-no-provenance gap Phase 9.2's bone
+  shield and Phase 9.3's Hammer of Justice explosion talent both hit). The four class-wide "Passive
+  Abilities" (Mega Bleed, Unstable Form, Master of the Forest, form-swap cost) are deferred in full,
+  each needing a genuinely new mechanic — `class_passive_pool` stays empty, mirroring Paladin's own
+  precedent in Phase 9.3.
+- **Tests: 288 total, 287 passing** (was 258; the one non-passing test remains Phase 9.2's own
+  tracked, unchanged `campaign_matches_golden_baseline` divergence). New `tests/druid.rs` (10
+  scenarios) plus unit tests for every new RON file, `LeapToTarget`'s two selection modes, `Bloom`'s
+  pickup signal, and `Charges::spend_one`. Build warning-free.
+
+§8.1 status after Phase 9.4: `leap_to_target` is now built (its listed consumer, Ferocious Bite, is
+live); the Charges *producers* named in §8.14 (Druid) are now live — Mage's frost charges remain open
+(Phase 9.5). Unchanged/still open: Ice Barrier's real `Absorb` (Phase 9.5), the Movement-slot dash
+still has no shipped hero binding (neither Paladin nor Druid needed it).
+
+§8.5 status after Phase 9.4: unchanged — the golden-campaign reproducibility flake is still the only
+open row, explicitly reverified (not merely assumed) unchanged by this sub-phase's own work, per the
+same instruction Phase 9.3 operated under. No new row opens: the `sync_charges_to_class_resource`
+ordering gap was a real, previously-latent bug (inert until a real `Charges` consumer existed) — now
+fixed, not tracked.
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

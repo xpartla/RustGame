@@ -23,10 +23,10 @@ use crate::core::components::{BaseHealth, Health, MoveSpeed};
 use crate::enemy::components::Enemy;
 use crate::game::state::{GameOverSummary, GameState};
 use crate::hero::assets::{HeroDef, HeroLibrary};
-use crate::hero::components::{ActiveStance, HeroIdentity};
+use crate::hero::components::{ActiveStance, Charges, HeroIdentity};
 use crate::pickup::components::PickUp;
 use crate::player::components::Player;
-use crate::player::systems::base_stats::{resolve_base_stats, BaseStatsApplied};
+use crate::player::systems::base_stats::{resolve_base_stats, resolve_charges_max, BaseStatsApplied};
 use crate::player::systems::spawn_player::spawn_player;
 use crate::progression::systems::level_up::init_level_flow;
 use crate::projectile::components::Projectile;
@@ -134,6 +134,16 @@ pub(crate) fn respawn_player(world: &mut World, hero_id: &str) {
             speed.0 = move_speed;
         }
         world.entity_mut(player).insert((BaseStatsApplied, BaseHealth(max_health)));
+    }
+    // Phase 9.4 — the Druid's Enhanced-attack charge bar. Synchronous like base_stats above (this
+    // fn covers restart + resume, the only two paths besides the deferred boot-time system).
+    let max_charges = {
+        let hero_library = world.resource::<HeroLibrary>();
+        let hero_defs = world.resource::<Assets<HeroDef>>();
+        resolve_charges_max(hero_library, hero_defs, hero_id)
+    };
+    if let Some(max_charges) = max_charges {
+        world.entity_mut(player).insert(Charges::new(max_charges));
     }
 }
 

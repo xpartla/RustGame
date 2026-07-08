@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 use crate::core::components::{BaseHealth, Health, MoveSpeed};
-use crate::hero::assets::{HeroDef, HeroLibrary};
-use crate::hero::components::HeroIdentity;
+use crate::hero::assets::{HeroDef, HeroLibrary, ResourceModel};
+use crate::hero::components::{Charges, HeroIdentity};
 use crate::player::components::Player;
 
 /// Marker: this player's `Health`/`MoveSpeed` have been set from its active `HeroDef.base_stats`.
@@ -31,6 +31,19 @@ pub fn resolve_base_stats(hero_library: &HeroLibrary, hero_defs: &Assets<HeroDef
     let handle = hero_library.get(hero_id)?;
     let def = hero_defs.get(handle)?;
     Some((def.base_stats.max_health, def.base_stats.move_speed))
+}
+
+/// Resolves `hero_id`'s charge cap if its `resource_model` is `Charges { max }` (Phase 9.4 — the
+/// Druid's Enhanced-attack state). `None` for every other resource model, or if the def hasn't
+/// loaded yet — mirrors `resolve_base_stats`'s shape so both deferred-application call sites stay
+/// symmetric.
+pub fn resolve_charges_max(hero_library: &HeroLibrary, hero_defs: &Assets<HeroDef>, hero_id: &str) -> Option<u32> {
+    let handle = hero_library.get(hero_id)?;
+    let def = hero_defs.get(handle)?;
+    match def.resource_model {
+        ResourceModel::Charges { max } => Some(max),
+        _ => None,
+    }
 }
 
 /// Deferred, idempotent per-player application of `HeroDef.base_stats` — covers the one spawn path
@@ -55,5 +68,8 @@ pub fn apply_base_stats(
         *health = Health::new(max_health);
         move_speed.0 = speed;
         commands.entity(entity).insert((BaseStatsApplied, BaseHealth(max_health)));
+        if let Some(max_charges) = resolve_charges_max(&hero_library, &hero_defs, &hero_id.0) {
+            commands.entity(entity).insert(Charges::new(max_charges));
+        }
     }
 }

@@ -237,6 +237,28 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   never references Paladin content) — `campaign_matches_golden_baseline` is Phase 9.2's own tracked,
   unchanged divergence, not investigated further this sub-phase.
 
+- Phase 9.4 (done): the Druid, the arc's second new hero (architecture-plan §8.15) — one new file,
+  `tests/druid.rs` (10 scenarios). A cooldown-timing gotcha beyond the two above, specific to testing
+  an ability twice in one scenario: `sim.trigger_ability(...)` still respects `AbilityCooldown` (a
+  manually-sent trigger is NOT a cheat-cast) — a scenario that casts Scratch, then wants to cast it
+  AGAIN to compare an Enhanced vs. non-Enhanced outcome must `sim.step_seconds(cooldown + margin)`
+  between the two triggers, or the second one silently no-ops (cooldown not ready). A related trap
+  the fixed version of that same scenario hit next: if a DoT (bleed) from the FIRST cast is still
+  ticking, waiting out the cooldown lets it land an extra tick BEFORE the health reset meant to
+  isolate the second cast's own damage — reset health AFTER the wait, immediately before the second
+  trigger, not before. Also: `Sim::set_charges(entity, current, max)` inserts a `Charges` component
+  directly regardless of the entity's actual hero identity, so most scenarios exercise the Enhanced
+  state on the default DK-identified sim player (mirroring the Paladin file's own
+  grant_ability/grant_talent-on-the-DK-player pattern) — only the stance-swap-casts-basic and
+  hero-band-pool scenarios need a real Druid identity (`Sim::set_hero`/`Sim::request_start_run`).
+  `campaign_matches_golden_baseline`'s divergence was independently reverified unchanged this
+  sub-phase (reproduced byte-for-byte via `git stash` on a clean pre-9.4 checkout before any Druid
+  code landed) rather than assumed unchanged — worth doing again for any sub-phase that touches
+  several systems' schedules at once (new behaviors, a new AI steering branch, a rescheduled
+  HUD-sync system all landed together here). Plus unit tests (see architecture-plan §8.15) for every
+  new ability/talent RON parse, `LeapToTarget`'s two selection modes, `Bloom`'s pickup signal, and
+  `Charges::spend_one`.
+
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 
 ## The compat agent

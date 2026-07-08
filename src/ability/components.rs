@@ -72,23 +72,24 @@ pub struct Level1Granted;
 #[derive(Component, Debug)]
 pub struct Minion;
 
-/// The entity that summoned this minion (the player, for the shipped kit). Not currently read by
-/// any system — reserved for a future "minions count toward their owner" mechanic; the minion is
-/// self-sufficient (its own Faction/AbilityInstance) without it.
+/// The entity that summoned this minion. Read by `ability::systems::channel::tick_channels`
+/// (Phase 9.4 — Druid Heal's "your heal also heals your Ent" talent, matching minions to owner).
 #[derive(Component, Debug)]
-pub struct MinionOwner(#[allow(dead_code)] pub Entity);
+pub struct MinionOwner(pub Entity);
 
 /// Remaining lifetime; `update_minions` ticks it down and despawns the minion (+ reaps its owned
 /// `AbilityInstance`) on expiry.
 #[derive(Component, Debug)]
 pub struct MinionLifetime(pub Timer);
 
-/// A multi-frame channel in progress on the caster (Phase 9.3 — Flash of Light; later Druid Heal /
-/// Mage Frost Impale reuse it). Inserted by `execute_ready_abilities` on a `channel_while_moving`
-/// cast (instead of applying effects instantly) and resolved by
+/// A multi-frame channel in progress on the caster (Phase 9.3 — Flash of Light; Phase 9.4 — Druid
+/// Heal reuses it; later Mage Frost Impale too). Inserted by `execute_ready_abilities` on a
+/// `channel_while_moving` cast (instead of applying effects instantly) and resolved by
 /// `ability::systems::channel::tick_channels` once `remaining` finishes. Everything the channel
 /// needs is baked in at cast time (mirrors how a projectile bakes its effects) — a talent picked
-/// up mid-channel doesn't retroactively alter an in-flight one.
+/// up mid-channel doesn't retroactively alter an in-flight one. Fields below Flash of Light's own
+/// (Phase 9.3) are Heal-specific talent flags (Phase 9.4); they default to inert (0/false) for
+/// every OTHER channel, costing nothing.
 #[derive(Component, Debug)]
 pub struct Channeling {
     /// Percent of the caster's max health to heal on completion.
@@ -102,6 +103,16 @@ pub struct Channeling {
     /// unique) — pre-resolved at cast start from the talent flag AND zone presence, so completion
     /// only needs to check `> 0.0`. 0 = inactive (talent not active OR wasn't in the zone at cast).
     pub consecrated_radiate_damage: f32,
+    /// Druid Heal's "you heal for X% more per bleeding enemy within Y range" (rare, unique).
+    /// 0 = talent not active.
+    pub bleed_bonus_percent: f32,
+    pub bleed_bonus_range: f32,
+    /// Druid Heal's "your next attack in animal form is enhanced" (rare, unique) — grants 1
+    /// `hero::components::Charges` on completion.
+    pub grants_enhanced_charge: bool,
+    /// Druid Heal's "your heal also heals your Ent" (rare, unique) — every owned `Minion` also
+    /// receives the same flat heal amount as the caster.
+    pub heals_ents: bool,
     pub remaining: Timer,
 }
 

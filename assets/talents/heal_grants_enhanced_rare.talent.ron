@@ -1,0 +1,11 @@
+// "Your next attack in animal form is enhanced" (Mechanics, rare, unique). Installs the
+// "heal_grants_enhanced" ActiveHooks flag, read by ability::systems::channel::tick_channels at
+// channel completion (grants 1 hero::components::Charges).
+(
+    id: "heal_grants_enhanced_rare",
+    display_name: "Wildshape Renewal",
+    ability_scope: Some("heal"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("heal_grants_enhanced"),
+)

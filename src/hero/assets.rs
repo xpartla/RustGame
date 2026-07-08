@@ -84,6 +84,13 @@ pub struct StanceSlotMapping {
     /// (damage-reduction). `None` for stances with no on-swap effect (e.g. the "default" stance).
     #[serde(default)]
     pub swap_effect: Option<StatusEffectId>,
+    /// Whether entering this stance also fires its own `basic` ability (Phase 9.4 — the Druid:
+    /// "change from human to animal form and cast Scratch," "change from animal to human and cast
+    /// Roots" — literally the stance's own Basic slot, not a separate cast). `false` for every
+    /// stance that only applies a `swap_effect` (the Mage). `#[serde(default)]` so every pre-9.4
+    /// hero RON parses unchanged.
+    #[serde(default)]
+    pub cast_on_enter: bool,
 }
 
 /// Resource mapping HeroId → Handle<HeroDef>. A `DefLibrary<HeroDef>` (see core/def_library.rs);
@@ -99,6 +106,7 @@ impl DefAsset for HeroDef {
         ("blood_death_knight", "heroes/blood_death_knight.hero.ron"),
         ("mage", "heroes/mage.hero.ron"),
         ("paladin", "heroes/paladin.hero.ron"),
+        ("druid", "heroes/druid.hero.ron"),
     ];
 }
 
@@ -174,5 +182,31 @@ mod tests {
         assert_eq!(slot.stance, "default");
         assert_eq!(slot.basic.as_deref(), Some("hammer_of_justice"));
         assert_eq!(slot.special.as_deref(), Some("flash_of_light"));
+    }
+
+    #[test]
+    fn druid_parses_as_a_two_stance_charges_hero_that_casts_on_stance_entry() {
+        let def = load("assets/heroes/druid.hero.ron");
+        assert_eq!(def.id, "druid");
+        assert!(def.has_stance, "Druid swaps Human/Animal with Q");
+        assert_eq!(def.stance_a.as_deref(), Some("human"));
+        assert_eq!(def.stance_b.as_deref(), Some("animal"));
+        assert!(matches!(def.resource_model, ResourceModel::Charges { max: 3 }));
+        // All four Basic/Special abilities across both stances are owned from level 1.
+        assert_eq!(def.level_1_abilities, vec!["scratch", "ferocious_bite", "roots", "heal"]);
+        assert_eq!(def.band_2_3_pool, vec!["primal_pounce", "spawn_ent"]);
+        assert_eq!(def.band_4_6_pool, vec!["tree_conduit", "bloom"]);
+        assert_eq!(def.stance_slots.len(), 2);
+
+        let human = def.stance_slots.iter().find(|m| m.stance == "human").expect("human stance");
+        assert_eq!(human.basic.as_deref(), Some("roots"));
+        assert_eq!(human.special.as_deref(), Some("heal"));
+        assert!(human.cast_on_enter, "entering Human casts Roots (its own Basic)");
+        assert!(human.swap_effect.is_none(), "no buff status — cast_on_enter replaces that model");
+
+        let animal = def.stance_slots.iter().find(|m| m.stance == "animal").expect("animal stance");
+        assert_eq!(animal.basic.as_deref(), Some("scratch"));
+        assert_eq!(animal.special.as_deref(), Some("ferocious_bite"));
+        assert!(animal.cast_on_enter, "entering Animal casts Scratch (its own Basic)");
     }
 }

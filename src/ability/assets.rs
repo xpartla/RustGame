@@ -247,6 +247,16 @@ impl DefAsset for AbilityDef {
         ("flash_of_light", "abilities/flash_of_light.ability.ron"),
         ("spinning_hammer", "abilities/spinning_hammer.ability.ron"),
         ("smite", "abilities/smite.ability.ron"),
+        // Druid (Phase 9.4) — the second new hero. scratch/roots are L1 (also cast_on_enter on
+        // their own stance); ferocious_bite/heal are L1 specials; primal_pounce/spawn_ent share the
+        // band_2_3_pool, tree_conduit/bloom (both above/below) share the band_4_6_pool.
+        ("ferocious_bite", "abilities/ferocious_bite.ability.ron"),
+        ("primal_pounce", "abilities/primal_pounce.ability.ron"),
+        ("roots", "abilities/roots.ability.ron"),
+        ("heal", "abilities/heal.ability.ron"),
+        ("bloom", "abilities/bloom.ability.ron"),
+        ("spawn_ent", "abilities/spawn_ent.ability.ron"),
+        ("ent_attack", "abilities/ent_attack.ability.ron"),
     ];
 }
 
@@ -467,5 +477,110 @@ mod tests {
         assert_eq!(def.talent_pool.len(), 4);
         assert_eq!(def.base_params.get("slow_active"), Some(&0.0));
         assert_eq!(def.base_params.get("count_scaling_active"), Some(&0.0));
+    }
+
+    #[test]
+    fn scratch_no_longer_bleeds_unconditionally() {
+        // Phase 9.4 correction: bleed is the Enhanced-attack state's own consequence (a targeted
+        // execute.rs special-case spending hero::components::Charges), not part of the
+        // unconditional declarative effects list the Phase-3 demonstrator originally shipped.
+        let def = load("assets/abilities/scratch.ability.ron");
+        assert_eq!(def.behavior, "melee_cone");
+        assert_eq!(def.effects.len(), 1);
+        assert!(matches!(def.effects[0], EffectSpec::Damage { target: EffectTarget::AllHits, .. }));
+        assert_eq!(def.base_params.get("bleed_target_count"), Some(&99.0));
+        assert_eq!(def.talent_pool.len(), 5);
+    }
+
+    #[test]
+    fn ferocious_bite_parses_as_a_cursor_mode_leap() {
+        let def = load("assets/abilities/ferocious_bite.ability.ron");
+        assert_eq!(def.id, "ferocious_bite");
+        assert_eq!(def.behavior, "leap_to_target");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert_eq!(def.base_params.get("select_highest_health"), Some(&0.0));
+        assert_eq!(def.base_params.get("bleed_crit_mult"), Some(&2.0));
+        assert_eq!(def.effects.len(), 1);
+        assert!(matches!(def.effects[0], EffectSpec::Damage { target: EffectTarget::PrimaryHit, .. }));
+    }
+
+    #[test]
+    fn primal_pounce_parses_as_a_highest_health_mode_autocast_leap() {
+        let def = load("assets/abilities/primal_pounce.ability.ron");
+        assert_eq!(def.id, "primal_pounce");
+        assert_eq!(def.behavior, "leap_to_target");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert_eq!(def.base_params.get("select_highest_health"), Some(&1.0));
+        assert_eq!(def.effects.len(), 2);
+        assert!(matches!(def.effects[1], EffectSpec::ApplyStatus { ref status, .. } if status == "bleed"));
+    }
+
+    #[test]
+    fn roots_parses_as_a_physical_projectile() {
+        let def = load("assets/abilities/roots.ability.ron");
+        assert_eq!(def.id, "roots");
+        assert_eq!(def.behavior, "projectile");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert!(matches!(def.effects[0], EffectSpec::Damage { target: EffectTarget::PrimaryHit, .. }));
+    }
+
+    #[test]
+    fn heal_parses_as_a_channel_with_no_declarative_effects() {
+        let def = load("assets/abilities/heal.ability.ron");
+        assert_eq!(def.id, "heal");
+        assert_eq!(def.behavior, "channel_while_moving");
+        assert_eq!(def.base_params.get("heal_percent"), Some(&25.0));
+        assert!(def.effects.is_empty(), "resolved by tick_channels, not def.effects");
+        assert_eq!(def.talent_pool.len(), 4);
+    }
+
+    #[test]
+    fn tree_conduit_is_now_a_real_druid_band_ability() {
+        let def = load("assets/abilities/tree_conduit.ability.ron");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Band(4, 5)));
+        assert_eq!(def.talent_pool.len(), 2);
+        let zone = def.zone.as_ref().expect("tree_conduit still defines a zone");
+        assert_eq!(zone.zone_type, "tree_conduit");
+    }
+
+    #[test]
+    fn bloom_parses_as_a_pickup_spawning_autocast() {
+        let def = load("assets/abilities/bloom.ability.ron");
+        assert_eq!(def.id, "bloom");
+        assert_eq!(def.behavior, "bloom");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert_eq!(def.base_params.get("bloom_charges"), Some(&1.0));
+    }
+
+    #[test]
+    fn spawn_ent_parses_with_a_taunt_radius_and_its_own_minion_body_params() {
+        let def = load("assets/abilities/spawn_ent.ability.ron");
+        assert_eq!(def.id, "spawn_ent");
+        assert_eq!(def.behavior, "summon");
+        assert_eq!(def.summon.as_ref().unwrap().mimic, "ent_attack");
+        assert_eq!(def.base_params.get("taunt_radius"), Some(&120.0));
+        assert_ne!(
+            def.base_params.get("minion_health"),
+            load("assets/abilities/companion.ability.ron").base_params.get("minion_health"),
+            "the Ent is a distinctly tankier body than the Companion pet"
+        );
+    }
+
+    #[test]
+    fn ent_attack_parses_as_its_own_independent_ability() {
+        let def = load("assets/abilities/ent_attack.ability.ron");
+        assert_eq!(def.id, "ent_attack");
+        assert_eq!(def.behavior, "melee_cone");
+    }
+
+    #[test]
+    fn companion_declares_its_own_minion_body_params_explicitly() {
+        // Phase 9.4: no longer the shared MINION_* constants unconditionally — see
+        // execute.rs's summon-spawn block.
+        let def = load("assets/abilities/companion.ability.ron");
+        assert_eq!(def.base_params.get("minion_health"), Some(&20.0));
+        assert_eq!(def.base_params.get("minion_speed"), Some(&45.0));
+        assert_eq!(def.base_params.get("minion_radius"), Some(&10.0));
+        assert_eq!(def.base_params.get("taunt_radius"), None, "the Companion pet never taunts");
     }
 }

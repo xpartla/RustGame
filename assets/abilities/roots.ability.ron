@@ -1,0 +1,27 @@
+// WORKING NAME: "Roots"
+// Class: Druid (Human) — Basic attack. Level 1; also the ability `cast_on_enter` fires when
+// swapping INTO Human form ("change from animal to human and cast Roots").
+//
+// Behavior: projectile — a straight-line Physical shot, same shape as Frostbolt/Fireblast.
+(
+    id: "roots",
+    display_name: "Roots",
+    unlock_schedule: Level1,
+    behavior: "projectile",
+    hooks: [],
+    base_params: {
+        "damage": 8.0,
+        "speed": 320.0,
+        "radius": 8.0,
+        "range": 420.0,
+        "pierce": 0.0,
+        "cooldown": 1.1,
+    },
+    talent_pool: [
+        "roots_damage_common",
+        "roots_pierce_rare",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: PrimaryHit),
+    ],
+)
