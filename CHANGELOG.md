@@ -1533,6 +1533,135 @@ investigated further, per the same standing instruction Phase 9.3 operated under
   distance) + its clean whiff, `Bloom`'s pickup-signal request, and `Charges::spend_one`. Build
   warning-free.
 
+### Phase 9.5 — Mage Completion: the Arc's Fourth and Final Class (complete)
+The fifth sub-phase of the Phase-9 content-pass arc, and the one that finishes the last unfinished
+class kit: Fireblast/Frostbolt (live since Phase 4) plus five new abilities (Blaze/Frostbite/Frost-
+charge are mechanics baked into the basics, not standalone abilities — see below), a new projectile-
+impact talent path, a channel that fires a projectile at completion, and the Ice Barrier real-absorb
+upgrade the register has tracked since Phase 9.1. **Runless-neutral, unlike the BDK sub-phases**: the
+golden campaign is the BDK bot and never touches Mage content, so the campaign trace is expected to
+move **zero** additional steps beyond Phase 9.2's own tracked, still-open divergence (see below).
+
+- **Frostbolt's innate frost-charge generation** — "if the target is already affected by frostbite,
+  generate a frost charge" is BASE KIT identity, not a talent. This is the first ability to need a
+  talent/innate-effect special-case on the PROJECTILE-IMPACT path (`projectile/systems/motion.rs`),
+  a gap the Phase 9.4 as-built notes flagged explicitly for Mage completion (Roots' own deferred
+  stun-on-hit talent hit the identical "instant-hit special-cases live in execute.rs, impact special-
+  cases have nowhere to live" gap). Closed narrowly, not generally: `ProjectilePayload` gained two
+  new fields baked at cast time (mirroring `Channeling`'s own bespoke-field precedent) —
+  `grants_frost_charge_on_frostbitten` (a resolved-param flag, Frostbolt's own innate identity) and
+  `explode_on_impact` (an `Option<(f32, f32)>`, Fireblast's unique talent, below) — both read by
+  `projectile_collision`. The frost-charge check runs BEFORE the hit's own `ApplyStatus(frostbite)`
+  effect lands (the event is only queued, not yet a live `StatusEffectInstance`, at that point in the
+  same system), so it only fires against a target frostbitten by a PRIOR cast.
+- **Fireblast's "explodes on impact" unique talent** (`fireblast_explode_on_impact_common`) — the
+  second projectile-impact special-case, this one talent-gated (an ActiveHooks flag read directly,
+  not a HookRegistry Pre hook — nothing needs to run before `behavior.resolve()`): deals extra Fire
+  damage to every other opposing-faction actor within `explode_radius` of the impact point.
+- **Flamewrath** (band 4/5) reuses `self_nova` VERBATIM for targeting — its own `effects` list stays
+  empty, since the base behavior has no notion of "who's ablaze." The real mechanic (pick the
+  nearest blaze-affected hit, explode within `explosion_radius` of ITS position — not the caster's
+  own — and consume its blaze stack via `RemoveStatusEvent`) is a targeted execute.rs special-case,
+  the same recognizable shape every prior sub-phase has used for a per-target conditional the
+  generic pipelines can't express. `flamewrath_no_consume_common` needed a genuine Pre hook (halves
+  `damage`) PLUS a separately-read flag (skips the `RemoveStatusEvent`) — the same "numeric half via
+  hook, behavior half via a direct flag check" split BDK's no-heal-cap talent used in Phase 9.2.
+- **Flamestrike** (L1 special) needed a genuinely new behavior, `targeted_burst`: an aimed AoE burst
+  offset `cast_range` along the caster's aim, unlike every existing self-centred nova/zone shape.
+  "Increased damage per enemy affected by blaze" is base-kit identity (not a talent) — a def_id-keyed
+  top-up applying `damage * bonus_per_blazed_percent / 100` extra to EVERY hit, once per blaze-
+  affected enemy present — a global per-cast scaling no `EffectSpec` can express (one uniform amount
+  per hit set), the same shape Consecrated Ground's own occupant-count zone-damage scaling uses.
+- **Frost Impale** (L1 special) reuses `channel_while_moving`, extended in a real way the plan didn't
+  fully anticipate: `Channeling` gained a family of `icicle_*` fields (baked at cast time exactly
+  like Flash of Light/Heal's own bespoke fields) and `tick_channels` now can ALSO fire a piercing
+  `Projectile`/`ProjectilePayload` at completion — not just resolve a self-heal. On completion it
+  `spend_all()`s every held frost `Charges`, scales `icicle_damage` by
+  `icicle_charge_damage_percent` per charge spent, and fires toward the caster's CURRENT `Facing`
+  (read fresh, exactly like Flash of Light's radiate reads a fresh position) — "channeled while
+  moving" lets the caster keep re-aiming throughout the cast. Two trade-off talents
+  (`frost_impale_glacial_spike_rare`, `frost_impale_deep_freeze_rare`) needed real Pre hooks (each
+  scales TWO stats at once — `damage`+`cast_time`, or `frost_charge_damage_percent`+`cast_time` —
+  which a single-stat Modifier talent can't express), reusing the SAME Pre-hook pipeline every other
+  behavior already runs through (Pre hooks fire before `behavior.resolve()` regardless of shape).
+- **Two Frostbite-passive kill-reactive class talents** (`mage_passive_frost_charge_on_frostbitten_
+  kill_rare`, `mage_passive_frostbitten_kill_heal_epic`; `ability_scope: None`, since Frostbite has
+  no standalone ability entity) — a new `ability::systems::mage_frost_kill` module, mirroring
+  `bone_shield_on_kill`'s exact shape: read a dying `Enemy`'s `Health`/`LastHitBy` in
+  `CombatSet::Death`, gated on the killer's `ActiveHooks`, with one extra read (was the dying enemy
+  frostbitten). Registered alongside `bone_shield_on_kill`.
+- **Ice Barrier upgraded to a real `Absorb` shield**, closing the §8.1 row tracked since Phase 9.1
+  ("optionally replace the Phase-4 damage-reduction status stand-in"). A new `swap_shield_amount:
+  Option<f32>` field on `StanceSlotMapping` (`#[serde(default)]`, every pre-9.5 hero RON parses
+  unchanged); entering a stance with one set emits a `GainShieldEvent` (`hero::systems::stance::
+  handle_stance_swap`) — the same primitive Flash of Light's overheal-to-shield talent already uses.
+  The `ice_barrier` status/RON is retired (removed from `StatusEffectDef::MANIFEST` and deleted).
+- **A real, previously-latent scheduling bug found and fixed — the same class of bug every prior
+  sub-phase's first genuine stress of an assumption has surfaced**, this time on an assumption that
+  turned out to be simply WRONG rather than merely untested: several Death-set systems' own doc
+  comments (`bone_shield_on_kill`, `overkill_leech_on_kill`) claimed reading a dying `Enemy`'s
+  `Health`/`LastHitBy` was "order-agnostic" relative to `enemy_death`'s despawn, reasoning that a
+  `Commands::despawn` is a deferred write that can't take effect until schedule's end. That
+  reasoning was incorrect: Bevy auto-inserts an `apply_deferred` sync point immediately after any
+  Commands-issuing system, so if `enemy_death` merely happens to win the scheduler's tie-break order
+  for this unordered set, the entity is ALREADY GONE by the time a same-set reader runs — there is no
+  despawn-visibility grace period within `CombatSet::Death` at all. This was invisible before because
+  the existing readers (`bone_shield_on_kill`, `overkill_leech_on_kill`) happened to already win that
+  tie-break under every prior schedule's system registration order; adding the two new Mage frost-
+  kill systems into the same tuple as `bone_shield_on_kill` shifted the tie-break enough to make
+  `overkill_leech_on_kill` start losing it — caught immediately by `tests/bdk_class_passives.rs`
+  (a pre-existing, unrelated BDK test), not a new bug in the code that exposed it. Fixed at the root,
+  not just for the two new systems: every Death-set reader of a dying `Enemy` now explicitly runs
+  `.before(enemy_death)` (`bone_shield_on_kill`, `frost_charge_on_frostbitten_kill`,
+  `heal_on_frostbitten_kill` in `ability/plugin.rs`; `overkill_leech_on_kill` in `talent/plugin.rs`).
+  A second, smaller instance of the identical class of bug (the `sync_charges_to_class_resource`
+  ordering gap Phase 9.4 already found and pinned to `.after(CombatSet::Damage)`) needed
+  strengthening to `.after(CombatSet::Death)` — the Mage's frost-charge-on-kill grant was the first
+  `Charges` mutator to live in `CombatSet::Death` instead of at/before `CombatSet::Damage`, and "after
+  Damage" does not imply "after Death" for an otherwise-unordered system.
+- **Deliberate deferrals, documented inline in `Mechanics.md` at each point** (the established
+  discipline every sub-phase has used): Blaze's entire talent tree (status-magnitude, no primitive —
+  mirrors Bleed's own Phase-9.4 deferral, and needs no ability entity for the same reason); three of
+  Frostbite's five talents (two status-magnitude, one a `StackingRule` rewrite); the ENTIRE "Frost
+  charge" passive section (base bullet + all four talents — needs a new universal resource-count-
+  scaled conditional-damage-multiplier primitive, a bigger ask than any single deferred item this arc
+  has hit so far); the entire "Passive cross cutting talents" section (needs a "spell school" tagging
+  primitive — `TalentDef.ability_scope` binds to exactly one ability, never a category); Flamewrath's
+  "affects an additional target" (multi-primary targeting); two Flamestrike epics (a chained-
+  explosion mechanic; a remaining-DoT-magnitude read, the same gap Ferocious Bite's deferred kill
+  talent hit); Frostbolt's kill-explosion epic (ability-kill-attribution, the recurring bone-shield-
+  class gap); two Frost Impale talents (per-secondary-hit scaling for a piercing projectile, with no
+  primitive and a base kit that ships `pierce: 0` besides).
+- **`Mechanics.md`** Mage section flipped to implemented, with inline deferral notes at every skipped
+  talent — the same per-item discipline every prior sub-phase has used. This closes the last
+  `Mechanics.md` class section still marked incomplete — all four heroes are now fully documented as
+  implemented-or-deliberately-deferred.
+- **Tests: 311 total** (was 288; +10 scenarios in the new `tests/mage.rs` + 13 new unit tests — see
+  below). **309–310 passing depending on the pre-existing intermittent reproducibility flake**:
+  `campaign_matches_golden_baseline` fails deterministically (Phase 9.2's own tracked, unchanged
+  divergence — not investigated further this sub-phase, since the campaign is runless for Mage
+  exactly like it was for Paladin/Druid); `campaign_is_reproducible_within_a_build` is the
+  already-documented intermittent flake (~1 run in 3, architecture-plan §8.5) — observed failing
+  once and passing twice across three consecutive runs during this sub-phase's own validation,
+  consistent with the tracked rate, not a new or worsened symptom (Phase 9.4's own claim that this
+  test "stays green" was simply an unlucky pass, not evidence it had actually stopped being flaky).
+  New `tests/mage.rs` (10 scenarios): Frostbolt's frost-charge generation
+  fires only against an ALREADY-frostbitten target, not the cast that applies it; Fireblast's
+  explode-on-impact talent damages a nearby enemy without double-hitting the primary; Flamewrath
+  explodes around the nearest ablaze target (not the caster) and consumes its blaze stack; the
+  no-consume talent halves the damage but keeps the stack; Flamestrike's per-blazed-enemy bonus
+  applies to every hit, not just the blazed one; Frost Impale's icicle deals no damage until the
+  channel completes, then scales by the exact number of charges consumed; both frostbitten-kill
+  passives (charge grant, percent heal) fire only with their own talent; the headline hero-band-pool
+  regression test (mirrors Paladin/Druid's own — `band_2_3_pool` is empty by design this time, so it
+  instead asserts Flamewrath lands at the band-4/6 draw and nothing from another hero's kit leaks
+  in). Plus new unit tests: all 5 new/updated `AbilityDef` RON parses (Fireblast/Frostbolt's new
+  params, Flamewrath/Flamestrike/Frost Impale), all 23 new `TalentDef` RON parses, `TargetedBurst`'s
+  pure targeting math (hits near the offset center, whiffs cleanly), the three new Pre hooks
+  (`FrostImpaleGlacialSpike`/`FrostImpaleDeepFreeze`/`FlamewrathNoConsume`), and the updated
+  `HeroDef`/`StanceSlotMapping` parse (`swap_shield_amount`, the two new specials, `Charges(max:
+  10)`). Build warning-free.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,

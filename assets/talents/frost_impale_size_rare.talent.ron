@@ -1,0 +1,12 @@
+// "Increase Frost Impale projectile size by X%" (Mechanics, rare). Stack(2).
+(
+    id: "frost_impale_size_rare",
+    display_name: "Swelling Icicle",
+    ability_scope: Some("frost_impale"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "radius",
+        op: MultiplyAdd(0.25),
+    )),
+)

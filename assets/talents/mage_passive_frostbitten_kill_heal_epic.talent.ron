@@ -1,0 +1,12 @@
+// "Heal X% of your max health after killing an enemy affected by frostbite" (Mechanics, Frostbite
+// passive section, epic). Class-wide (ability_scope: None). Installs the
+// "mage_frostbitten_kill_heal" flag, read by
+// ability::systems::mage_frost_kill::heal_on_frostbitten_kill (CombatSet::Death).
+(
+    id: "mage_passive_frostbitten_kill_heal_epic",
+    display_name: "Frostbitten Vigor",
+    ability_scope: None,
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("mage_frostbitten_kill_heal"),
+)

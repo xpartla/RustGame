@@ -1,0 +1,13 @@
+// "Increase the range by X%" (Mechanics, common) — scales the icicle's travel range
+// (icicle_lifetime = range / speed). Stack(3).
+(
+    id: "frost_impale_range_common",
+    display_name: "Long Chill",
+    ability_scope: Some("frost_impale"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: MultiplyAdd(0.20),
+    )),
+)

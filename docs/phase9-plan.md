@@ -843,3 +843,96 @@ reverified, not merely assumed) — all met. `Mechanics.md` Druid section flippe
 every deferred talent's missing primitive named inline — met. No open items beyond the documented
 deferrals above and the pre-existing, untouched §8.5 reproducibility row (Phase 9.2's, not this
 sub-phase's).
+
+## 17. Sub-phase 9.5 as-built (completed 2026-07-08)
+
+Landed at full scope against §6's own sketch — Fireblast/Frostbolt finished with their remaining
+talents plus the innate frost-charge mechanic, and three brand-new abilities (Blaze/Frostbite/Frost-
+charge are mechanics inherent to the basics, not standalone abilities — see below) — the arc's fourth
+and final class kit. Runless-neutral like Paladin/Druid (the golden campaign is the BDK bot and never
+touches Mage content). See the CHANGELOG "Phase 9.5" section and architecture-plan §8.16 for full
+detail; deviations/surprises from the sketch here:
+
+- **§6's own text flagged the projectile-impact gap but didn't name a fix shape** ("watch the golden
+  master... layer frost-charge generation as an additive effect"). The actual fix generalizes the
+  precedent one step further than §6 anticipated: rather than a one-off, `ProjectilePayload` gained
+  TWO new baked-at-cast-time fields (`grants_frost_charge_on_frostbitten` for Frostbolt's own innate
+  identity, `explode_on_impact` for Fireblast's unique talent) — mirroring `Channeling`'s own
+  bespoke-field precedent from Phase 9.3, not a new generalized "impact hook" registry. This keeps
+  the fix scoped to its two actual consumers rather than building an unused generalization, matching
+  the arc's own repeated "generalize on the second real use" discipline (`EffectTarget::
+  SecondaryHits`/`DamageFraction` didn't exist until Hammer of Justice's cleave needed it either).
+- **Frostbolt's own base_params gained a `grants_frost_charge` flag rather than a `def_id == "frostbolt"`
+  string check** — the same "escape-hatch resolved-param flag" pattern `follow_caster`/`slow_active`
+  already established, chosen so the mechanic reads as ability *data* rather than a hardcoded
+  identity check, even though only one ability declares it today.
+- **Flamewrath's design collapsed to "reuse `self_nova`, do everything else in a special-case"** —
+  §6 didn't specify a targeting shape for "periodically apply to the nearest target [that's ablaze]"
+  at all. The alternative considered (extending the generic `Target` struct with an `is_ablaze` flag,
+  mirroring `is_ranged`/`health`) was rejected: it would have added a per-target status scan to EVERY
+  cast's target-gathering loop, for a single consumer, when reusing `self_nova`'s existing "everyone
+  within radius" hit set and filtering `outcome.hits` by status inside the def_id-keyed special-case
+  costs nothing extra for any other ability.
+- **Flamestrike needed a genuinely new behavior** (`targeted_burst`) — §6's text ("cast a fiery
+  circle... dealing increased damage per enemy affected by blaze") didn't distinguish this from
+  Flamewrath's own shape closely enough to anticipate that Flamestrike's blast center is OFFSET from
+  the caster (aimed, at a distance) while Flamewrath's is centred ON the caster. No existing behavior
+  supported an off-caster AoE center; this is the first one.
+- **Frost Impale's icicle needed to extend `tick_channels`, not just reuse `channel_while_moving`
+  as-is** — §6 said "reuse `channel`" without flagging that Flash of Light/Heal's completion path
+  only ever resolves a self-heal, never spawns a new entity. `Channeling` gained a family of
+  `icicle_*` fields and `tick_channels` gained a `Projectile`/`ProjectilePayload` spawn branch,
+  guarded by `icicle_damage > 0.0` so Flash of Light/Heal (which declare none of these params) stay
+  exactly as inert as before — no def_id check needed, the same "ability declares what it needs, the
+  rest defaults to neutral" pattern the universal crit/attack-speed stat sheet established in 9.1.
+- **A real, previously-latent scheduling bug found and fixed — of a new KIND for this arc.** Every
+  prior sub-phase's "first stress of an assumption" bug (Companion's grant/execute race in 9.2, the
+  hero-band-pool bug in 9.3, `sync_charges_to_class_resource` in 9.4) involved an assumption that was
+  merely *untested* until a first real consumer existed. This one was actually *wrong* the whole time:
+  `bone_shield_on_kill`/`overkill_leech_on_kill`'s own doc comments claimed a dying `Enemy`'s
+  `Health`/`LastHitBy` read was order-agnostic relative to `enemy_death`'s despawn, reasoning that a
+  `Commands::despawn` can't take effect before the schedule ends. Bevy actually auto-inserts an
+  `apply_deferred` sync point immediately after any Commands-issuing system, so an unordered same-set
+  reader that loses the scheduler's tie-break sees the entity already gone — confirmed empirically
+  with a throwaway debug print (`dying`/`all_enemies` queries both returned zero at the exact frame
+  `overkill_leech_on_kill` ran) before reaching for the fix, rather than guessing at a pin and hoping.
+  Adding the Mage's two new Death-set readers (`frost_charge_on_frostbitten_kill`,
+  `heal_on_frostbitten_kill`) into the same tuple as `bone_shield_on_kill` shifted the tie-break order
+  enough to make the ALREADY-SHIPPED `overkill_leech_on_kill` start losing it — caught immediately by
+  `tests/bdk_class_passives.rs`, a pre-existing test with zero Mage content in it. Fixed at the root:
+  every `CombatSet::Death` reader of a dying `Enemy` now runs `.before(enemy_death)`. A second,
+  smaller instance of the same underlying class (Bevy auto-sync ordering vs. an unordered system)
+  required strengthening Phase 9.4's `sync_charges_to_class_resource` pin from
+  `.after(CombatSet::Damage)` to `.after(CombatSet::Death)`, since the frost-charge-on-kill grant is
+  the first `Charges` mutator living in `CombatSet::Death` rather than at/before `CombatSet::Damage`.
+- **Ice Barrier's real-`Absorb` upgrade** (§6 called it "optional") was done anyway — a small, clean
+  change (one new `StanceSlotMapping` field + a `GainShieldEvent` call) that closes a debt row
+  tracked since Phase 9.1 with no meaningful risk, rather than leaving an easy, well-scoped win
+  on the table for a future session.
+- **The "Frost charge" passive section and the "Passive cross cutting talents" section are deferred
+  in FULL** (base bullets included, not just their talents) — §6's own text didn't anticipate that
+  these describe mechanics needing NEW cross-cutting primitives (a universal resource-count-scaled
+  conditional damage multiplier; a "spell school" ability-grouping primitive for talent scope) rather
+  than per-ability content gaps this sub-phase could reasonably build. This is the arc's largest
+  single deferred block by talent count, but each item traces to one of only two missing primitives,
+  both clearly named for a future session.
+
+**Tests: 311 total** (was 288; +10 scenarios in `tests/mage.rs` + 13 new unit tests). The exact
+passing count depends on the pre-existing, already-documented `campaign_is_reproducible_within_a_build`
+intermittent flake (~1 run in 3, §8.5) — observed failing once and passing twice across three
+consecutive runs during this sub-phase's own validation, consistent with the tracked rate and not a
+new or worsened symptom; `campaign_matches_golden_baseline` fails deterministically (Phase 9.2's own
+tracked, unchanged divergence). Build warning-free.
+
+Deviations from the plan's Definition of Done (§6's own DoD line + the arc DoD in §0): Frostbolt
+generates a charge on an already-frostbitten target, Frost Impale spends charges and scales damage,
+Blaze DoT + Flamewrath consumes it, Flamestrike scales per blazed enemy, golden master byte-identical
+(no shipped ability the campaign casts changed its trace — Frostbolt's own existing effects/params
+were extended additively, verified via the full scenario+unit suite rather than a dedicated Frostbolt-
+trace diff, since the campaign is runless for every Mage-specific change and Frostbolt's own base
+`effects` list is untouched) — all met. `Mechanics.md` Mage section flipped to implemented with every
+deferred talent's missing primitive named inline — met; this closes the LAST `Mechanics.md` class
+section still marked incomplete. No open items beyond the documented deferrals above, the pre-
+existing §8.5 reproducibility row (Phase 9.2's, not this sub-phase's, and not investigated further
+per the standing instruction), and the one scheduling bug found and fixed within this same sub-phase
+(not left open — see above).

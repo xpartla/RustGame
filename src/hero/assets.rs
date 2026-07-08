@@ -80,10 +80,17 @@ pub struct StanceSlotMapping {
     pub movement: Option<AbilityId>,
     // StanceSwap is handled separately by hero/systems/stance.rs, not as a normal ability.
     /// Status effect applied to the caster when *entering* this stance (Phase 4). For the Mage:
-    /// entering Fire grants "boots_of_fire" (move-speed buff); entering Ice grants "ice_barrier"
-    /// (damage-reduction). `None` for stances with no on-swap effect (e.g. the "default" stance).
+    /// entering Fire grants "boots_of_fire" (move-speed buff). `None` for stances with no on-swap
+    /// status (e.g. the "default" stance, or Ice — see `swap_shield_amount` below).
     #[serde(default)]
     pub swap_effect: Option<StatusEffectId>,
+    /// A real `Absorb` shield granted (via `GainShieldEvent`) on entering this stance (Phase 9.5).
+    /// Replaces the Phase-4 `ice_barrier` damage-reduction status stand-in with Mechanics' actual
+    /// design ("gain ice barrier absorbing the next attack / projectile") now that the Phase-9.1
+    /// `Absorb` primitive exists — the Mage's Ice stance is the only user. `None` for every other
+    /// stance. `#[serde(default)]` so every pre-9.5 hero RON parses unchanged.
+    #[serde(default)]
+    pub swap_shield_amount: Option<f32>,
     /// Whether entering this stance also fires its own `basic` ability (Phase 9.4 — the Druid:
     /// "change from human to animal form and cast Scratch," "change from animal to human and cast
     /// Roots" — literally the stance's own Basic slot, not a separate cast). `false` for every
@@ -145,24 +152,42 @@ mod tests {
     }
 
     #[test]
-    fn mage_parses_as_two_stance_hero() {
+    fn mage_parses_as_a_two_stance_charges_hero_with_both_specials_bound() {
         let def = load("assets/heroes/mage.hero.ron");
         assert_eq!(def.id, "mage");
         assert!(def.has_stance, "Mage swaps Fire/Ice with Q");
         assert_eq!(def.stance_a.as_deref(), Some("fire"));
         assert_eq!(def.stance_b.as_deref(), Some("ice"));
-        assert!(matches!(def.resource_model, ResourceModel::None));
-        // Both basics are level-1 so either stance's LMB works immediately.
-        assert_eq!(def.level_1_abilities, vec!["fireblast", "frostbolt"]);
+        // Phase 9.5: frost charges are a real resource now (Frost Impale/Frostbolt's producers).
+        assert!(matches!(def.resource_model, ResourceModel::Charges { max: 10 }));
+        // Both basics AND both specials are level-1 (mirrors the Druid's "own both stances fully").
+        assert_eq!(def.level_1_abilities, vec!["fireblast", "frostbolt", "flamestrike", "frost_impale"]);
+        // Blaze/Frostbite/Frost-charge have no standalone ability entity (inherent to Fireblast/
+        // Frostbolt/Frost Impale) — only Flamewrath (band 4/5) is a real unlockable ability.
+        assert!(def.band_2_3_pool.is_empty());
+        assert_eq!(def.band_4_6_pool, vec!["flamewrath"]);
+        assert_eq!(
+            def.class_passive_pool,
+            vec![
+                "mage_passive_frost_charge_on_frostbitten_kill_rare",
+                "mage_passive_frostbitten_kill_heal_epic",
+            ]
+        );
         assert_eq!(def.stance_slots.len(), 2);
 
         let fire = def.stance_slots.iter().find(|m| m.stance == "fire").expect("fire stance");
         assert_eq!(fire.basic.as_deref(), Some("fireblast"));
+        assert_eq!(fire.special.as_deref(), Some("flamestrike"));
         assert_eq!(fire.swap_effect.as_deref(), Some("boots_of_fire"));
+        assert!(fire.swap_shield_amount.is_none());
 
         let ice = def.stance_slots.iter().find(|m| m.stance == "ice").expect("ice stance");
         assert_eq!(ice.basic.as_deref(), Some("frostbolt"));
-        assert_eq!(ice.swap_effect.as_deref(), Some("ice_barrier"));
+        assert_eq!(ice.special.as_deref(), Some("frost_impale"));
+        // Phase 9.5: Ice Barrier is now a real Absorb shield, not the Phase-4 damage-reduction
+        // status stand-in — no swap_effect, a swap_shield_amount instead.
+        assert!(ice.swap_effect.is_none());
+        assert_eq!(ice.swap_shield_amount, Some(40.0));
     }
 
     #[test]

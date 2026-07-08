@@ -1,0 +1,12 @@
+// "Increase damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "fireblast_damage_common",
+    display_name: "Stoked Ember",
+    ability_scope: Some("fireblast"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.20),
+    )),
+)

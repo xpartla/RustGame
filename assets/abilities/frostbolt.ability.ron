@@ -1,10 +1,15 @@
 // WORKING NAME: "Frostbolt"
-// Class: Mage (frost) — Basic attack. NOT yet class/stance-bound (Phase 4).
-// Unlock: Level 1 (in the eventual Mage kit).
+// Class: Mage (frost) — Basic attack, bound to the Ice stance's LMB (Phase 9.5).
+// Unlock: Level 1.
 //
 // Behavior: projectile — on first impact deals Frost damage and applies frostbite (slow + damage
 // amp). Being Frost-tagged, its impact clears blaze on that target (emergent cross-interaction).
-// The frost-charge-on-repeat-frostbite mechanic (Mechanics.md) arrives with the Mage (Phase 4).
+//
+// Phase 9.5 (implemented): "if the target is already affected by frostbite, generate a frost
+// charge" is BASE KIT identity, not a talent — `grants_frost_charge: 1.0` is baked into
+// ProjectilePayload.grants_frost_charge_on_frostbitten at cast time and checked in
+// projectile_collision BEFORE this hit's own ApplyStatus(frostbite) lands (so it only fires for a
+// target frostbitten by a PRIOR cast).
 (
     id: "frostbolt",
     display_name: "Frostbolt",
@@ -18,8 +23,14 @@
         "range": 400.0,
         "pierce": 0.0,
         "cooldown": 1.0,
+        "grants_frost_charge": 1.0,
     },
-    talent_pool: [],
+    talent_pool: [
+        "frostbolt_damage_common",
+        "frostbolt_range_common",
+        "frostbolt_pierce_rare",
+        "frostbolt_size_common",
+    ],
     effects: [
         Damage(amount: "damage", tags: [Frost], target: PrimaryHit),
         ApplyStatus(status: "frostbite", stacks: 1, target: PrimaryHit),

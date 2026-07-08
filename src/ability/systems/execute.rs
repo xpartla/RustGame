@@ -37,7 +37,7 @@ use crate::hero::components::Charges;
 use crate::pickup::components::PickUpKind;
 use crate::pickup::spawn_pickup;
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
-use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
+use crate::status::components::{ApplyStatusEvent, RemoveStatusEvent, StatusEffectInstance};
 use crate::run::rng::RunRng;
 use crate::run::state::RoomModifiers;
 use crate::talent::assets::{StatModifier, TalentDef, TalentLibrary};
@@ -101,8 +101,9 @@ pub fn execute_ready_abilities(
     // talent) — both targeted execute.rs special-cases, like `blood_boil`'s below, since a per-
     // target conditional doesn't fit the generic Pre/Post hook or effects pipeline. `charges`
     // (Phase 9.4) is the Druid's Enhanced-attack state, mutably spent by Scratch/Ferocious Bite's
-    // own special-cases below.
-    (registry, hook_registry, zone_presence, room_mods, mut rng, time, marks, mut charges): (
+    // own special-cases below. `remove_status_events` (Phase 9.5) is Flamewrath's blaze-consumption
+    // special-case.
+    (registry, hook_registry, zone_presence, room_mods, mut rng, time, marks, mut charges, mut remove_status_events): (
         Res<BehaviorRegistry>,
         Res<HookRegistry>,
         Res<PlayerZonePresence>,
@@ -111,6 +112,7 @@ pub fn execute_ready_abilities(
         Res<Time>,
         Query<&StatusEffectInstance>,
         Query<&mut Charges>,
+        EventWriter<RemoveStatusEvent>,
     ),
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
@@ -274,6 +276,11 @@ pub fn execute_ready_abilities(
                 };
                 // Druid Heal's own talent-gated extras (Phase 9.4), same "bake at cast start" rule.
                 let bleed_bonus_percent = if has_hook("heal_bleed_bonus") { params.get("bleed_bonus_percent") } else { 0.0 };
+                // Mage Frost Impale's icicle (Phase 9.5): baked from the ability's own resolved
+                // params exactly like every other field above — Flash of Light/Heal declare none of
+                // these keys, so they resolve to 0.0 and stay inert with no def_id check needed.
+                let icicle_speed = params.get("speed");
+                let icicle_lifetime = if icicle_speed > 1e-3 { params.get("range") / icicle_speed } else { 2.0 };
                 commands.entity(trigger.owner).insert(Channeling {
                     heal_percent: params.get("heal_percent"),
                     overheal_to_shield: has_hook("flash_of_light_overheal_shield"),
@@ -284,6 +291,14 @@ pub fn execute_ready_abilities(
                     bleed_bonus_range: params.get("bleed_bonus_range"),
                     grants_enhanced_charge: has_hook("heal_grants_enhanced"),
                     heals_ents: has_hook("heal_heals_ents"),
+                    icicle_damage: params.get("damage"),
+                    icicle_charge_damage_percent: params.get("frost_charge_damage_percent"),
+                    icicle_radius: params.get("radius"),
+                    icicle_speed,
+                    icicle_pierce: params.get("pierce").max(0.0) as u32,
+                    icicle_lifetime,
+                    icicle_crit_chance: params.get("crit_chance"),
+                    icicle_crit_mult: params.get("crit_mult"),
                     remaining: Timer::from_seconds(channel_spawn.cast_time, TimerMode::Once),
                 });
                 cast_vfx.write(CastVfxEvent {
@@ -432,7 +447,16 @@ pub fn execute_ready_abilities(
             }
 
             // Travelling projectile: spawn it carrying the baked effects for on-impact delivery.
+            // Mage-specific impact special-cases (Phase 9.5), baked here (not read again on
+            // impact) mirroring how `effects` itself is baked — a talent picked up mid-flight can't
+            // retroactively alter an in-flight shot: Frostbolt's innate frost-charge-on-repeat-
+            // frostbite (a resolved-param flag, `grants_frost_charge`, absent/0 for every other
+            // projectile) and Fireblast's "explodes on impact" unique talent (an ActiveHooks flag).
             if let Some(spawn) = outcome.projectile {
+                let explode_on_impact = active_hooks
+                    .map(|h| h.contains("fireblast_explode_on_impact"))
+                    .unwrap_or(false)
+                    .then(|| (params.get("explode_damage"), params.get("explode_radius")));
                 commands.spawn((
                     Projectile,
                     WorldPosition(outcome.origin),
@@ -446,6 +470,8 @@ pub fn execute_ready_abilities(
                         target_faction: opposing,
                         effects: resolved.clone(),
                         already_hit: Vec::new(),
+                        grants_frost_charge_on_frostbitten: params.get("grants_frost_charge") > 0.5,
+                        explode_on_impact,
                     },
                     Lifetime { timer: Timer::from_seconds(spawn.lifetime, TimerMode::Once) },
                 ));
@@ -716,6 +742,67 @@ pub fn execute_ready_abilities(
                 }
                 if active_hooks.map(|h| h.contains("primal_pounce_bloom_flower")).unwrap_or(false) {
                     spawn_pickup(&mut commands, outcome.origin, PickUpKind::Enhance(1));
+                }
+            }
+
+            // Flamewrath (Phase 9.5 — Mage): reuses `self_nova` as-is for "who's nearby" (its
+            // `effects` list stays empty — the base behavior has no status awareness). This
+            // special-case picks the NEAREST blaze-affected hit as the anchor, deals Fire damage to
+            // everyone within `explosion_radius` of ITS position (not the caster's), and consumes
+            // its blaze stack — unless the `flamewrath_no_consume` trade-off talent is active (its
+            // own Pre hook already halved `damage` by the time this reads it).
+            if instance.def_id == "flamewrath" {
+                let ablaze_primary = outcome
+                    .hits
+                    .iter()
+                    .filter(|h| has_status(h.entity, "blaze", &marks))
+                    .min_by(|a, b| {
+                        let da = a.pos.distance_squared(outcome.origin);
+                        let db = b.pos.distance_squared(outcome.origin);
+                        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                if let Some(primary) = ablaze_primary {
+                    let explosion_radius = params.get("explosion_radius");
+                    let damage = params.get("damage");
+                    for t in targets {
+                        if t.pos.distance(primary.pos) <= explosion_radius {
+                            damage_events.write(DamageEvent {
+                                target: t.entity,
+                                amount: damage,
+                                source: trigger.owner,
+                                tags: vec![DamageTag::Fire],
+                            });
+                        }
+                    }
+                    let no_consume = active_hooks.map(|h| h.contains("flamewrath_no_consume")).unwrap_or(false);
+                    if !no_consume {
+                        remove_status_events.write(RemoveStatusEvent {
+                            target: primary.entity,
+                            effect_id: "blaze".to_string(),
+                        });
+                    }
+                }
+            }
+
+            // Flamestrike (Phase 9.5 — Mage): base damage to every hit lands via `effects`
+            // (AllHits) above. "Dealing increased damage per enemy affected by blaze" is base-kit
+            // identity (not a talent), so it's this def_id-keyed top-up: for every blaze-affected
+            // hit present, ALL hits take an extra `damage * bonus_per_blazed_percent / 100` Fire
+            // damage — a global per-cast scaling the generic effects pipeline (one uniform amount
+            // per `EffectSpec`) can't express, the same shape Consecrated Ground's own
+            // count-scaling zone tick uses.
+            if instance.def_id == "flamestrike" {
+                let blazed_count = outcome.hits.iter().filter(|h| has_status(h.entity, "blaze", &marks)).count();
+                if blazed_count > 0 {
+                    let bonus = params.get("damage") * params.get("bonus_per_blazed_percent") / 100.0 * blazed_count as f32;
+                    for hit in &outcome.hits {
+                        damage_events.write(DamageEvent {
+                            target: hit.entity,
+                            amount: bonus,
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Fire],
+                        });
+                    }
                 }
             }
 

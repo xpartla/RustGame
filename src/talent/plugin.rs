@@ -25,6 +25,7 @@ use crate::talent::systems::merchant::{
 };
 use crate::talent::systems::passives::{enforce_heal_cap, overkill_leech_on_kill, resolve_health_and_healing};
 use crate::ability::systems::summon::update_minion_lifecycle;
+use crate::enemy::systems::death::enemy_death;
 use crate::player::systems::base_stats::apply_base_stats;
 
 pub struct TalentPlugin;
@@ -84,8 +85,13 @@ impl Plugin for TalentPlugin {
                     .after(install_acquired_talent)
                     .after(uninstall_removed_talent)
                     .after(apply_base_stats),
+                // `.before(enemy_death)` (Phase 9.5 pin): reads the dying enemy's Health/LastHitBy
+                // — see ability/plugin.rs's identical pin (on bone_shield_on_kill and the two new
+                // Mage frost-kill passives) for the full explanation of why this is NOT the
+                // order-agnostic read this system's own doc comment used to claim.
                 overkill_leech_on_kill
                     .in_set(CombatSet::Death)
+                    .before(enemy_death)
                     .after(install_acquired_talent)
                     .after(uninstall_removed_talent)
                     .after(apply_base_stats),

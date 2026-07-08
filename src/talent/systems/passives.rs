@@ -31,8 +31,10 @@ pub fn enforce_heal_cap(mut actors: Query<(&mut Health, &ActiveHooks)>) {
 /// "20% overkill damage is leeched" (`bdk_passive_overkill_leech`). Reads the dying enemy's
 /// negative `Health.current` (the overkill amount `apply_damage` doesn't clamp at 0) and
 /// `LastHitBy` for kill credit, healing the killer if their `ActiveHooks` carries the flag. Runs in
-/// CombatSet::Death, same set as `enemy_death`/`bone_shield_on_kill` (order-agnostic — all three
-/// only read the dying enemy before Commands despawn it at end of frame).
+/// CombatSet::Death, `.before(enemy_death)` (talent/plugin.rs pin, Phase 9.5) — Bevy auto-inserts a
+/// sync point right after `enemy_death`'s `Commands::despawn`, so without an explicit order this
+/// read can lose a same-set tie-break and see the entity already gone (found when adding the
+/// Mage's own two Death-set readers shifted that tie-break — see ability/plugin.rs's fuller note).
 const OVERKILL_LEECH_FRACTION: f32 = 0.20;
 
 pub fn overkill_leech_on_kill(

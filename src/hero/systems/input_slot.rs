@@ -107,8 +107,10 @@ mod tests {
         // this is the stance-remaps-LMB mechanic, resolved purely from data.
         assert_eq!(resolve_slot(&mage, "fire", InputSlot::Basic).as_deref(), Some("fireblast"));
         assert_eq!(resolve_slot(&mage, "ice", InputSlot::Basic).as_deref(), Some("frostbolt"));
-        // Special/Movement are unbound this slice.
-        assert_eq!(resolve_slot(&mage, "fire", InputSlot::Special), None);
+        // Both Specials are bound now (Phase 9.5: Flamestrike / Frost Impale). Movement is still
+        // unbound — no shipped hero claims the Movement slot yet.
+        assert_eq!(resolve_slot(&mage, "fire", InputSlot::Special).as_deref(), Some("flamestrike"));
+        assert_eq!(resolve_slot(&mage, "ice", InputSlot::Special).as_deref(), Some("frost_impale"));
         assert_eq!(resolve_slot(&mage, "ice", InputSlot::Movement), None);
     }
 }

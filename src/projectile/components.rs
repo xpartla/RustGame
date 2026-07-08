@@ -36,6 +36,19 @@ pub struct ProjectilePayload {
     pub target_faction: Faction,
     pub effects: Vec<ResolvedEffect>,
     pub already_hit: Vec<Entity>,
+    /// Frostbolt's own innate identity (Phase 9.5, base kit — not a talent): "if the target is
+    /// already affected by frostbite, generate a frost charge." Baked at cast time from a resolved
+    /// param flag (mirrors the `follow_caster`/`slow_active` escape-hatch pattern), so it costs
+    /// nothing for every other projectile. Read in `projectile_collision` BEFORE this hit's own
+    /// `ApplyStatus(frostbite)` effect lands, so it only fires for a target frostbitten by a PRIOR
+    /// cast, never this one. This is the projectile-impact talent/innate-effect gap the Phase 9.4
+    /// as-built notes flagged for Mage completion.
+    pub grants_frost_charge_on_frostbitten: bool,
+    /// Fireblast's "explodes on impact" unique talent (Phase 9.5): `(damage, radius)` baked from
+    /// `ActiveHooks` + resolved params at cast time (a talent picked up mid-flight doesn't
+    /// retroactively alter an in-flight shot, the same rule every baked-at-cast-time field in this
+    /// codebase follows). `None` for every other projectile / when the talent isn't acquired.
+    pub explode_on_impact: Option<(f32, f32)>,
 }
 
 #[derive(Component)]

@@ -1,0 +1,39 @@
+// WORKING NAME: "Flamewrath"
+// Class: Mage (fire) — passive auto-cast, band 4/5 (Phase 9.5).
+//
+// Behavior: self_nova, reused exactly as-is (Death Strike/Blood Boil's own behavior) — its
+// "radius" param is the search range for a nearby ablaze target, gathering every candidate within
+// it as `outcome.hits`. The base ability's own `effects` list stays empty: self_nova has no notion
+// of "who's ablaze," so Flamewrath's actual damage is a targeted execute.rs special-case
+// (`def_id == "flamewrath"`) — it picks the NEAREST blaze-affected hit, deals "damage" Fire damage
+// to everyone within "explosion_radius" of ITS position (not the caster's own), and consumes its
+// blaze stack.
+//
+// flamewrath_no_consume_common (common, unique): its Pre hook halves "damage"; the "does not
+// consume the blaze stack" half is a flag read directly at the special-case's blaze-removal step.
+//
+// Deferred (Mechanics): "affects an additional target" — needs multi-primary targeting; no
+// existing behavior/CastOutcome shape carries more than one independent explosion center.
+(
+    id: "flamewrath",
+    display_name: "Flamewrath",
+    unlock_schedule: Band(4, 5),
+    activation: AutoCast,
+    behavior: "self_nova",
+    hooks: [
+        (Pre, "flamewrath_no_consume"),
+    ],
+    base_params: {
+        "radius": 220.0,
+        "explosion_radius": 70.0,
+        "damage": 7.0,
+        "cooldown": 5.0,
+    },
+    talent_pool: [
+        "flamewrath_cast_radius_common",
+        "flamewrath_explosion_radius_common",
+        "flamewrath_damage_common",
+        "flamewrath_cooldown_common",
+        "flamewrath_no_consume_common",
+    ],
+)

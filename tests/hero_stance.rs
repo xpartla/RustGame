@@ -10,7 +10,8 @@
 //
 // Tuning is read from the RON assets: death_strike 10 dmg (death_strike.ability.ron); fireblast
 // 8 Fire dmg + blaze, frostbolt 6 Frost dmg + frostbite (fireblast/frostbolt.ability.ron);
-// ice_barrier damage_taken_mult 0.6 (ice_barrier.status.ron).
+// Ice Barrier's swap_shield_amount 40.0 (mage.hero.ron — a real Absorb since Phase 9.5, replacing
+// the Phase-4 damage-reduction status stand-in).
 
 use bevy::math::Vec2;
 use bevy::prelude::{KeyCode, MouseButton};
@@ -90,8 +91,8 @@ fn stance_swap_remaps_lmb() {
     assert!(!sim.has_status(enemy, "blaze"), "Frostbolt (Frost) cleared blaze on impact");
 }
 
-/// Entering a stance applies that stance's swap effect to the caster: Ice Barrier (damage
-/// reduction) on Fire → Ice, Boots of Fire (move-speed buff) on Ice → Fire.
+/// Entering a stance applies that stance's swap effect to the caster: Ice Barrier (a real Absorb
+/// shield, Phase 9.5) on Fire → Ice, Boots of Fire (move-speed buff status) on Ice → Fire.
 #[test]
 fn stance_swap_applies_entering_stance_effect() {
     let mut sim = Sim::new_arena(42);
@@ -99,21 +100,18 @@ fn stance_swap_applies_entering_stance_effect() {
     sim.set_hero(player, "mage", "fire");
     sim.step(1);
 
-    // Fire → Ice grants Ice Barrier.
+    // Fire → Ice grants Ice Barrier — a real 40.0 Absorb shield, not a status.
     sim.tap_key(KeyCode::KeyQ);
-    sim.step(1); // apply_status + resolve fold the effect into the actor modifiers
+    sim.step(1); // apply_shield_gain resolves the GainShieldEvent
     assert_eq!(sim.active_stance(), "ice");
-    assert!(sim.has_status(player, "ice_barrier"), "entering Ice granted Ice Barrier");
+    assert_eq!(sim.shield_amount(player), 40.0, "entering Ice granted a 40.0 Absorb shield");
 
-    // Ice Barrier reduces incoming damage ×0.6 (damage_taken_mult).
+    // The shield drains before Health on the next hit.
     sim.set_health(player, 100.0);
-    sim.deal_damage(player, 50.0);
+    sim.deal_damage(player, 25.0);
     sim.step(1);
-    assert!(
-        (sim.player_health() - 70.0).abs() < 1e-3,
-        "Ice Barrier mitigated 50 → 30 (×0.6), got {}",
-        sim.player_health()
-    );
+    assert_eq!(sim.player_health(), 100.0, "the 25 hit was fully absorbed");
+    assert_eq!(sim.shield_amount(player), 15.0, "the shield drained by the hit amount");
 
     // Ice → Fire grants Boots of Fire.
     sim.tap_key(KeyCode::KeyQ);

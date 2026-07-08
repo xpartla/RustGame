@@ -188,6 +188,41 @@ impl DefAsset for TalentDef {
         ("bloom_movespeed_common", "talents/bloom_movespeed_common.talent.ron"),
         // Spawn Ent (Phase 9.4).
         ("spawn_ent_cooldown_common", "talents/spawn_ent_cooldown_common.talent.ron"),
+        // Fireblast (Phase 9.5).
+        ("fireblast_damage_common", "talents/fireblast_damage_common.talent.ron"),
+        ("fireblast_range_common", "talents/fireblast_range_common.talent.ron"),
+        ("fireblast_explode_on_impact_common", "talents/fireblast_explode_on_impact_common.talent.ron"),
+        // Frostbolt (Phase 9.5).
+        ("frostbolt_damage_common", "talents/frostbolt_damage_common.talent.ron"),
+        ("frostbolt_range_common", "talents/frostbolt_range_common.talent.ron"),
+        ("frostbolt_pierce_rare", "talents/frostbolt_pierce_rare.talent.ron"),
+        ("frostbolt_size_common", "talents/frostbolt_size_common.talent.ron"),
+        // Flamewrath (Phase 9.5).
+        ("flamewrath_cast_radius_common", "talents/flamewrath_cast_radius_common.talent.ron"),
+        ("flamewrath_explosion_radius_common", "talents/flamewrath_explosion_radius_common.talent.ron"),
+        ("flamewrath_damage_common", "talents/flamewrath_damage_common.talent.ron"),
+        ("flamewrath_cooldown_common", "talents/flamewrath_cooldown_common.talent.ron"),
+        ("flamewrath_no_consume_common", "talents/flamewrath_no_consume_common.talent.ron"),
+        // Flamestrike (Phase 9.5).
+        ("flamestrike_cast_range_common", "talents/flamestrike_cast_range_common.talent.ron"),
+        ("flamestrike_zone_range_common", "talents/flamestrike_zone_range_common.talent.ron"),
+        ("flamestrike_damage_common", "talents/flamestrike_damage_common.talent.ron"),
+        // Frost Impale (Phase 9.5).
+        ("frost_impale_damage_common", "talents/frost_impale_damage_common.talent.ron"),
+        ("frost_impale_cooldown_common", "talents/frost_impale_cooldown_common.talent.ron"),
+        ("frost_impale_glacial_spike_rare", "talents/frost_impale_glacial_spike_rare.talent.ron"),
+        ("frost_impale_deep_freeze_rare", "talents/frost_impale_deep_freeze_rare.talent.ron"),
+        ("frost_impale_range_common", "talents/frost_impale_range_common.talent.ron"),
+        ("frost_impale_size_rare", "talents/frost_impale_size_rare.talent.ron"),
+        // Mage class passives (Phase 9.5) — the Frostbite passive section's two kill-reactive talents.
+        (
+            "mage_passive_frost_charge_on_frostbitten_kill_rare",
+            "talents/mage_passive_frost_charge_on_frostbitten_kill_rare.talent.ron",
+        ),
+        (
+            "mage_passive_frostbitten_kill_heal_epic",
+            "talents/mage_passive_frostbitten_kill_heal_epic.talent.ron",
+        ),
     ];
 }
 
@@ -442,5 +477,61 @@ mod tests {
 
         let grants_enhanced = load("assets/talents/heal_grants_enhanced_rare.talent.ron");
         assert!(matches!(grants_enhanced.effect, TalentEffect::Behavior(ref h) if h == "heal_grants_enhanced"));
+    }
+
+    /// Every Mage talent (Phase 9.5) parses through the same RON path — mirrors
+    /// `all_druid_talents_parse`/`all_paladin_talents_parse` above.
+    #[test]
+    fn all_mage_talents_parse() {
+        let ids = [
+            "fireblast_damage_common",
+            "fireblast_range_common",
+            "fireblast_explode_on_impact_common",
+            "frostbolt_damage_common",
+            "frostbolt_range_common",
+            "frostbolt_pierce_rare",
+            "frostbolt_size_common",
+            "flamewrath_cast_radius_common",
+            "flamewrath_explosion_radius_common",
+            "flamewrath_damage_common",
+            "flamewrath_cooldown_common",
+            "flamewrath_no_consume_common",
+            "flamestrike_cast_range_common",
+            "flamestrike_zone_range_common",
+            "flamestrike_damage_common",
+            "frost_impale_damage_common",
+            "frost_impale_cooldown_common",
+            "frost_impale_glacial_spike_rare",
+            "frost_impale_deep_freeze_rare",
+            "frost_impale_range_common",
+            "frost_impale_size_rare",
+            "mage_passive_frost_charge_on_frostbitten_kill_rare",
+            "mage_passive_frostbitten_kill_heal_epic",
+        ];
+        for id in ids {
+            let def = load(&format!("assets/talents/{id}.talent.ron"));
+            assert_eq!(def.id, id);
+        }
+    }
+
+    #[test]
+    fn mage_class_passives_are_global_scope_behavior_talents() {
+        let charge = load("assets/talents/mage_passive_frost_charge_on_frostbitten_kill_rare.talent.ron");
+        assert_eq!(charge.ability_scope, None, "class-wide passive");
+        assert!(matches!(charge.effect, TalentEffect::Behavior(ref h) if h == "mage_frost_charge_on_frostbitten_kill"));
+
+        let heal = load("assets/talents/mage_passive_frostbitten_kill_heal_epic.talent.ron");
+        assert_eq!(heal.ability_scope, None);
+        assert_eq!(heal.rarity, TalentRarity::Epic);
+        assert!(matches!(heal.effect, TalentEffect::Behavior(ref h) if h == "mage_frostbitten_kill_heal"));
+    }
+
+    #[test]
+    fn frost_impale_trade_off_talents_are_behavior_effects() {
+        let glacial = load("assets/talents/frost_impale_glacial_spike_rare.talent.ron");
+        assert!(matches!(glacial.effect, TalentEffect::Behavior(ref h) if h == "frost_impale_glacial_spike"));
+
+        let deep_freeze = load("assets/talents/frost_impale_deep_freeze_rare.talent.ron");
+        assert!(matches!(deep_freeze.effect, TalentEffect::Behavior(ref h) if h == "frost_impale_deep_freeze"));
     }
 }

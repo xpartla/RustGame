@@ -135,6 +135,43 @@ impl AbilityHook for BdkNoHealCapLeechBoost {
     }
 }
 
+/// "Glacial Spike" (the `frost_impale_glacial_spike_rare` talent, Phase 9.5 — Mechanics: "Frost
+/// impale deals X% less damage, reduce the cast time by 50%"). A trade-off, so a single Pre hook
+/// scaling both `damage` and `cast_time` at once — the same shape `channel_while_moving`'s Pre
+/// hooks already support (they run before `behavior.resolve()` regardless of behavior shape).
+pub struct FrostImpaleGlacialSpike;
+
+impl AbilityHook for FrostImpaleGlacialSpike {
+    fn pre(&self, _ctx: &HookContext, params: &mut ResolvedParams) {
+        params.scale("damage", 0.7);
+        params.scale("cast_time", 0.5);
+    }
+}
+
+/// "Deep Freeze" (the `frost_impale_deep_freeze_rare` talent, Phase 9.5 — Mechanics: "Bonus damage
+/// from frost charges increased by 50%, cast time increased by 50%").
+pub struct FrostImpaleDeepFreeze;
+
+impl AbilityHook for FrostImpaleDeepFreeze {
+    fn pre(&self, _ctx: &HookContext, params: &mut ResolvedParams) {
+        params.scale("frost_charge_damage_percent", 1.5);
+        params.scale("cast_time", 1.5);
+    }
+}
+
+/// The damage half of "Flamewrath deals 50% reduced damage, but does not consume the blaze stack"
+/// (Phase 9.5 — the `flamewrath_no_consume_common` talent). The "does not consume" half is a flag
+/// read directly (`active_hooks.contains("flamewrath_no_consume")`) at the blaze-removal
+/// special-case in execute.rs — the same split BDK's no-heal-cap talent uses (a Pre hook for the
+/// numeric half, a separate always-checked flag for the behavior half).
+pub struct FlamewrathNoConsume;
+
+impl AbilityHook for FlamewrathNoConsume {
+    fn pre(&self, _ctx: &HookContext, params: &mut ResolvedParams) {
+        params.scale("damage", 0.5);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +260,38 @@ mod tests {
         let mut p = params(&[("leech_percent", 10.0)]);
         hook.pre(&HookContext { caster, zones: &presence(&[]), health: &hp }, &mut p);
         assert!((p.get("leech_percent") - 15.0).abs() < 1e-6, "×1.5 leech");
+    }
+
+    #[test]
+    fn frost_impale_glacial_spike_trades_damage_for_cast_time() {
+        let hook = FrostImpaleGlacialSpike;
+        let caster = Entity::from_raw(1);
+        let hp = health(100.0, 100.0);
+        let mut p = params(&[("damage", 100.0), ("cast_time", 2.0)]);
+        hook.pre(&HookContext { caster, zones: &presence(&[]), health: &hp }, &mut p);
+        assert!((p.get("damage") - 70.0).abs() < 1e-6, "-30% damage");
+        assert!((p.get("cast_time") - 1.0).abs() < 1e-6, "-50% cast time");
+    }
+
+    #[test]
+    fn frost_impale_deep_freeze_trades_cast_time_for_charge_scaling() {
+        let hook = FrostImpaleDeepFreeze;
+        let caster = Entity::from_raw(1);
+        let hp = health(100.0, 100.0);
+        let mut p = params(&[("frost_charge_damage_percent", 10.0), ("cast_time", 2.0)]);
+        hook.pre(&HookContext { caster, zones: &presence(&[]), health: &hp }, &mut p);
+        assert!((p.get("frost_charge_damage_percent") - 15.0).abs() < 1e-6, "+50%");
+        assert!((p.get("cast_time") - 3.0).abs() < 1e-6, "+50% cast time");
+    }
+
+    #[test]
+    fn flamewrath_no_consume_halves_damage() {
+        let hook = FlamewrathNoConsume;
+        let caster = Entity::from_raw(1);
+        let hp = health(100.0, 100.0);
+        let mut p = params(&[("damage", 20.0)]);
+        hook.pre(&HookContext { caster, zones: &presence(&[]), health: &hp }, &mut p);
+        assert!((p.get("damage") - 10.0).abs() < 1e-6);
     }
 
     #[test]

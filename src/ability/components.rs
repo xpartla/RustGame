@@ -113,6 +113,22 @@ pub struct Channeling {
     /// Druid Heal's "your heal also heals your Ent" (rare, unique) — every owned `Minion` also
     /// receives the same flat heal amount as the caster.
     pub heals_ents: bool,
+    /// Mage Frost Impale's icicle (Phase 9.5): base damage before the per-charge bonus. `<= 0.0` ⇒
+    /// inert (every other channel — Flash of Light, Heal). Baked at cast time from the ability's own
+    /// resolved `damage` param, so a damage% talent (or the "less damage, faster cast" trade-off Pre
+    /// hook) reaches it exactly like any other ability's damage.
+    pub icicle_damage: f32,
+    /// Percent bonus to `icicle_damage` per frost charge CONSUMED on completion (Mechanics:
+    /// "increased by Y% per frost charge").
+    pub icicle_charge_damage_percent: f32,
+    pub icicle_radius: f32,
+    pub icicle_speed: f32,
+    pub icicle_pierce: u32,
+    pub icicle_lifetime: f32,
+    /// Baked from the universal crit stat sheet (Phase 9.1) at cast time, so a general crit talent
+    /// reaches the icicle exactly like any other ability's damage.
+    pub icicle_crit_chance: f32,
+    pub icicle_crit_mult: f32,
     pub remaining: Timer,
 }
 

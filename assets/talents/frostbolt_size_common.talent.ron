@@ -1,0 +1,12 @@
+// "Increase the projectile size by X%" (Mechanics, common). Stack(3).
+(
+    id: "frostbolt_size_common",
+    display_name: "Swelling Frost",
+    ability_scope: Some("frostbolt"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "radius",
+        op: MultiplyAdd(0.25),
+    )),
+)

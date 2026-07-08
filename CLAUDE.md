@@ -10,7 +10,7 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered; §8.14 Phase 9.3 delivered; §8.15 Phase 9.4 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one long-standing open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered; §8.14 Phase 9.3 delivered; §8.15 Phase 9.4 delivered; §8.16 Phase 9.5 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
@@ -18,7 +18,7 @@ unrelated web project.)
 | `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
 | `docs/phase7.5-ui-plan.md` | Phase 7.5 plan + as-built notes (UI layer: HUD, menus, game-over/pause, map view, merchant, VFX bus) |
 | `docs/phase8-plan.md` | Phase 8 plan + as-built notes (persistence + meta: RunRng → ChaCha8, RunState/MetaState serde, save/resume, scoreboard, Log-In) |
-| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats); 9.3 done §15 (Paladin: Hammer of Justice/Flash of Light/Consecrated Ground promoted/Spinning Hammer/Smite + the holy-mark read/grant path + the hero-aware band-pool fix); 9.4 done §16 (Druid: Scratch/Ferocious Bite/Primal Pounce/Roots/Heal/Tree Conduit promoted/Bloom/Spawn Ent + the Enhanced-attack charge state + `leap_to_target`/`bloom` behaviors + the Ent taunt) |
+| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats); 9.3 done §15 (Paladin: Hammer of Justice/Flash of Light/Consecrated Ground promoted/Spinning Hammer/Smite + the holy-mark read/grant path + the hero-aware band-pool fix); 9.4 done §16 (Druid: Scratch/Ferocious Bite/Primal Pounce/Roots/Heal/Tree Conduit promoted/Bloom/Spawn Ent + the Enhanced-attack charge state + `leap_to_target`/`bloom` behaviors + the Ent taunt); 9.5 done §17 (Mage: Fireblast/Frostbolt finished + the innate frost-charge-on-frostbitten path + Flamewrath/Flamestrike/Frost Impale + the Ice Barrier real-absorb upgrade + a real `enemy_death` scheduling-order fix) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -50,9 +50,12 @@ unrelated web project.)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
 in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10, Phase-8 in §8.11, Phase-9.1 in §8.12,
-Phase-9.2 in §8.13, Phase-9.3 in §8.14, Phase-9.4 in §8.15) — **one open row: the golden-campaign
-reproducibility flake (Phase 9.2), unchanged by Phase 9.3 and Phase 9.4 (independently reverified
-both times, not just assumed).** Highlights a future session must not "rediscover":
+Phase-9.2 in §8.13, Phase-9.3 in §8.14, Phase-9.4 in §8.15, Phase-9.5 in §8.16) — **one open row: the
+golden-campaign reproducibility flake (Phase 9.2), unchanged by Phase 9.3 and Phase 9.4 (independently
+reverified both times, not just assumed) and observed still present at its documented ~1-in-3 rate
+during Phase 9.5's own validation (not re-reverified via git-stash this time — the campaign is
+runless for Mage, and this flake is explicitly out of scope to chase further this iteration).**
+Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -112,8 +115,9 @@ both times, not just assumed).** Highlights a future session must not "rediscove
   speed's always-write cooldown formula (the guard is simply gone). Consumers **DONE (Phase 9.2,
   §8.13)**: bone shield (`Absorb`), Purgatory (a new `Invulnerable` component), Abomination Limb's
   grip (`ForcedImpulse`). Charges **DONE for the Druid (Phase 9.4, §8.15)** — the Enhanced-attack
-  state (`Charges::spend_one`), consumed by Scratch/Ferocious Bite. Still open: Ice Barrier, Mage
-  frost charges (Phase 9.5).
+  state (`Charges::spend_one`), consumed by Scratch/Ferocious Bite. Mage's own frost charges + Ice
+  Barrier's real absorb **DONE (Phase 9.5, §8.16)** — see below; this closes the last §8.1 row this
+  register had been tracking since Phase 9.1.
 - ~~`HeroDef.base_stats` is data-only — per-hero HP/move-speed application~~ **DONE (Phase 9.2,
   §8.13)** — a deferred `apply_base_stats` system (mirrors `grant_level_1_abilities`'s async-asset-load
   pattern) + a synchronous path in `respawn_player` (restart/resume). The DK now plays at its own
@@ -155,6 +159,25 @@ both times, not just assumed).** Highlights a future session must not "rediscove
   four class-wide Passive Abilities in full (each a genuinely new mechanic). Also fixed: a latent
   `sync_charges_to_class_resource` scheduling gap (Phase 9.1, inert until Druid's Charges made it a
   real same-frame race) — now pinned `.after(CombatSet::Damage)`.
+- ~~Mage completion (Fireblast/Frostbolt's remaining talents + the innate frost-charge-on-
+  frostbitten path; Flamewrath/Flamestrike/Frost Impale; the Ice Barrier real-absorb upgrade)~~
+  **DONE (Phase 9.5, §8.16)** — the arc's fourth and final class kit. `targeted_burst` (new
+  behavior, Flamestrike); Flamewrath reuses `self_nova` verbatim; Frost Impale extends
+  `channel_while_moving`'s completion path to fire a projectile, not just resolve a heal; two new
+  `ProjectilePayload` fields close the projectile-IMPACT talent/innate-effect gap the Phase 9.4
+  as-built notes flagged. Deferred with triggers (`Mechanics.md`'s Mage section): Blaze's whole
+  talent tree + 3 of Frostbite's 5 (status-magnitude / `StackingRule`-rewrite, no primitive); the
+  ENTIRE "Frost charge" passive section + the entire "Passive cross cutting talents" section (each
+  needs a genuinely new cross-cutting primitive — a resource-scaled conditional multiplier, and a
+  "spell school" ability-grouping tag, respectively); a handful of by-now-familiar gaps (multi-
+  primary targeting, kill attribution, remaining-DoT-magnitude read, per-secondary-hit pierce
+  scaling). **Also found and fixed within this same sub-phase (not left open):** a real, previously
+  wrong (not merely untested) scheduling assumption — `bone_shield_on_kill`/`overkill_leech_on_kill`
+  read a dying `Enemy` "before `enemy_death` despawns it," but Bevy auto-syncs Commands right after
+  any Commands-issuing system, so an unordered same-set reader that loses the tie-break sees the
+  entity already gone; every `CombatSet::Death` reader of a dying `Enemy` now runs
+  `.before(enemy_death)`. `sync_charges_to_class_resource`'s Phase-9.4 pin was strengthened from
+  `.after(CombatSet::Damage)` to `.after(CombatSet::Death)` for the same underlying reason.
 
 §8.5 is checked and updated at the end of every phase. When a future phase's work creates a new
 deliberate gap, add it here and to §8.5 in the same change. When resolving the reproducibility row

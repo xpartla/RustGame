@@ -1,0 +1,12 @@
+// "Increase explosion range by X%" (Mechanics, common). Stack(3).
+(
+    id: "flamewrath_explosion_radius_common",
+    display_name: "Wider Blast",
+    ability_scope: Some("flamewrath"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "explosion_radius",
+        op: MultiplyAdd(0.20),
+    )),
+)

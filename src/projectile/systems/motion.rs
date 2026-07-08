@@ -13,10 +13,11 @@ use bevy::prelude::*;
 use crate::ability::effects::apply_resolved_effects;
 use crate::ability::behavior::HitTarget;
 use crate::core::components::{Faction, Hurtbox, WorldPosition};
-use crate::core::events::{DamageEvent, HealEvent};
+use crate::core::events::{DamageEvent, DamageTag, HealEvent};
+use crate::hero::components::Charges;
 use crate::projectile::components::{ProjectileMotion, ProjectilePayload};
 use crate::run::rng::RunRng;
-use crate::status::components::ApplyStatusEvent;
+use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 
 pub fn move_projectiles(time: Res<Time>, mut projectiles: Query<(&mut WorldPosition, &ProjectileMotion)>) {
     let dt = time.delta_secs();
@@ -31,6 +32,8 @@ pub fn projectile_collision(
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
     mut rng: ResMut<RunRng>,
+    mut charges: Query<&mut Charges>,
+    statuses: Query<&StatusEffectInstance>,
     mut projectiles: Query<(Entity, &WorldPosition, &mut ProjectileMotion, &mut ProjectilePayload)>,
     targets: Query<(Entity, &WorldPosition, &Hurtbox, &Faction)>,
 ) {
@@ -48,6 +51,18 @@ pub fn projectile_collision(
                 continue;
             }
 
+            // Frostbolt's innate frost-charge generation (Phase 9.5): checked BEFORE this hit's own
+            // effects apply (its `ApplyStatus(frostbite)` is only queued below, not yet a live
+            // `StatusEffectInstance`), so this only fires when the target was ALREADY frostbitten by
+            // a prior cast.
+            if payload.grants_frost_charge_on_frostbitten
+                && statuses.iter().any(|s| s.target == target && s.def_id == "frostbite")
+            {
+                if let Ok(mut charges) = charges.get_mut(payload.source) {
+                    charges.gain(1);
+                }
+            }
+
             let hit = HitTarget { entity: target, pos: target_pos.0 };
             apply_resolved_effects(
                 &mut damage_events,
@@ -59,6 +74,25 @@ pub fn projectile_collision(
                 Some(hit),
                 &payload.effects,
             );
+
+            // Fireblast's "explodes on impact" unique talent (Phase 9.5): extra Fire damage to
+            // every OTHER opposing-faction actor within `radius` of the impact point.
+            if let Some((explode_damage, explode_radius)) = payload.explode_on_impact {
+                for (other, other_pos, _, other_faction) in &targets {
+                    if other != target
+                        && *other_faction == payload.target_faction
+                        && other_pos.0.distance(target_pos.0) <= explode_radius
+                    {
+                        damage_events.write(DamageEvent {
+                            target: other,
+                            amount: explode_damage,
+                            source: payload.source,
+                            tags: vec![DamageTag::Fire],
+                        });
+                    }
+                }
+            }
+
             payload.already_hit.push(target);
 
             if motion.pierce_remaining == 0 {

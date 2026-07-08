@@ -1,0 +1,13 @@
+// "Increase cast radius by X%" (Mechanics, common) — the search range for a nearby ablaze
+// target. Stack(3).
+(
+    id: "flamewrath_cast_radius_common",
+    display_name: "Wider Search",
+    ability_scope: Some("flamewrath"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "radius",
+        op: MultiplyAdd(0.20),
+    )),
+)

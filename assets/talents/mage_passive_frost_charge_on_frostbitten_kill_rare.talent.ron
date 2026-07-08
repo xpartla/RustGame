@@ -1,0 +1,13 @@
+// "Gain a frost charge if an enemy affected by frostbite dies" (Mechanics, Frostbite passive
+// section, rare, unique). Class-wide (ability_scope: None). Installs the
+// "mage_frost_charge_on_frostbitten_kill" flag, read by
+// ability::systems::mage_frost_kill::frost_charge_on_frostbitten_kill (CombatSet::Death) — mirrors
+// bone_shield_on_kill's shape.
+(
+    id: "mage_passive_frost_charge_on_frostbitten_kill_rare",
+    display_name: "Killing Frost",
+    ability_scope: None,
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("mage_frost_charge_on_frostbitten_kill"),
+)

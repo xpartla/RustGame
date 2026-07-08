@@ -1,0 +1,38 @@
+// WORKING NAME: "Flamestrike"
+// Class: Mage (fire) — special attack (RMB), Level 1.
+//
+// Behavior: targeted_burst (Phase 9.5, new) — an aimed AoE burst centred "cast_range" along the
+// caster's aim (not on the caster itself, unlike self_nova), hitting everyone within "zone_radius"
+// of that point. "Dealing increased damage per enemy affected by blaze" is base-kit identity (not
+// a talent): a def_id-keyed execute.rs top-up (`"damage" * "bonus_per_blazed_percent" / 100` extra
+// Fire damage to every hit, once per blaze-affected enemy present) — a global per-cast scaling the
+// generic effects pipeline can't express (one uniform amount per EffectSpec).
+//
+// Deferred (Mechanics, both epic/unique):
+//   - "deals no damage, triggers flamewrath on all enemies hit" — a chained-explosion mechanic
+//     with no existing primitive.
+//   - "deals 80% reduced damage, deals the remaining blaze damage instantly, removing blaze" —
+//     needs a "read a status's own remaining DoT magnitude" primitive (the same gap Ferocious
+//     Bite's deferred "instant remaining bleed" talent hit, Phase 9.4).
+(
+    id: "flamestrike",
+    display_name: "Flamestrike",
+    unlock_schedule: Level1,
+    behavior: "targeted_burst",
+    hooks: [],
+    base_params: {
+        "cast_range": 180.0,
+        "zone_radius": 60.0,
+        "damage": 10.0,
+        "bonus_per_blazed_percent": 15.0,
+        "cooldown": 3.0,
+    },
+    talent_pool: [
+        "flamestrike_cast_range_common",
+        "flamestrike_zone_range_common",
+        "flamestrike_damage_common",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Fire], target: AllHits),
+    ],
+)

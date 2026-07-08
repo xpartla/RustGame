@@ -6,10 +6,13 @@
 // other emitter.
 
 use bevy::prelude::*;
+use crate::ability::assets::EffectTarget;
 use crate::ability::components::{Channeling, Minion, MinionOwner};
-use crate::core::components::{Faction, Health, WorldPosition};
+use crate::ability::effects::ResolvedEffect;
+use crate::core::components::{Facing, Faction, Health, WorldPosition};
 use crate::core::events::{DamageEvent, DamageTag, GainShieldEvent, HealEvent};
 use crate::hero::components::Charges;
+use crate::projectile::components::{Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
 use crate::status::components::StatusEffectInstance;
 use crate::zone::components::PersistentZone;
 
@@ -24,6 +27,7 @@ pub fn tick_channels(
     healths: Query<&Health>,
     positions: Query<&WorldPosition>,
     factions: Query<&Faction>,
+    facings: Query<&Facing>,
     actors: Query<(Entity, &WorldPosition, &Faction), Without<PersistentZone>>,
     statuses: Query<&StatusEffectInstance>,
     minions: Query<(Entity, &MinionOwner), With<Minion>>,
@@ -110,6 +114,43 @@ pub fn tick_channels(
                 &actors,
                 &mut damage_events,
             );
+        }
+
+        // Mage Frost Impale's icicle (Phase 9.5): consume every held frost Charge on completion,
+        // scaling damage per charge, and fire a piercing Frost projectile toward the caster's
+        // CURRENT aim — read fresh here (like `radiate`'s fresh position), since "channeled while
+        // moving" lets the caster keep re-aiming throughout the cast.
+        if channel.icicle_damage > 0.0 {
+            if let (Ok(caster_pos), Ok(caster_faction)) = (positions.get(caster), factions.get(caster)) {
+                let spent = charges.get_mut(caster).map(|mut c| c.spend_all()).unwrap_or(0);
+                let damage = channel.icicle_damage * (1.0 + spent as f32 * channel.icicle_charge_damage_percent / 100.0);
+                let aim = facings.get(caster).map(|f| f.0).unwrap_or(Vec2::ZERO);
+                let dir = if aim.length_squared() >= 1e-6 { aim.normalize() } else { Vec2::X };
+                commands.spawn((
+                    Projectile,
+                    WorldPosition(caster_pos.0),
+                    ProjectileMotion {
+                        velocity: dir * channel.icicle_speed,
+                        radius: channel.icicle_radius,
+                        pierce_remaining: channel.icicle_pierce,
+                    },
+                    ProjectilePayload {
+                        source: caster,
+                        target_faction: caster_faction.opposing(),
+                        effects: vec![ResolvedEffect::Damage {
+                            amount: damage,
+                            tags: vec![DamageTag::Frost],
+                            target: EffectTarget::AllHits,
+                            crit_chance: channel.icicle_crit_chance,
+                            crit_mult: channel.icicle_crit_mult,
+                        }],
+                        already_hit: Vec::new(),
+                        grants_frost_charge_on_frostbitten: false,
+                        explode_on_impact: None,
+                    },
+                    Lifetime { timer: Timer::from_seconds(channel.icicle_lifetime, TimerMode::Once) },
+                ));
+            }
         }
 
         commands.entity(caster).remove::<Channeling>();

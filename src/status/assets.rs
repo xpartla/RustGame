@@ -100,9 +100,10 @@ impl DefAsset for StatusEffectDef {
         ("holy_mark", "status_effects/holy_mark.status.ron"),
         ("root", "status_effects/root.status.ron"),
         ("stun", "status_effects/stun.status.ron"),
-        // Phase 4 — Mage stance-swap effects (self-applied on entering a stance).
+        // Phase 4 — Mage stance-swap effect (self-applied on entering Fire). Ice's own swap
+        // effect ("ice_barrier") was upgraded to a real Absorb shield in Phase 9.5 — see
+        // `hero::assets::StanceSlotMapping::swap_shield_amount` — so the status no longer exists.
         ("boots_of_fire", "status_effects/boots_of_fire.status.ron"),
-        ("ice_barrier", "status_effects/ice_barrier.status.ron"),
         // Phase 9.3 — Consecrated Ground's slow talent.
         ("consecrated_slow", "status_effects/consecrated_slow.status.ron"),
         // Phase 9.4 — Bloom's movespeed talent.

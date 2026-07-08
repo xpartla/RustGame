@@ -1,0 +1,12 @@
+// "Projectile explodes on impact, dealing X damage to nearby enemies" (Mechanics, common, unique).
+// Installs the "fireblast_explode_on_impact" ActiveHooks flag — read directly by
+// ability::systems::execute::execute_ready_abilities' projectile-spawn block, baked into
+// ProjectilePayload.explode_on_impact and consumed by projectile_collision.
+(
+    id: "fireblast_explode_on_impact_common",
+    display_name: "Combustion",
+    ability_scope: Some("fireblast"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Behavior("fireblast_explode_on_impact"),
+)

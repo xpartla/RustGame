@@ -1,0 +1,12 @@
+// "Frost impale deals X% increase damage" (Mechanics, common). Stack(3).
+(
+    id: "frost_impale_damage_common",
+    display_name: "Honed Icicle",
+    ability_scope: Some("frost_impale"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.20),
+    )),
+)

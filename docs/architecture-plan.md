@@ -1555,6 +1555,83 @@ same instruction Phase 9.3 operated under. No new row opens: the `sync_charges_t
 ordering gap was a real, previously-latent bug (inert until a real `Charges` consumer existed) — now
 fixed, not tracked.
 
+### 8.16 Phase 9.5 delivered (2026-07-08)
+
+The fifth and final class sub-phase of the Phase-9 content-pass arc: the Mage completion. Runless-
+neutral like Paladin/Druid (the golden campaign is the BDK bot and never touches Mage content). See
+the CHANGELOG "Phase 9.5" section for full detail; highlights:
+
+- **Frostbolt's innate frost-charge generation and Fireblast's "explodes on impact" unique talent**
+  are the arc's first two projectile-IMPACT special-cases — a gap the Phase 9.4 as-built notes named
+  explicitly ("worth flagging for Mage completion (9.5), whose Frostbolt/Frost Impale are also
+  projectiles and may want the same kind of talent-conditional impact effect"). Closed narrowly: two
+  new `ProjectilePayload` fields (`grants_frost_charge_on_frostbitten`, `explode_on_impact`) baked at
+  cast time in `execute.rs`'s projectile-spawn block (mirroring `Channeling`'s own bespoke-field
+  precedent) and consumed by `projectile_collision`, rather than a generalized impact-hook mechanism
+  — the same "targeted special-case, not a generalized primitive" discipline this arc has used
+  throughout for one-or-two-consumer mechanics.
+- **`targeted_burst` (Flamestrike)** — a genuinely new behavior: an aimed AoE offset from the caster
+  along their aim, unlike every prior self-centred nova/zone shape. **Flamewrath reuses `self_nova`
+  verbatim** — its own `effects` list stays empty; the real mechanic (nearest-ablaze-target pick +
+  explode around that point + consume its blaze) is entirely a targeted execute.rs special-case,
+  since `self_nova` itself has no status awareness.
+- **Frost Impale extends `channel_while_moving`'s own completion path** (`tick_channels`) to
+  optionally fire a piercing projectile instead of only resolving a self-heal — the first channel
+  whose completion spawns a new entity. Consumes every held frost `Charges` via `spend_all()`,
+  scaling damage per charge, fired toward the caster's freshly-read `Facing` (the same "read fresh at
+  completion" rule Flash of Light's radiate established in Phase 9.3). Two trade-off talents needed
+  genuine Pre hooks (each scales two stats at once) rather than plain Modifiers.
+- **Two Frostbite-passive kill-reactive class talents** (`ability::systems::mage_frost_kill`, a new
+  module mirroring `bone_shield_on_kill`'s exact shape) are the first NEW consumers of the
+  `CombatSet::Death` kill-reading pattern since Phase 9.2, and are what surfaced the scheduling bug
+  below.
+- **Ice Barrier upgraded to a real `Absorb` shield** (`StanceSlotMapping.swap_shield_amount` + a
+  `GainShieldEvent` in `hero::systems::stance::handle_stance_swap`), closing the §8.1 row open since
+  Phase 9.1. The `ice_barrier` status/RON is retired.
+- **A real, previously-latent scheduling bug found and fixed, of a NEW kind for this arc**: every
+  prior sub-phase's "first genuine stress of an assumption" bug involved an assumption that was
+  merely *untested* (inert until a real consumer existed). This one was actually *wrong* the whole
+  time: `bone_shield_on_kill`/`overkill_leech_on_kill`'s own doc comments claimed reading a dying
+  `Enemy`'s `Health`/`LastHitBy` was order-agnostic relative to `enemy_death`'s despawn, on the
+  reasoning that a `Commands::despawn` can't take effect until the schedule's end. That reasoning was
+  incorrect — Bevy auto-inserts an `apply_deferred` sync point immediately after any Commands-issuing
+  system, so an unordered same-set reader that loses the scheduler's tie-break sees the entity
+  already gone; there is no despawn-visibility grace period within `CombatSet::Death` at all. This
+  had been silently true (and silently correct by luck) since Phase 9.2 — the existing readers simply
+  always won that tie-break under every schedule built so far. Adding the Mage's two new Death-set
+  readers into the same tuple as `bone_shield_on_kill` shifted the tie-break enough to make
+  `overkill_leech_on_kill` start losing it, caught immediately by a pre-existing, unrelated BDK test
+  (`tests/bdk_class_passives.rs`). Fixed at the root — every Death-set reader of a dying `Enemy` now
+  runs `.before(enemy_death)` — not patched only for the two new systems. A second, smaller instance
+  of the identical class of bug required strengthening Phase 9.4's own
+  `sync_charges_to_class_resource` pin from `.after(CombatSet::Damage)` to `.after(CombatSet::Death)`
+  (the frost-charge-on-kill grant is the first `Charges` mutator living in `CombatSet::Death`).
+- **Deliberate deferrals** (documented inline in `Mechanics.md`): Blaze's entire talent tree and three
+  of Frostbite's five talents (status-magnitude / `StackingRule`-rewrite, no primitive — the same
+  gap Bleed/Mega-Bleed hit in Phase 9.4); the ENTIRE "Frost charge" passive section (needs a new
+  universal resource-count-scaled conditional-damage-multiplier primitive); the entire "Passive cross
+  cutting talents" section (needs a "spell school" tagging primitive); Flamewrath's "additional
+  target" (multi-primary targeting); two Flamestrike epics and Frostbolt's kill-explosion epic (the
+  by-now-familiar remaining-DoT-magnitude and kill-attribution gaps); two Frost Impale talents
+  (per-secondary-hit scaling for a piercing projectile).
+- **Tests: 311 total** (was 288). See CHANGELOG "Phase 9.5" for the exact passing count (subject to
+  the pre-existing `campaign_is_reproducible_within_a_build` intermittent flake, directly observed
+  during this sub-phase's own validation at its documented ~1-in-3 rate — not new or worsened).
+
+§8.1 status after Phase 9.5: every row this register has tracked since Phase 9.1 is now resolved —
+Ice Barrier's real `Absorb` (closed this sub-phase) was the last one. The Movement-slot dash still
+has no shipped hero binding (none of Paladin/Druid/Mage needed it) — not a tracked debt row, just an
+unclaimed slot, per §8.5's own precedent for "unclaimed but not broken."
+
+§8.5 status after Phase 9.5: the golden-campaign reproducibility flake (open since Phase 9.2) remains
+the only long-standing tracked row, unchanged by Mage content (runless, like Paladin/Druid before it)
+— not investigated further this sub-phase, consistent with every sub-phase since 9.2. **One new row
+found and immediately closed within this same sub-phase** (not left open): the `enemy_death`
+despawn-ordering assumption documented in §8.16 above. It is recorded there rather than as a
+standalong open register row because it was fixed in the same change that found it, mirroring how
+Phase 9.4's `sync_charges_to_class_resource` gap was handled — the register only tracks debt that
+*remains* open at sub-phase end.
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

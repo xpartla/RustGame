@@ -1,0 +1,13 @@
+// "Frostbolt pierces through, hitting an additional enemy" (Mechanics, rare). Overrides "pierce" —
+// mirrors roots_pierce_rare.
+(
+    id: "frostbolt_pierce_rare",
+    display_name: "Piercing Cold",
+    ability_scope: Some("frostbolt"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "pierce",
+        op: Override(1.0),
+    )),
+)

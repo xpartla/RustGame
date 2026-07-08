@@ -1,0 +1,12 @@
+// "Flamewrath deals 50% reduced damage, but does not consume the blaze stack" (Mechanics, common,
+// unique). Installs the "flamewrath_no_consume" flag: a real Pre hook (ability/hooks.rs's
+// FlamewrathNoConsume, halving "damage") PLUS a direct ActiveHooks read at the blaze-removal
+// special-case in execute.rs that skips the RemoveStatusEvent.
+(
+    id: "flamewrath_no_consume_common",
+    display_name: "Lingering Wrath",
+    ability_scope: Some("flamewrath"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Behavior("flamewrath_no_consume"),
+)

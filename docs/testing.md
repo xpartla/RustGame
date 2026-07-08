@@ -258,6 +258,30 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   HUD-sync system all landed together here). Plus unit tests (see architecture-plan §8.15) for every
   new ability/talent RON parse, `LeapToTarget`'s two selection modes, `Bloom`'s pickup signal, and
   `Charges::spend_one`.
+- Phase 9.5 (done): the Mage, the arc's fourth and final class kit (architecture-plan §8.16) — one
+  new file, `tests/mage.rs` (10 scenarios): Frostbolt's frost-charge generation fires only against an
+  ALREADY-frostbitten target (the first hit that applies frostbite grants nothing); Fireblast's
+  explode-on-impact talent; Flamewrath's nearest-ablaze-target explosion + blaze consumption, and the
+  no-consume trade-off talent; Flamestrike's per-blazed-enemy damage bonus applying to every hit;
+  Frost Impale's channel firing no damage until completion, then scaling exactly by the number of
+  frost charges consumed; both Frostbite-passive kill-reactive talents; the headline hero-band-pool
+  regression test. **A real, previously-latent scheduling bug found by this sub-phase's own new
+  content** (not a Mage-specific bug, but exposed by it) — see architecture-plan §8.16 and CHANGELOG
+  "Phase 9.5" for the full account: `bone_shield_on_kill`/`overkill_leech_on_kill`'s own doc comments
+  had wrongly assumed reading a dying `Enemy` was order-agnostic relative to `enemy_death`'s despawn
+  (Bevy auto-inserts a sync point right after any Commands-issuing system, so an unordered same-set
+  reader can lose the tie-break and see the entity already gone — there is no despawn-visibility
+  grace period within a set at all). Caught by `tests/bdk_class_passives.rs` — a pre-existing,
+  unrelated BDK test — the moment the Mage's two new Death-set readers shifted the tie-break order.
+  Fixed at the root (`.before(enemy_death)` on every Death-set reader of a dying `Enemy`), not just
+  patched for the two new systems. A second, smaller instance of the same class of bug required
+  strengthening the Phase 9.4 `sync_charges_to_class_resource` pin from `.after(CombatSet::Damage)`
+  to `.after(CombatSet::Death)` (the Mage's frost-charge-on-kill grant is the first `Charges` mutator
+  living in `CombatSet::Death`). `campaign_is_reproducible_within_a_build`'s own already-documented
+  intermittent flake (~1 run in 3, §8.5) was directly observed during this validation (fail once,
+  pass twice across three consecutive runs) — consistent with the tracked rate. Plus unit tests (see
+  architecture-plan §8.16) for every new/updated ability/talent RON parse, `TargetedBurst`'s pure
+  targeting math, and the three new Pre hooks.
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

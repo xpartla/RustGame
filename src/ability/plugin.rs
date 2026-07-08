@@ -15,16 +15,21 @@ use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
 use crate::ability::behavior::{
     BehaviorRegistry, Blink, Bloom, ChannelWhileMoving, ContactMelee, DroppedZone, Grip, HammerCleave,
-    LeapToTarget, MeleeCone, NearestMelee, Orbiting, ProjectileBehavior, SelfNova, Summon,
+    LeapToTarget, MeleeCone, NearestMelee, Orbiting, ProjectileBehavior, SelfNova, Summon, TargetedBurst,
 };
-use crate::ability::hooks::{BdkDndDamageBoost, BdkNoHealCapLeechBoost, BloodBoilDndRange, HeartStrikeExecuteBonus, HeartStrikeMissingHealth, HookRegistry};
+use crate::ability::hooks::{
+    BdkDndDamageBoost, BdkNoHealCapLeechBoost, BloodBoilDndRange, FlamewrathNoConsume, FrostImpaleDeepFreeze,
+    FrostImpaleGlacialSpike, HeartStrikeExecuteBonus, HeartStrikeMissingHealth, HookRegistry,
+};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::bone_shield::bone_shield_on_kill;
 use crate::ability::systems::channel::tick_channels;
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
+use crate::ability::systems::mage_frost_kill::{frost_charge_on_frostbitten_kill, heal_on_frostbitten_kill};
 use crate::ability::systems::purgatory::purgatory_cheat_death;
 use crate::ability::systems::summon::{minion_seek_and_face, update_minion_lifecycle};
 use crate::core::def_library::DefLibraryAppExt;
+use crate::enemy::systems::death::enemy_death;
 use crate::core::sets::{CombatSet, MovementSet};
 use crate::game::state::GameState;
 use crate::hero::assets::{HeroDef, HeroLibrary};
@@ -50,7 +55,8 @@ impl Plugin for AbilityPlugin {
         // nearest_melee (Phase 9.2 — Companion / Heart Strike), orbiting / hammer_cleave /
         // channel_while_moving (Phase 9.3 — Paladin's Spinning Hammer / Hammer of Justice / Flash
         // of Light), leap_to_target / bloom (Phase 9.4 — Druid's Ferocious Bite+Primal Pounce /
-        // Bloom). An ability whose behavior is unregistered stays inert.
+        // Bloom), targeted_burst (Phase 9.5 — Mage's Flamestrike; Flamewrath reuses self_nova
+        // as-is). An ability whose behavior is unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
@@ -66,6 +72,7 @@ impl Plugin for AbilityPlugin {
         behaviors.register("channel_while_moving", ChannelWhileMoving);
         behaviors.register("leap_to_target", LeapToTarget);
         behaviors.register("bloom", Bloom);
+        behaviors.register("targeted_burst", TargetedBurst);
         app.insert_resource(behaviors);
 
         // Code-driven ability hooks (Phase 6). Talent-gated hooks (in an ability's `hooks` list)
@@ -78,6 +85,9 @@ impl Plugin for AbilityPlugin {
         hooks.register("heart_strike_execute_bonus", HeartStrikeExecuteBonus);
         hooks.register("bdk_dnd_damage_boost", BdkDndDamageBoost);
         hooks.register("bdk_no_heal_cap", BdkNoHealCapLeechBoost);
+        hooks.register("frost_impale_glacial_spike", FrostImpaleGlacialSpike);
+        hooks.register("frost_impale_deep_freeze", FrostImpaleDeepFreeze);
+        hooks.register("flamewrath_no_consume", FlamewrathNoConsume);
         app.insert_resource(hooks);
 
         // Ungated by GameState: when several level-ups land in one frame and cross from the
@@ -139,11 +149,29 @@ impl Plugin for AbilityPlugin {
         );
 
         // Bone Shield's kill counter (Phase 9.2, Death Strike's epic talent): reads Health/
-        // LastHitBy on dying enemies before enemy_death despawns them — same set, order-agnostic
-        // (both only read the victim; enemy_death's despawn is a deferred Command).
+        // LastHitBy on dying enemies before enemy_death despawns them. The Mage's two frost-kill
+        // passives (Phase 9.5) are the identical shape, one more read (frostbite status).
+        //
+        // `.before(enemy_death)` (Phase 9.5 pin — found while adding the two Mage systems below):
+        // NOT actually order-agnostic, despite this comment's own prior claim — `enemy_death`'s
+        // `commands.despawn()` is a Bevy auto-inserted sync point (Commands-issuing systems get an
+        // automatic `apply_deferred` immediately after them), so if `enemy_death` merely happens to
+        // execute FIRST in the scheduler's tie-break order for this unordered set, the entity is
+        // already gone by the time a same-set reader runs — no despawn-visibility grace period
+        // exists within CombatSet::Death itself. Adding the two new systems below shifted that
+        // tie-break order enough to make `talent::systems::passives::overkill_leech_on_kill`
+        // (a DIFFERENT, already-shipped Death-set reader) start losing this race — caught by
+        // `tests/bdk_class_passives.rs`, not a new bug in the code below, but a latent one this
+        // change happened to expose (the same class of gap every sub-phase's first real stress of
+        // an assumption has surfaced). Fixed at the root: every Death-set system that reads a dying
+        // `Enemy`'s `Health`/`LastHitBy` now explicitly runs `.before(enemy_death)` — see also
+        // `talent/plugin.rs`'s identical pin on `overkill_leech_on_kill`.
         app.add_systems(
             Update,
-            bone_shield_on_kill.in_set(CombatSet::Death).run_if(in_state(GameState::InRun)),
+            (bone_shield_on_kill, frost_charge_on_frostbitten_kill, heal_on_frostbitten_kill)
+                .before(enemy_death)
+                .in_set(CombatSet::Death)
+                .run_if(in_state(GameState::InRun)),
         );
 
         // Minion lifecycle (Phase 9.2 — Companion). Seeking/facing is AI-shaped, so it belongs in

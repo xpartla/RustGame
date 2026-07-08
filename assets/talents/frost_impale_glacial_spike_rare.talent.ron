@@ -1,0 +1,11 @@
+// "Frost impale deals X% less damage, reduce the cast time by 50%" (Mechanics, rare). A trade-off
+// touching two stats at once — a real Pre hook (ability/hooks.rs's FrostImpaleGlacialSpike:
+// damage x0.7, cast_time x0.5), not a plain Modifier.
+(
+    id: "frost_impale_glacial_spike_rare",
+    display_name: "Glacial Spike",
+    ability_scope: Some("frost_impale"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("frost_impale_glacial_spike"),
+)

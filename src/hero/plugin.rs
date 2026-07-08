@@ -33,17 +33,21 @@ impl Plugin for HeroPlugin {
                 .run_if(in_state(GameState::InRun)),
         );
         // Class-resource bridge (Phase 9.1): mirrors Charges into the HUD's ClassResource whenever
-        // content grants/spends them. Pinned `.after(CombatSet::Damage)` (Phase 9.4 — found once the
-        // Druid became the first real `Charges` consumer): every current mutator
-        // (`execute_ready_abilities`'s Scratch/Ferocious Bite spend, `tick_channels`'s Heal grant,
-        // `collect_pickups`'s Bloom grant) lives in or before that set, and this system carried no
-        // explicit order against any of them — Bevy's scheduler was free to run the mirror BEFORE a
-        // same-frame mutation, leaving `ClassResource` (and the HUD) one frame stale. `Changed<Charges>`
-        // then means "changed as of last frame" instead of "changed this frame."
+        // content grants/spends them. Pinned `.after(CombatSet::Death)` (originally just
+        // `.after(CombatSet::Damage)`, Phase 9.4 — found once the Druid became the first real
+        // `Charges` consumer; strengthened Phase 9.5, when the Mage's frost-charge-on-frostbitten-
+        // kill talent became the first mutator living in CombatSet::Death instead of Damage, and
+        // hit the identical one-frame-stale gap the Phase 9.4 fix was meant to close — "after
+        // Damage" doesn't imply "after Death," since Death merely comes later in the SAME chain,
+        // not before this unordered system). Every current mutator (`execute_ready_abilities`'s
+        // Scratch/Ferocious Bite spend, `tick_channels`'s Heal/Frost-Impale grant+spend,
+        // `collect_pickups`'s Bloom grant, `ability::systems::mage_frost_kill`'s kill-reactive
+        // grant) now lives at or before CombatSet::Death, so this is the one pin that covers all of
+        // them without needing to grow every time a new mutator's home set changes.
         app.add_systems(
             Update,
             sync_charges_to_class_resource
-                .after(CombatSet::Damage)
+                .after(CombatSet::Death)
                 .run_if(in_state(GameState::InRun)),
         );
 

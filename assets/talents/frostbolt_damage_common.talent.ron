@@ -1,0 +1,12 @@
+// "Increase damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "frostbolt_damage_common",
+    display_name: "Sharpened Icicle",
+    ability_scope: Some("frostbolt"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.20),
+    )),
+)

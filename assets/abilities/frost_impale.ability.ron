@@ -1,0 +1,45 @@
+// WORKING NAME: "Frost Impale"
+// Class: Mage (frost) — special attack (RMB), long channel while moving, Level 1.
+//
+// Behavior: channel_while_moving (reused from Phase 9.3's Flash of Light / Phase 9.4's Heal) — on
+// completion, ability::systems::channel::tick_channels consumes every held frost `Charges` (spend_
+// all), scales "damage" up by "frost_charge_damage_percent"% per charge spent, and fires a
+// piercing Frost projectile ("radius"/"speed"/"range" — the icicle) toward the caster's CURRENT
+// aim (read fresh at completion, since the caster can keep re-aiming while channeling).
+//
+// frost_impale_glacial_spike_rare / frost_impale_deep_freeze_rare are genuine Pre hooks (not flag
+// reads) — both scale TWO stats in one trade-off talent, which only the HookRegistry's Pre-hook
+// loop can express (a plain Modifier talent touches exactly one stat).
+//
+// Deferred (Mechanics, both need a per-secondary-hit scaling primitive for a piercing projectile
+// that doesn't exist — base kit ships with pierce: 0, "a target," per the Mechanics text):
+//   - "deals X% more damage to the target per enemy it passes through."
+//   - "deals X% reduced damage to all enemies hit in its path and applies frostbite" (epic).
+(
+    id: "frost_impale",
+    display_name: "Frost Impale",
+    unlock_schedule: Level1,
+    behavior: "channel_while_moving",
+    hooks: [
+        (Pre, "frost_impale_glacial_spike"),
+        (Pre, "frost_impale_deep_freeze"),
+    ],
+    base_params: {
+        "cast_time": 1.5,
+        "damage": 20.0,
+        "frost_charge_damage_percent": 15.0,
+        "speed": 260.0,
+        "radius": 10.0,
+        "range": 500.0,
+        "pierce": 0.0,
+        "cooldown": 8.0,
+    },
+    talent_pool: [
+        "frost_impale_damage_common",
+        "frost_impale_cooldown_common",
+        "frost_impale_glacial_spike_rare",
+        "frost_impale_deep_freeze_rare",
+        "frost_impale_range_common",
+        "frost_impale_size_rare",
+    ],
+)

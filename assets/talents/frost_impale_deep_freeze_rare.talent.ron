@@ -1,0 +1,11 @@
+// "Bonus damage from frost charges increased by 50%, cast time increased by 50%" (Mechanics, rare,
+// unique). A trade-off touching two stats at once — a real Pre hook (ability/hooks.rs's
+// FrostImpaleDeepFreeze: frost_charge_damage_percent x1.5, cast_time x1.5).
+(
+    id: "frost_impale_deep_freeze_rare",
+    display_name: "Deep Freeze",
+    ability_scope: Some("frost_impale"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("frost_impale_deep_freeze"),
+)

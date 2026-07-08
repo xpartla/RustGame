@@ -736,6 +736,34 @@ impl AbilityBehavior for LeapToTarget {
     }
 }
 
+/// Aimed burst at a distance (Phase 9.5 — Mage's Flamestrike). Unlike `SelfNova` (centred on the
+/// caster's own origin), the blast centre is offset `cast_range` along the caster's aim — "cast a
+/// fiery circle" at a chosen spot, not around yourself. Resolves every target within `zone_radius`
+/// of that point. Needs aim (an un-aimed cast has nowhere to place the circle). "Increased damage
+/// per enemy affected by blaze" is a targeted execute.rs special-case (the generic effects pipeline
+/// applies one uniform amount per hit, not a per-cast count-scaled bonus).
+///
+/// Params: "cast_range", "zone_radius" (+ whatever the ability's effects reference).
+pub struct TargetedBurst;
+
+impl AbilityBehavior for TargetedBurst {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let cast_range = params.get("cast_range");
+        let zone_radius = params.get("zone_radius");
+        let center = ctx.origin + ctx.facing * cast_range;
+
+        let hits: Vec<HitTarget> = ctx
+            .targets
+            .iter()
+            .filter(|t| t.pos.distance(center) <= zone_radius)
+            .map(|t| HitTarget { entity: t.entity, pos: t.pos })
+            .collect();
+        let primary = nearest(&hits, center);
+
+        CastOutcome { origin: ctx.origin, hits, primary, ..Default::default() }
+    }
+}
+
 /// Drop a collectible pickup at the caster's origin (Phase 9.4 — Druid's Bloom). No targets, no
 /// aim — a passive, self-centred AutoCast like `Summon`/`DroppedZone`.
 pub struct Bloom;
@@ -1063,6 +1091,38 @@ mod tests {
     #[test]
     fn leap_to_target_needs_no_aim() {
         assert!(!LeapToTarget.needs_aim());
+    }
+
+    #[test]
+    fn targeted_burst_hits_only_within_zone_radius_of_the_offset_center() {
+        let owner = Entity::from_raw(1);
+        let inside = Entity::from_raw(2); // near the offset center (200, 0)
+        let at_caster = Entity::from_raw(3); // near the CASTER, not the offset center
+        let targets = [
+            Target { entity: inside, pos: Vec2::new(210.0, 0.0), is_ranged: false, health: 100.0 },
+            Target { entity: at_caster, pos: Vec2::new(10.0, 0.0), is_ranged: false, health: 100.0 },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[("cast_range", 200.0), ("zone_radius", 30.0)]);
+
+        let outcome = TargetedBurst.resolve(&ctx, &p);
+
+        let hit_entities: Vec<Entity> = outcome.hits.iter().map(|h| h.entity).collect();
+        assert_eq!(hit_entities, vec![inside], "only the target near the offset blast center is hit");
+        assert_eq!(outcome.primary.map(|h| h.entity), Some(inside));
+    }
+
+    #[test]
+    fn targeted_burst_whiffs_cleanly_with_nothing_near_the_center() {
+        let owner = Entity::from_raw(1);
+        let far = Entity::from_raw(2);
+        let targets = [Target { entity: far, pos: Vec2::new(500.0, 500.0), is_ranged: false, health: 100.0 }];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[("cast_range", 200.0), ("zone_radius", 30.0)]);
+
+        let outcome = TargetedBurst.resolve(&ctx, &p);
+        assert!(outcome.hits.is_empty());
+        assert!(outcome.primary.is_none());
     }
 
     #[test]

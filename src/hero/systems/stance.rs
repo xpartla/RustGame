@@ -5,9 +5,11 @@
 //   1. Return early if HeroDef.has_stance == false.
 //   2. Flip ActiveStance between stance_a and stance_b.
 //   3. Apply the *entered* stance's `swap_effect` status to the caster, if any:
-//      - Mage: entering Ice grants "ice_barrier" (damage reduction); entering Fire grants
-//        "boots_of_fire" (move-speed buff). Emitted through the normal status-apply pipeline
-//        (ApplyStatusEvent), so no bespoke system is needed.
+//      - Mage: entering Fire grants "boots_of_fire" (move-speed buff). Emitted through the normal
+//        status-apply pipeline (ApplyStatusEvent), so no bespoke system is needed.
+//   3b. Grant the *entered* stance's `swap_shield_amount` as a real Absorb shield, if any (Phase
+//       9.5) — Mage: entering Ice grants Ice Barrier, via the normal GainShieldEvent pipeline
+//       (the same primitive Flash of Light's overheal->shield talent uses).
 //
 // The stance-swap "ability fires" of heavier classes (Druid Scratch/Roots on swap) are deferred;
 // the focused Phase-4 slice models the swap effect as a self-applied status. StanceGate on
@@ -18,6 +20,7 @@
 use bevy::prelude::*;
 use crate::ability::components::TriggerAbilityEvent;
 use crate::core::components::AbilitiesSuppressed;
+use crate::core::events::GainShieldEvent;
 use crate::hero::assets::{HeroDef, HeroLibrary};
 use crate::hero::components::{ActiveStance, HeroIdentity};
 use crate::status::components::ApplyStatusEvent;
@@ -29,6 +32,7 @@ pub fn handle_stance_swap(
     hero_library: Res<HeroLibrary>,
     hero_defs: Res<Assets<HeroDef>>,
     mut apply_status: EventWriter<ApplyStatusEvent>,
+    mut gain_shield: EventWriter<GainShieldEvent>,
     mut trigger_ability: EventWriter<TriggerAbilityEvent>,
 ) {
     if !kb.just_pressed(KeyCode::KeyQ) {
@@ -55,6 +59,9 @@ pub fn handle_stance_swap(
                     effect_id: effect_id.clone(),
                     stacks: 1,
                 });
+            }
+            if let Some(amount) = mapping.swap_shield_amount {
+                gain_shield.write(GainShieldEvent { target: owner, amount });
             }
             // Phase 9.4 — the Druid: entering a stance also casts its own Basic ability
             // (Scratch on -> Animal, Roots on -> Human). Just a normal TriggerAbilityEvent, so it

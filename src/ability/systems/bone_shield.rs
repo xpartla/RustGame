@@ -10,9 +10,10 @@
 //
 // Not wired through HookRegistry: `AbilityHook::post` is deliberately read-only (no
 // Commands/EventWriter — see ability/hooks.rs's module doc), and this needs a persistent per-killer
-// counter plus a conditional `GainShieldEvent`. Runs in CombatSet::Death (same set as enemy_death,
-// unordered relative to it — both only read the dying enemy's Health/LastHitBy before Commands
-// despawn it at end of frame).
+// counter plus a conditional `GainShieldEvent`. Runs in CombatSet::Death, `.before(enemy_death)`
+// (ability/plugin.rs pin, Phase 9.5) — Bevy auto-inserts a sync point right after `enemy_death`'s
+// `Commands::despawn`, so a same-set reader with no explicit order can lose the scheduler's
+// tie-break and see the entity already gone (see ability/plugin.rs's fuller note on the pin).
 //
 // `BoneShieldProgress` (talent/components.rs) is inserted unconditionally alongside
 // AcquiredTalents/ActiveHooks by `attach_talent_components` — every player has one from spawn,

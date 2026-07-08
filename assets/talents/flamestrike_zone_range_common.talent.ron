@@ -1,0 +1,12 @@
+// "Increase zone range by X%" (Mechanics, common) — the blast's own radius. Stack(3).
+(
+    id: "flamestrike_zone_range_common",
+    display_name: "Wider Circle",
+    ability_scope: Some("flamestrike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "zone_radius",
+        op: MultiplyAdd(0.20),
+    )),
+)

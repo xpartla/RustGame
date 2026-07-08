@@ -1,0 +1,13 @@
+// "Reduce the cooldown of frost impale by X%" (Mechanics, common). A flat second reduction,
+// mirrors flash_of_light_cooldown_common. Stack(3).
+(
+    id: "frost_impale_cooldown_common",
+    display_name: "Rapid Chill",
+    ability_scope: Some("frost_impale"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "cooldown",
+        op: Add(-1.5),
+    )),
+)

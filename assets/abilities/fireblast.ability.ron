@@ -1,10 +1,15 @@
 // WORKING NAME: "Fireblast"
-// Class: Mage (fire) — Basic attack. NOT yet class/stance-bound (Phase 4).
-// Unlock: Level 1 (in the eventual Mage kit).
+// Class: Mage (fire) — Basic attack, bound to the Fire stance's LMB (Phase 9.5).
+// Unlock: Level 1.
 //
 // Behavior: projectile — a travelling shot that, on first impact, deals Fire damage and sets the
 // target ablaze (blaze DoT). Being Fire-tagged, its impact also clears frostbite on that target
 // (emergent, via status cross-interaction). Added in Phase 3 as a status/projectile demonstrator.
+//
+// fireblast_explode_on_impact_common (Phase 9.5, common/unique) — "explodes on impact, dealing X
+// damage to nearby enemies": baked into ProjectilePayload.explode_on_impact at cast time from this
+// ActiveHooks flag (read directly, not through the Pre/Post HookRegistry loop — see execute.rs's
+// projectile-spawn block), so `hooks: []` stays empty.
 (
     id: "fireblast",
     display_name: "Fireblast",
@@ -18,8 +23,15 @@
         "range": 400.0,
         "pierce": 0.0,
         "cooldown": 0.8,
+        // Inert (0/0) unless fireblast_explode_on_impact_common is taken.
+        "explode_damage": 6.0,
+        "explode_radius": 50.0,
     },
-    talent_pool: [],
+    talent_pool: [
+        "fireblast_damage_common",
+        "fireblast_range_common",
+        "fireblast_explode_on_impact_common",
+    ],
     effects: [
         Damage(amount: "damage", tags: [Fire], target: PrimaryHit),
         ApplyStatus(status: "blaze", stacks: 1, target: PrimaryHit),

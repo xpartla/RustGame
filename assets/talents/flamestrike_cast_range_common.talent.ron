@@ -1,0 +1,13 @@
+// "Increase cast range by X%" (Mechanics, common) — how far the blast center can be placed.
+// Stack(3).
+(
+    id: "flamestrike_cast_range_common",
+    display_name: "Extended Cast",
+    ability_scope: Some("flamestrike"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "cast_range",
+        op: MultiplyAdd(0.20),
+    )),
+)

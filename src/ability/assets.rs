@@ -257,6 +257,12 @@ impl DefAsset for AbilityDef {
         ("bloom", "abilities/bloom.ability.ron"),
         ("spawn_ent", "abilities/spawn_ent.ability.ron"),
         ("ent_attack", "abilities/ent_attack.ability.ron"),
+        // Mage completion (Phase 9.5) — fireblast/frostbolt (above) round out with Flamewrath
+        // (band 4/5, reuses self_nova), Flamestrike (L1 special, new `targeted_burst` behavior),
+        // and Frost Impale (L1 special, reuses channel_while_moving).
+        ("flamewrath", "abilities/flamewrath.ability.ron"),
+        ("flamestrike", "abilities/flamestrike.ability.ron"),
+        ("frost_impale", "abilities/frost_impale.ability.ron"),
     ];
 }
 
@@ -571,6 +577,57 @@ mod tests {
         let def = load("assets/abilities/ent_attack.ability.ron");
         assert_eq!(def.id, "ent_attack");
         assert_eq!(def.behavior, "melee_cone");
+    }
+
+    #[test]
+    fn fireblast_declares_an_inert_explode_on_impact_pair() {
+        let def = load("assets/abilities/fireblast.ability.ron");
+        assert_eq!(def.id, "fireblast");
+        assert_eq!(def.behavior, "projectile");
+        assert!(def.hooks.is_empty(), "explode-on-impact is a flag read directly, no Pre hook");
+        assert_eq!(def.base_params.get("explode_damage"), Some(&6.0));
+        assert_eq!(def.talent_pool.len(), 3);
+    }
+
+    #[test]
+    fn frostbolt_declares_the_innate_frost_charge_flag() {
+        let def = load("assets/abilities/frostbolt.ability.ron");
+        assert_eq!(def.id, "frostbolt");
+        assert_eq!(def.base_params.get("grants_frost_charge"), Some(&1.0));
+        assert_eq!(def.talent_pool.len(), 4);
+    }
+
+    #[test]
+    fn flamewrath_reuses_self_nova_with_an_empty_effects_list() {
+        let def = load("assets/abilities/flamewrath.ability.ron");
+        assert_eq!(def.id, "flamewrath");
+        assert_eq!(def.behavior, "self_nova");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert!(def.effects.is_empty(), "damage is a targeted execute.rs special-case");
+        assert_eq!(def.hooks.len(), 1);
+        assert_eq!(def.hooks[0], (HookPhase::Pre, "flamewrath_no_consume".to_string()));
+    }
+
+    #[test]
+    fn flamestrike_parses_as_a_targeted_burst() {
+        let def = load("assets/abilities/flamestrike.ability.ron");
+        assert_eq!(def.id, "flamestrike");
+        assert_eq!(def.behavior, "targeted_burst");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert_eq!(def.effects.len(), 1);
+        assert!(matches!(def.effects[0], EffectSpec::Damage { target: EffectTarget::AllHits, .. }));
+    }
+
+    #[test]
+    fn frost_impale_parses_as_a_channel_with_two_pre_hooks() {
+        let def = load("assets/abilities/frost_impale.ability.ron");
+        assert_eq!(def.id, "frost_impale");
+        assert_eq!(def.behavior, "channel_while_moving");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert!(def.effects.is_empty(), "resolved by tick_channels, not def.effects");
+        assert_eq!(def.base_params.get("frost_charge_damage_percent"), Some(&15.0));
+        assert_eq!(def.hooks.len(), 2);
+        assert_eq!(def.talent_pool.len(), 6);
     }
 
     #[test]
