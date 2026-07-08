@@ -1,0 +1,12 @@
+// "Deal X% of amount healed to enemies in a radius around you" (Mechanics, rare). Installs the
+// "flash_of_light_radiate" ActiveHooks flag — read directly by
+// ability::systems::channel::tick_channels at channel completion (the caster's CURRENT position,
+// since a channel can complete well after it started moving).
+(
+    id: "flash_of_light_radiate_rare",
+    display_name: "Radiant Burst",
+    ability_scope: Some("flash_of_light"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("flash_of_light_radiate"),
+)

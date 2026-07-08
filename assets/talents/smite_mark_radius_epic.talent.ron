@@ -1,0 +1,11 @@
+// "Holy mark affects all enemies in a radius around the target" (Mechanics, epic). Installs the
+// "smite_mark_radius" ActiveHooks flag — checked directly in execute.rs, applying holy_mark to
+// every enemy within "mark_radius" of Smite's primary hit.
+(
+    id: "smite_mark_radius_epic",
+    display_name: "Spreading Judgment",
+    ability_scope: Some("smite"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("smite_mark_radius"),
+)

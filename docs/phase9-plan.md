@@ -663,3 +663,89 @@ more divergence source remains unidentified. Per an explicit product-owner decis
 this is landed as tracked debt (a new §8.5 row) rather than chased further this session — the
 golden-master baseline is deliberately **not** regenerated, so `campaign_matches_golden_baseline`
 is a known, expected failure pending this fix and a regen #4 in a follow-up session.
+
+## 15. Sub-phase 9.3 as-built (completed 2026-07-08)
+
+Landed at full scope against §4's own sketch — the whole Paladin kit (Hammer of Justice, Flash of
+Light, Consecrated Ground promoted from its Phase-6D demonstrator, Spinning Hammer, Smite), the
+three named new behaviors (`orbiting`, `channel_while_moving`, plus a fourth the plan's own text
+flagged as needed but didn't name — `hammer_cleave`, Hammer of Justice's primary-plus-cone-behind
+shape), and the holy-mark consumers. Byte-identical against the golden master throughout (the
+campaign is the BDK bot and never references Paladin content) — `campaign_matches_golden_baseline`
+is unchanged from Phase 9.2's own tracked, pre-existing divergence (§8.5); not investigated further
+this sub-phase, per explicit instruction. See the CHANGELOG "Phase 9.3" section and architecture-
+plan §8.14 for full detail; deviations/surprises from the sketch here:
+
+- **`hammer_cleave` wasn't in the plan's behavior list** (§4 said "a `melee_cone` variant or a small
+  new behavior" without committing) — turned out to need real new targeting geometry (acquire ONE
+  primary via the `MeleeCone` arc shape, then a SEPARATE cone-behind-the-primary sweep for the
+  cleave), not a `melee_cone` param variant. This also needed a new declarative-effects primitive
+  the plan didn't anticipate: `EffectTarget::SecondaryHits` + `EffectSpec::DamageFraction`, so the
+  cleave's "50% of the primary's damage" stays declarative AND automatically inherits any talent
+  that scales the primary's own `damage` stat — without it, a damage talent would have needed to
+  target two separate stats (`damage` and a hardcoded `cleave_damage`) with no single `TalentEffect`
+  able to express both.
+- **`channel_while_moving`'s "no interrupt" default (§4) held exactly as sketched** — nothing
+  cancels a channel once started. One thing the sketch left implicit: overheal must be computed
+  from `Health.current` at completion time, BEFORE the `HealEvent` is emitted — `apply_heal` clamps
+  to max and can't be un-clamped after the fact, so `tick_channels` reads health once, computes the
+  shield amount, THEN writes both the `HealEvent` and the `GainShieldEvent` in the same frame
+  (`apply_shield_gain` runs before `apply_heal` in `CombatSet::Apply`'s existing chain, so the
+  ordering was already right without any new pin).
+- **`orbiting`'s "always active, no cooldown" (Mechanics) needed a modeling decision the plan didn't
+  make explicit**: rather than a persistent hazard entity with its own tick timer (the more
+  "literal" reading), it's a fast AutoCast maintenance cadence (0.25s) sampling the hammer's CURRENT
+  position each cast — reusing the exact same instant-hit-plus-effects pipeline every other melee
+  behavior already uses, with zero new entity lifecycle/teardown concerns (no encounter-reap code,
+  no orphan-instance class to worry about). The position itself is computed from a new
+  `AbilityContext.elapsed_secs` (populated from `Res<Time>`) rather than any per-instance state, so
+  `Orbiting` stays a stateless pure function like every other behavior — deterministic under the
+  sim's `ManualDuration` clock, verified by a scenario that pins two enemies to the identical orbit-
+  path position (so they're swept the exact same number of times) and asserts an exact 2:1
+  marked-vs-unmarked damage ratio, not just "marked took more."
+- **The holy-mark read path (§4: "this is where the marked-target read path is built") landed as
+  TWO targeted execute.rs special-cases**, not a generalized mechanism — a per-target conditional
+  (Spinning Hammer's double damage; Hammer of Justice's shockwave, gated on the PRIMARY hit being
+  marked) that the existing Pre-hook (fires once per cast, before targeting resolves — can't know
+  which hits are marked yet) and declarative-`EffectSpec` (one uniform amount per whole hit set)
+  pipelines genuinely can't express. Same shape as Phase 9.2's `blood_boil_health_scaling`/
+  `abomination_limb_stun` — by now a recognizable, repeated pattern for "per-target conditional
+  effect," not a one-off hack each time.
+- **A real bug found and fixed, not anticipated by the plan at all**: `init_level_flow`
+  (`progression/systems/level_up.rs`) was still hardcoded to the BDK's own band pools regardless of
+  the selected hero, a Phase-2 stub whose own doc comment said Phase 4 would source it from
+  `HeroDef` — never actually done. Invisible through Phases 4–9.2 because the Mage ships with empty
+  band pools (Phase 4's own scope decision) and the BDK is the default hero, so nothing ever
+  exercised "a non-default hero's own non-empty band pool must reach the real level-up flow" until
+  Paladin. Fixed by making `init_level_flow` read the current player's `HeroIdentity` →
+  `HeroDef.band_2_3_pool`/`band_4_6_pool` (every real run-start/restart/resume call site has a
+  fully-identified player by the time it runs), falling back to the hardcoded BDK consts only for
+  the boot-time call site that fires before any player exists — byte-identical there anyway, since
+  the default hero IS the BDK and its own RON declares the identical pools. Regression-tested by
+  `tests/paladin.rs`'s `selecting_paladin_unlocks_its_own_band_kit_not_the_death_knights` — the
+  headline scenario of this sub-phase, arguably more load-bearing than any single new ability.
+- **Three Mechanics talents deferred, matching §4's own risk profile** (the plan flagged these areas
+  as needing "a small new behavior" without fully specifying the shape): Hammer of Justice's bounce
+  (a chain-bounce targeting shape with no existing analog to reuse) and its kill-inside-consecrated-
+  ground explosion (needs per-kill ability attribution — `DamageEvent` carries none, the identical
+  gap Phase 9.2's bone shield simplification hit and documented); Flash of Light's "empowers your
+  next Hammer of Justice" (a one-shot cross-ability buff-consumption shape — Pre hooks have no
+  `Commands` access to consume a marker component once read, Post hooks are deliberately read-only
+  by design, §8.1(3)). All three are absent from any `talent_pool`, so — the established pattern —
+  they self-filter out of the offer generator rather than shipping half-implemented.
+
+**Tests: 258 total, 257 passing** (was 229; the one non-passing test is Phase 9.2's own tracked,
+unchanged `campaign_matches_golden_baseline` divergence — not a new regression).
+`campaign_is_reproducible_within_a_build` stays green. New `tests/paladin.rs` (9 scenario tests) +
+new unit tests across `ability/behavior.rs` (the three new behaviors' pure targeting/rotation math),
+`ability/effects.rs` (`DamageFraction`'s bake math, `SecondaryHits`' primary-exclusion incl. the
+no-primary edge case), `ability/assets.rs` (all 4 new ability RON parses), `talent/assets.rs` (all
+21 new talent RON parses), `hero/assets.rs` (`paladin.hero.ron`'s parse), and `status/assets.rs`
+(`consecrated_slow.status.ron`'s parse). Build warning-free.
+
+Deviations from the plan's Definition of Done (§4's own DoD line + the arc DoD in §0): orbit hits on
+cadence + double vs. marked, Smite applies holy mark, Flash-of-Light channel heals over its cast,
+overheal→shield, `paladin.hero.ron`/new-ability-RON parses, golden master byte-identical — all met.
+`Mechanics.md` Paladin section flipped to implemented with the three deferrals called out inline —
+met. No open items beyond the three explicitly-deferred talents above and the pre-existing,
+untouched §8.5 reproducibility row (Phase 9.2's, not this sub-phase's).

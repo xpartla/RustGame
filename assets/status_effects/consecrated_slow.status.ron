@@ -1,0 +1,13 @@
+// Consecrated Slow — Paladin's `consecrated_ground_slow_common` talent (Phase 9.3).
+//
+// Applied each zone tick (zone/systems/tick.rs::zone_tick_effects) to every occupant of a
+// Consecrated Ground zone whose caster has the talent (baked at zone-spawn into
+// ZoneEffects.slow_status, via the "slow_active" resolved-param flag). RefreshOnReapply with a
+// duration a little longer than the 1 Hz zone tick, so it doesn't flicker off between ticks.
+(
+    id: "consecrated_slow",
+    display_name: "Consecrated Slow",
+    stacking: RefreshOnReapply,
+    base_duration_secs: 1.5,
+    move_speed_mult: 0.8,
+)

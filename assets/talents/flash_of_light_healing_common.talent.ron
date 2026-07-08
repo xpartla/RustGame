@@ -1,0 +1,12 @@
+// "Increase healing by X%" (Mechanics, common). Stack(3).
+(
+    id: "flash_of_light_healing_common",
+    display_name: "Brighter Light",
+    ability_scope: Some("flash_of_light"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "heal_percent",
+        op: MultiplyAdd(0.15),
+    )),
+)

@@ -19,10 +19,7 @@
 // Behaviors still pending (registered in their phase; until then execute_ready_abilities skips
 // any ability whose behavior id is not in the registry):
 //   "periodic_self_zone" — self-centred pulsing zone (later)
-//   "orbiting"          — Spinning Hammer (Phase 9.3)
 //   "leap_to_target"    — Ferocious Bite (Phase 9.4)
-//   "channel_while_moving" — Heal / Flash of Light / Frost Impale (Phase 9.3+)
-//   "summon"            — Companion (Phase 9.2)
 
 use bevy::prelude::*;
 use std::collections::HashMap;
@@ -133,6 +130,17 @@ pub struct GripSpawn {
     pub duration: f32,
 }
 
+/// A request to start a multi-frame channel (Phase 9.3 — Flash of Light; later Druid Heal / Mage
+/// Frost Impale reuse the same behavior). The execute system, on seeing this, does NOT apply the
+/// ability's effects instantly — it inserts a `ability::components::Channeling` on the caster that
+/// `ability::systems::channel::tick_channels` resolves once `cast_time` elapses. "While moving":
+/// nothing in this primitive restricts caster movement during the channel; "no interrupt" (the
+/// phase-9 plan's default): nothing cancels it once started, not even taking damage.
+#[derive(Debug, Clone, Copy)]
+pub struct ChannelSpawn {
+    pub cast_time: f32,
+}
+
 /// What a behavior resolves for one cast: the targeting result the execute system applies the
 /// ability's declarative `effects` against. Gameplay outcome (damage/heal/status) is data, not here.
 #[derive(Debug, Clone, Default)]
@@ -158,6 +166,9 @@ pub struct CastOutcome {
     /// Targets to forcibly pull toward the caster (Phase 9.2 — Abomination Limb). Empty for every
     /// other behavior.
     pub grip_targets: Vec<GripSpawn>,
+    /// Optional request to start a multi-frame channel (Phase 9.3). `None` for every other
+    /// behavior.
+    pub channel: Option<ChannelSpawn>,
 }
 
 /// What a behavior is given each time it runs. Read-only view of the caster.
@@ -169,6 +180,10 @@ pub struct AbilityContext<'a> {
     pub facing: Vec2,
     /// Candidate targets (opposing faction) gathered by the execute system.
     pub targets: &'a [Target],
+    /// Total simulated time elapsed since the app started (`Time::elapsed_secs`), Phase 9.3. Feeds
+    /// `Orbiting`'s continuous rotation — deterministic under the sim's `ManualDuration` clock, so
+    /// two identically-seeded runs compute the exact same hammer angle every frame.
+    pub elapsed_secs: f32,
 }
 
 /// The base execution logic for one ability shape (melee cone, self nova, projectile, …).
@@ -489,6 +504,140 @@ impl AbilityBehavior for Grip {
     }
 }
 
+/// Orbiting hazard (Phase 9.3 — Paladin's Spinning Hammer). Continuously re-cast on a short
+/// "maintenance" cooldown (see spinning_hammer.ability.ron); each cast computes the CURRENT
+/// position of up to `hammer_count` hammers orbiting the caster at `orbit_radius`, evenly spaced
+/// and rotating at `angular_speed` rad/s, driven by `ctx.elapsed_secs` (not per-instance state, so
+/// the behavior stays a stateless, pure function of ctx+params like every other one here). Any
+/// target within `hit_radius` of a hammer's position this instant is a hit — a target swept by two
+/// overlapping hammers in the same tick is only hit once. No aim required (self-centred).
+/// Holy-mark double damage is a targeted special-case in execute.rs (a per-target conditional the
+/// generic effects pipeline can't express) — see its own doc comment.
+///
+/// Params: "orbit_radius", "hit_radius", "angular_speed", "hammer_count".
+pub struct Orbiting;
+
+impl AbilityBehavior for Orbiting {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let orbit_radius = params.get("orbit_radius");
+        let hit_radius = params.get("hit_radius");
+        let angular_speed = params.get("angular_speed");
+        let hammer_count = params.get("hammer_count").max(1.0) as usize;
+
+        let mut seen = std::collections::HashSet::new();
+        let mut hits = Vec::new();
+        for i in 0..hammer_count {
+            let angle = ctx.elapsed_secs * angular_speed
+                + (i as f32) * (std::f32::consts::TAU / hammer_count as f32);
+            let hammer_pos = ctx.origin + Vec2::new(angle.cos(), angle.sin()) * orbit_radius;
+            for target in ctx.targets {
+                if target.pos.distance(hammer_pos) <= hit_radius && seen.insert(target.entity) {
+                    hits.push(HitTarget { entity: target.entity, pos: target.pos });
+                }
+            }
+        }
+        let primary = nearest(&hits, ctx.origin);
+        CastOutcome { origin: ctx.origin, hits, primary, ..Default::default() }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
+/// Single-target-plus-cleave (Phase 9.3 — Paladin's Hammer of Justice). Acquires ONE primary
+/// target: the nearest enemy within `range` and `half_angle` of the caster's aim (the same
+/// targeting shape `MeleeCone` uses for its whole hit set). Then hits every OTHER enemy within
+/// `cleave_range` of the primary's position, within `cleave_half_angle` of the direction from the
+/// caster THROUGH the primary (i.e. a cone opening "behind" the primary, away from the caster) —
+/// the ability's `effects` (PrimaryHit full damage + SecondaryHits a `DamageFraction` of it) do the
+/// rest. A whiff (no primary in range/arc) resolves no hits, no cleave.
+///
+/// Params: "range", "half_angle", "cleave_range", "cleave_half_angle" (+ whatever the ability's
+/// effects reference, e.g. "damage", "cleave_fraction").
+pub struct HammerCleave;
+
+impl AbilityBehavior for HammerCleave {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        let range = params.get("range");
+        let half_angle = params.get("half_angle");
+        let cleave_range = params.get("cleave_range");
+        let cleave_half_angle = params.get("cleave_half_angle");
+        let forward = ctx.facing;
+
+        let mut in_arc: Vec<&Target> = ctx
+            .targets
+            .iter()
+            .filter(|t| {
+                let to = t.pos - ctx.origin;
+                let dist = to.length();
+                dist <= range && (dist < 1e-6 || forward.angle_to(to / dist).abs() <= half_angle)
+            })
+            .collect();
+        in_arc.sort_by(|a, b| {
+            let da = a.pos.distance_squared(ctx.origin);
+            let db = b.pos.distance_squared(ctx.origin);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let Some(primary_target) = in_arc.first() else {
+            return CastOutcome {
+                origin: ctx.origin,
+                vfx: Some(VfxShape::Cone { radius: range, half_angle, forward, lifetime: ATTACK_LIFETIME }),
+                ..Default::default()
+            };
+        };
+        let primary_entity = primary_target.entity;
+        let primary_pos = primary_target.pos;
+        let cleave_dir = (primary_pos - ctx.origin).normalize_or_zero();
+
+        let mut hits = vec![HitTarget { entity: primary_entity, pos: primary_pos }];
+        for t in ctx.targets {
+            if t.entity == primary_entity {
+                continue;
+            }
+            let to = t.pos - primary_pos;
+            let dist = to.length();
+            let in_cleave = dist <= cleave_range
+                && (dist < 1e-6 || cleave_dir.angle_to(to / dist).abs() <= cleave_half_angle);
+            if in_cleave {
+                hits.push(HitTarget { entity: t.entity, pos: t.pos });
+            }
+        }
+
+        CastOutcome {
+            origin: ctx.origin,
+            primary: Some(HitTarget { entity: primary_entity, pos: primary_pos }),
+            hits,
+            vfx: Some(VfxShape::Cone { radius: range, half_angle, forward, lifetime: ATTACK_LIFETIME }),
+            ..Default::default()
+        }
+    }
+}
+
+/// Channel-while-moving (Phase 9.3 — Paladin's Flash of Light; later Druid Heal / Mage Frost
+/// Impale reuse it). No targets, no instant effects — the behavior only signals "start a
+/// `cast_time`-second channel here." Everything else (the heal amount, overheal→shield, radiate,
+/// the consecrated-ground epic) is resolved by `ability::systems::channel::tick_channels` when the
+/// channel completes. No aim required — this is a self-cast.
+///
+/// Params: "cast_time".
+pub struct ChannelWhileMoving;
+
+impl AbilityBehavior for ChannelWhileMoving {
+    fn resolve(&self, ctx: &AbilityContext, params: &ResolvedParams) -> CastOutcome {
+        CastOutcome {
+            origin: ctx.origin,
+            channel: Some(ChannelSpawn { cast_time: params.get("cast_time") }),
+            ..Default::default()
+        }
+    }
+
+    fn needs_aim(&self) -> bool {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -508,7 +657,7 @@ mod tests {
             Target { entity: out_of_range, pos: Vec2::new(0.0, 100.0), is_ranged: false },
             Target { entity: outside_arc, pos: Vec2::new(30.0, 40.0), is_ranged: false },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]); // ~45°
 
         let outcome = MeleeCone.resolve(&ctx, &p);
@@ -533,7 +682,7 @@ mod tests {
             Target { entity: far, pos: Vec2::new(50.0, 0.0), is_ranged: false },
             Target { entity: near, pos: Vec2::new(20.0, 0.0), is_ranged: false },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("half_angle", 0.785)]);
 
         let outcome = MeleeCone.resolve(&ctx, &p);
@@ -555,7 +704,7 @@ mod tests {
             Target { entity: near, pos: Vec2::new(10.0, 0.0), is_ranged: false },
             Target { entity: mid, pos: Vec2::new(20.0, 0.0), is_ranged: false },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 60.0), ("target_count", 2.0)]);
 
         let outcome = NearestMelee.resolve(&ctx, &p);
@@ -581,7 +730,7 @@ mod tests {
             Target { entity: out_of_range, pos: Vec2::new(0.0, 300.0), is_ranged: false },
             Target { entity: near, pos: Vec2::new(50.0, 0.0), is_ranged: false },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 150.0), ("target_count", 1.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 0.0)]);
 
         let outcome = Grip.resolve(&ctx, &p);
@@ -603,7 +752,7 @@ mod tests {
             Target { entity: melee, pos: Vec2::new(10.0, 0.0), is_ranged: false },
             Target { entity: ranged, pos: Vec2::new(20.0, 0.0), is_ranged: true },
         ];
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
         let p = params(&[("range", 100.0), ("target_count", 5.0), ("grip_speed", 100.0), ("grip_duration", 0.5), ("ranged_only", 1.0)]);
 
         let outcome = Grip.resolve(&ctx, &p);
@@ -615,7 +764,7 @@ mod tests {
     #[test]
     fn blink_requests_a_forced_impulse_along_facing_with_no_targets() {
         let owner = Entity::from_raw(1);
-        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::Y, targets: &[] };
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::Y, targets: &[], elapsed_secs: 0.0 };
         let p = params(&[("speed", 500.0), ("duration", 0.15)]);
 
         let outcome = Blink.resolve(&ctx, &p);
@@ -626,5 +775,108 @@ mod tests {
         let impulse = outcome.forced_impulse.expect("blink requests a forced impulse");
         assert_eq!(impulse.velocity, Vec2::Y * 500.0, "impulse velocity follows facing * speed");
         assert_eq!(impulse.duration, 0.15);
+    }
+
+    #[test]
+    fn orbiting_hits_a_target_only_while_the_rotating_hammer_is_near_it() {
+        let owner = Entity::from_raw(1);
+        // A single hammer orbits at radius 50, angular_speed pi/s -> at t=0 it's at (50, 0);
+        // at t=1 (pi rad later, half a turn) it's at (-50, 0).
+        let target = Entity::from_raw(2);
+        let targets = [Target { entity: target, pos: Vec2::new(50.0, 0.0), is_ranged: false }];
+        let p = params(&[
+            ("orbit_radius", 50.0),
+            ("hit_radius", 10.0),
+            ("angular_speed", std::f32::consts::PI),
+            ("hammer_count", 1.0),
+        ]);
+
+        let ctx0 = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let outcome0 = Orbiting.resolve(&ctx0, &p);
+        assert_eq!(outcome0.hits.len(), 1, "hammer starts at (50,0), right on the target");
+
+        let ctx_half = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 1.0 };
+        let outcome_half = Orbiting.resolve(&ctx_half, &p);
+        assert!(outcome_half.hits.is_empty(), "half a turn later the hammer is at (-50,0), far from the target");
+    }
+
+    #[test]
+    fn orbiting_two_hammers_are_evenly_spaced_and_each_hits_independently() {
+        let owner = Entity::from_raw(1);
+        let near_start = Entity::from_raw(2); // at (50, 0) -> hammer 0's t=0 position
+        let near_opposite = Entity::from_raw(3); // at (-50, 0) -> hammer 1's t=0 position (offset by pi)
+        let targets = [
+            Target { entity: near_start, pos: Vec2::new(50.0, 0.0), is_ranged: false },
+            Target { entity: near_opposite, pos: Vec2::new(-50.0, 0.0), is_ranged: false },
+        ];
+        let p = params(&[
+            ("orbit_radius", 50.0),
+            ("hit_radius", 10.0),
+            ("angular_speed", 0.0), // frozen in place so spacing alone is exercised
+            ("hammer_count", 2.0),
+        ]);
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let outcome = Orbiting.resolve(&ctx, &p);
+        let hit_entities: std::collections::HashSet<Entity> = outcome.hits.iter().map(|h| h.entity).collect();
+        assert_eq!(hit_entities.len(), 2, "both hammers land on their own evenly-spaced target");
+    }
+
+    #[test]
+    fn hammer_cleave_hits_the_nearest_in_arc_primary_plus_a_cone_behind_it() {
+        let owner = Entity::from_raw(1);
+        let primary = Entity::from_raw(2); // dead ahead, primary acquisition
+        let behind_primary = Entity::from_raw(3); // further along the same ray -> in the cleave cone
+        let off_to_the_side = Entity::from_raw(4); // near the primary but off-axis -> outside the cleave cone
+        let targets = [
+            Target { entity: primary, pos: Vec2::new(30.0, 0.0), is_ranged: false },
+            Target { entity: behind_primary, pos: Vec2::new(60.0, 0.0), is_ranged: false },
+            Target { entity: off_to_the_side, pos: Vec2::new(30.0, 40.0), is_ranged: false },
+        ];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[
+            ("range", 50.0),
+            ("half_angle", 0.2),
+            ("cleave_range", 40.0),
+            ("cleave_half_angle", 0.2),
+        ]);
+
+        let outcome = HammerCleave.resolve(&ctx, &p);
+
+        assert_eq!(outcome.primary.map(|h| h.entity), Some(primary));
+        let hit_entities: Vec<Entity> = outcome.hits.iter().map(|h| h.entity).collect();
+        assert!(hit_entities.contains(&primary));
+        assert!(hit_entities.contains(&behind_primary), "in the cleave cone behind the primary");
+        assert!(!hit_entities.contains(&off_to_the_side), "outside the cleave cone's narrow arc");
+    }
+
+    #[test]
+    fn hammer_cleave_whiffs_cleanly_with_no_primary_in_arc() {
+        let owner = Entity::from_raw(1);
+        let out_of_range = Entity::from_raw(2);
+        let targets = [Target { entity: out_of_range, pos: Vec2::new(200.0, 0.0), is_ranged: false }];
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::X, targets: &targets, elapsed_secs: 0.0 };
+        let p = params(&[("range", 50.0), ("half_angle", 0.2), ("cleave_range", 40.0), ("cleave_half_angle", 0.2)]);
+
+        let outcome = HammerCleave.resolve(&ctx, &p);
+        assert!(outcome.hits.is_empty());
+        assert!(outcome.primary.is_none());
+    }
+
+    #[test]
+    fn channel_while_moving_requests_a_channel_with_no_instant_hits() {
+        let owner = Entity::from_raw(1);
+        let ctx = AbilityContext { owner, origin: Vec2::ZERO, facing: Vec2::ZERO, targets: &[], elapsed_secs: 0.0 };
+        let p = params(&[("cast_time", 1.5)]);
+
+        let outcome = ChannelWhileMoving.resolve(&ctx, &p);
+
+        assert!(outcome.hits.is_empty());
+        let channel = outcome.channel.expect("requests a channel");
+        assert_eq!(channel.cast_time, 1.5);
+    }
+
+    #[test]
+    fn channel_while_moving_needs_no_aim() {
+        assert!(!ChannelWhileMoving.needs_aim());
     }
 }

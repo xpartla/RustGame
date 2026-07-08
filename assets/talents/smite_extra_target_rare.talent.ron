@@ -1,0 +1,13 @@
+// "Smite strikes an additional target" (Mechanics, rare). +1 target_count — the same primitive
+// Heart Strike's "hit +1 more enemies" talent uses (nearest_melee, Phase 9.2).
+(
+    id: "smite_extra_target_rare",
+    display_name: "Widening Judgment",
+    ability_scope: Some("smite"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "target_count",
+        op: Add(1.0),
+    )),
+)

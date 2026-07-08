@@ -1,0 +1,14 @@
+// "Consecrated ground also slows enemies inside by X%" (Mechanics, common). Overrides the
+// "slow_active" resolved-param flag (the same escape hatch AMZ's "follow_caster" epic uses) — read
+// by ability::systems::execute.rs::spawn_dropped_zone into ZoneEffects.slow_status.
+(
+    id: "consecrated_ground_slow_common",
+    display_name: "Binding Light",
+    ability_scope: Some("consecrated_ground"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "slow_active",
+        op: Override(1.0),
+    )),
+)

@@ -54,6 +54,11 @@ pub enum EffectSpec {
     /// Apply `stacks` of a status effect (by id) to the selected targets. Emits ApplyStatusEvent;
     /// stacking / duration / DoT are the StatusEffectDef's concern (status/assets.rs).
     ApplyStatus { status: String, stacks: u8, target: EffectTarget },
+    /// Deals `fraction` (a param key, e.g. 0.5) of `of`'s (a param key) ALREADY-resolved value to
+    /// `target` (Phase 9.3 — Hammer of Justice's cleave, always 50% of its own, talent-modified,
+    /// primary damage). Bakes to a plain `ResolvedEffect::Damage`, so it automatically inherits any
+    /// talent that scales `of` — no separate "cleave damage" talent is needed.
+    DamageFraction { of: StatId, fraction: StatId, tags: Vec<DamageTag>, target: EffectTarget },
 }
 
 /// A persistent ground zone an ability drops (Phase 6). Present on `dropped_zone` abilities
@@ -104,6 +109,10 @@ pub enum EffectTarget {
     PrimaryHit,
     /// The caster (self-heal, self-buff).
     Caster,
+    /// Every hit EXCEPT the primary (Phase 9.3 — Hammer of Justice's cleave: full damage to the
+    /// primary, a fraction to everyone else caught in the cone behind it). Equal to `AllHits` minus
+    /// `PrimaryHit`; empty when there is no primary (a behavior with no single-target concept).
+    SecondaryHits,
 }
 
 /// Loaded from assets/abilities/<id>.ability.ron.
@@ -223,7 +232,7 @@ impl DefAsset for AbilityDef {
         // Conduit is a marker-only zone demonstrator (Druid content deferred); Consecrated Ground
         // (6D) and AMZ (6E) join below.
         ("tree_conduit", "abilities/tree_conduit.ability.ron"),
-        // Consecrated Ground (Phase 6D) — a Holy DoT zone demonstrator (Paladin content deferred).
+        // Consecrated Ground (Phase 6D demonstrator; Phase 9.3 — the real Paladin band ability).
         ("consecrated_ground", "abilities/consecrated_ground.ability.ron"),
         // AMZ (Phase 6E) — the BDK band-4/6 projectile-blocking zone.
         ("amz", "abilities/amz.ability.ron"),
@@ -232,6 +241,12 @@ impl DefAsset for AbilityDef {
         // Movement-slot demonstrator (Phase 9.1) — see assets/abilities/dash.ability.ron. Unbound;
         // no shipped hero's `movement` slot references it yet.
         ("dash", "abilities/dash.ability.ron"),
+        // Paladin (Phase 9.3) — the first new hero. hammer_of_justice/flash_of_light are L1;
+        // spinning_hammer/smite join consecrated_ground (above) in the band_2_3_pool.
+        ("hammer_of_justice", "abilities/hammer_of_justice.ability.ron"),
+        ("flash_of_light", "abilities/flash_of_light.ability.ron"),
+        ("spinning_hammer", "abilities/spinning_hammer.ability.ron"),
+        ("smite", "abilities/smite.ability.ron"),
     ];
 }
 
@@ -391,5 +406,66 @@ mod tests {
         assert_eq!(def.base_params.get("speed"), Some(&500.0));
         assert_eq!(def.base_params.get("duration"), Some(&0.15));
         assert!(def.effects.is_empty(), "blink has no damage/heal/status effects");
+    }
+
+    #[test]
+    fn hammer_of_justice_parses_with_primary_plus_cleave_effects() {
+        let def = load("assets/abilities/hammer_of_justice.ability.ron");
+        assert_eq!(def.id, "hammer_of_justice");
+        assert_eq!(def.behavior, "hammer_cleave");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert_eq!(def.effects.len(), 2);
+        assert!(matches!(
+            def.effects[0],
+            EffectSpec::Damage { target: EffectTarget::PrimaryHit, .. }
+        ));
+        assert!(matches!(
+            def.effects[1],
+            EffectSpec::DamageFraction { target: EffectTarget::SecondaryHits, .. }
+        ));
+    }
+
+    #[test]
+    fn flash_of_light_parses_as_a_channel_with_no_declarative_effects() {
+        let def = load("assets/abilities/flash_of_light.ability.ron");
+        assert_eq!(def.id, "flash_of_light");
+        assert_eq!(def.behavior, "channel_while_moving");
+        assert!(matches!(def.unlock_schedule, UnlockSchedule::Level1));
+        assert_eq!(def.base_params.get("cast_time"), Some(&1.2));
+        assert_eq!(def.base_params.get("heal_percent"), Some(&20.0));
+        assert!(def.effects.is_empty(), "the heal is resolved by tick_channels, not def.effects");
+        assert_eq!(def.talent_pool.len(), 5);
+    }
+
+    #[test]
+    fn spinning_hammer_parses_as_an_orbiting_autocast() {
+        let def = load("assets/abilities/spinning_hammer.ability.ron");
+        assert_eq!(def.id, "spinning_hammer");
+        assert_eq!(def.behavior, "orbiting");
+        assert_eq!(def.activation, Activation::AutoCast);
+        assert_eq!(def.base_params.get("hammer_count"), Some(&1.0));
+        assert_eq!(def.effects.len(), 1);
+    }
+
+    #[test]
+    fn smite_parses_reusing_nearest_melee_and_applies_holy_mark() {
+        let def = load("assets/abilities/smite.ability.ron");
+        assert_eq!(def.id, "smite");
+        assert_eq!(def.behavior, "nearest_melee");
+        assert_eq!(def.base_params.get("target_count"), Some(&1.0));
+        assert_eq!(def.effects.len(), 2);
+        assert!(matches!(def.effects[0], EffectSpec::Damage { .. }));
+        assert!(matches!(
+            def.effects[1],
+            EffectSpec::ApplyStatus { ref status, .. } if status == "holy_mark"
+        ));
+    }
+
+    #[test]
+    fn consecrated_ground_now_has_a_real_paladin_talent_pool() {
+        let def = load("assets/abilities/consecrated_ground.ability.ron");
+        assert_eq!(def.talent_pool.len(), 4);
+        assert_eq!(def.base_params.get("slow_active"), Some(&0.0));
+        assert_eq!(def.base_params.get("count_scaling_active"), Some(&0.0));
     }
 }

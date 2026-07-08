@@ -1,0 +1,13 @@
+// "Casting flash of light inside consecrated ground makes you radiate holy energy, exploding in a
+// small radius around you, dealing X damage to nearby enemies" (Mechanics, epic, unique). Installs
+// the "flash_of_light_consecrated_radiate" ActiveHooks flag; execute_ready_abilities checks it
+// AND `PlayerZonePresence::is_inside("consecrated_ground")` at cast start, baking the result into
+// Channeling.consecrated_radiate_damage.
+(
+    id: "flash_of_light_consecrated_radiate_epic",
+    display_name: "Hallowed Blast",
+    ability_scope: Some("flash_of_light"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Behavior("flash_of_light_consecrated_radiate"),
+)

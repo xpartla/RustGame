@@ -18,20 +18,48 @@ use crate::ability::assets::AbilityId;
 use crate::ability::components::UnlockAbilityEvent;
 use crate::core::events::LevelUpEvent;
 use crate::game::state::GameState;
+use crate::hero::assets::{HeroDef, HeroLibrary};
+use crate::hero::components::HeroIdentity;
 use crate::player::components::Player;
 use crate::progression::state::{LevelUpFlowState, LevelUpPhase};
 use crate::run::rng::RunRng;
 
-// PHASE 2 STUB: hardcoded Blood Death Knight band pools. Phase 4 sources these from
-// HeroDef.band_2_3_pool / band_4_6_pool once the hero asset pipeline is wired.
+// PHASE 2 STUB, kept as the fallback for the one call site that fires before a `Player` exists
+// (the very-first-boot `OnEnter(InRun)` registration, progression/plugin.rs — its own `run_if`
+// guarantees no player is alive yet, so this fallback is ALWAYS what that call site sees; the
+// default hero (hero/components.rs::DEFAULT_HERO_ID) is the Blood Death Knight, whose own
+// `blood_death_knight.hero.ron` declares these exact same pools, so the fallback is byte-identical
+// to reading the HeroDef, not a divergent stub). Every other call site (run/systems/reset.rs,
+// run/systems/persistence.rs::resume_run) runs AFTER a `Player` with its `HeroIdentity` already
+// set to the chosen hero, so — Phase 9.3 — those now read the real per-hero band pools.
 const BDK_BAND_2_3: &[&str] = &["blood_boil", "heart_strike"];
 const BDK_BAND_4_6: &[&str] = &["abomination_limb", "purgatory", "amz"];
 
-/// Inserts the LevelUpFlowState resource at startup, shuffling the band pools with RunRng so
-/// the draw order is seed-deterministic. Phase 7 moves this into the run-start flow.
-pub fn init_level_flow(mut commands: Commands, mut rng: ResMut<RunRng>) {
-    let mut band_2_3: Vec<AbilityId> = BDK_BAND_2_3.iter().map(|s| s.to_string()).collect();
-    let mut band_4_6: Vec<AbilityId> = BDK_BAND_4_6.iter().map(|s| s.to_string()).collect();
+/// Inserts the LevelUpFlowState resource, shuffling the band pools with RunRng so the draw order
+/// is seed-deterministic. Sources the pools from the current player's `HeroDef.band_2_3_pool` /
+/// `band_4_6_pool` when one exists and has loaded (every real run-start/restart/resume path);
+/// falls back to the hardcoded BDK pools otherwise (the boot-time call site, before a `Player`
+/// exists and before assets can possibly have loaded — see the const's own doc comment).
+pub fn init_level_flow(
+    mut commands: Commands,
+    mut rng: ResMut<RunRng>,
+    players: Query<&HeroIdentity, With<Player>>,
+    hero_library: Res<HeroLibrary>,
+    hero_defs: Res<Assets<HeroDef>>,
+) {
+    let hero_pools = players
+        .single()
+        .ok()
+        .and_then(|id| hero_library.get(&id.0))
+        .and_then(|handle| hero_defs.get(handle))
+        .map(|def| (def.band_2_3_pool.clone(), def.band_4_6_pool.clone()));
+
+    let (mut band_2_3, mut band_4_6): (Vec<AbilityId>, Vec<AbilityId>) = hero_pools.unwrap_or_else(|| {
+        (
+            BDK_BAND_2_3.iter().map(|s| s.to_string()).collect(),
+            BDK_BAND_4_6.iter().map(|s| s.to_string()).collect(),
+        )
+    });
     band_2_3.shuffle(rng.rng());
     band_4_6.shuffle(rng.rng());
     commands.insert_resource(LevelUpFlowState::new(band_2_3, band_4_6));

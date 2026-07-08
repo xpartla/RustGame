@@ -98,6 +98,7 @@ impl DefAsset for HeroDef {
     const MANIFEST: &'static [(&'static str, &'static str)] = &[
         ("blood_death_knight", "heroes/blood_death_knight.hero.ron"),
         ("mage", "heroes/mage.hero.ron"),
+        ("paladin", "heroes/paladin.hero.ron"),
     ];
 }
 
@@ -154,5 +155,24 @@ mod tests {
         let ice = def.stance_slots.iter().find(|m| m.stance == "ice").expect("ice stance");
         assert_eq!(ice.basic.as_deref(), Some("frostbolt"));
         assert_eq!(ice.swap_effect.as_deref(), Some("ice_barrier"));
+    }
+
+    #[test]
+    fn paladin_parses_as_non_stance_hero_with_a_single_band() {
+        let def = load("assets/heroes/paladin.hero.ron");
+        assert_eq!(def.id, "paladin");
+        assert!(!def.has_stance, "Paladin has no Q stance swap (architecture-plan §6 Q4)");
+        assert!(def.stance_a.is_none());
+        assert!(def.stance_b.is_none());
+        assert!(matches!(def.resource_model, ResourceModel::None));
+        assert_eq!(def.level_1_abilities, vec!["hammer_of_justice", "flash_of_light"]);
+        // All three band abilities unlock at levels 2/3/4 (Mechanics) — a single pool, not split
+        // across band_2_3/band_4_6 like the BDK.
+        assert_eq!(def.band_2_3_pool, vec!["consecrated_ground", "spinning_hammer", "smite"]);
+        assert!(def.band_4_6_pool.is_empty());
+        let slot = &def.stance_slots[0];
+        assert_eq!(slot.stance, "default");
+        assert_eq!(slot.basic.as_deref(), Some("hammer_of_justice"));
+        assert_eq!(slot.special.as_deref(), Some("flash_of_light"));
     }
 }

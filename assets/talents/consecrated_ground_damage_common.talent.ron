@@ -1,0 +1,12 @@
+// "Increase the damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "consecrated_ground_damage_common",
+    display_name: "Burning Faith",
+    ability_scope: Some("consecrated_ground"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage_per_second",
+        op: MultiplyAdd(0.2),
+    )),
+)

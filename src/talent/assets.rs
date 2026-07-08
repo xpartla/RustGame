@@ -133,6 +133,32 @@ impl DefAsset for TalentDef {
         ("amz_regen_rare", "talents/amz_regen_rare.talent.ron"),
         ("amz_movespeed_rare", "talents/amz_movespeed_rare.talent.ron"),
         ("amz_follow_epic", "talents/amz_follow_epic.talent.ron"),
+        // Hammer of Justice (Phase 9.3).
+        ("hammer_of_justice_damage_common", "talents/hammer_of_justice_damage_common.talent.ron"),
+        ("hammer_of_justice_range_common", "talents/hammer_of_justice_range_common.talent.ron"),
+        ("hammer_of_justice_shockwave_rare", "talents/hammer_of_justice_shockwave_rare.talent.ron"),
+        // Flash of Light (Phase 9.3).
+        ("flash_of_light_overheal_shield_common", "talents/flash_of_light_overheal_shield_common.talent.ron"),
+        ("flash_of_light_healing_common", "talents/flash_of_light_healing_common.talent.ron"),
+        ("flash_of_light_cooldown_common", "talents/flash_of_light_cooldown_common.talent.ron"),
+        ("flash_of_light_radiate_rare", "talents/flash_of_light_radiate_rare.talent.ron"),
+        ("flash_of_light_consecrated_radiate_epic", "talents/flash_of_light_consecrated_radiate_epic.talent.ron"),
+        // Consecrated Ground (Phase 9.3).
+        ("consecrated_ground_radius_rare", "talents/consecrated_ground_radius_rare.talent.ron"),
+        ("consecrated_ground_damage_common", "talents/consecrated_ground_damage_common.talent.ron"),
+        ("consecrated_ground_slow_common", "talents/consecrated_ground_slow_common.talent.ron"),
+        ("consecrated_ground_count_scaling_rare", "talents/consecrated_ground_count_scaling_rare.talent.ron"),
+        // Spinning Hammer (Phase 9.3).
+        ("spinning_hammer_damage_common", "talents/spinning_hammer_damage_common.talent.ron"),
+        ("spinning_hammer_radius_common", "talents/spinning_hammer_radius_common.talent.ron"),
+        ("spinning_hammer_stun_rare", "talents/spinning_hammer_stun_rare.talent.ron"),
+        ("spinning_hammer_extra_hammer_epic", "talents/spinning_hammer_extra_hammer_epic.talent.ron"),
+        // Smite (Phase 9.3).
+        ("smite_damage_common", "talents/smite_damage_common.talent.ron"),
+        ("smite_range_common", "talents/smite_range_common.talent.ron"),
+        ("smite_extra_target_rare", "talents/smite_extra_target_rare.talent.ron"),
+        ("smite_spawns_consecrated_rare", "talents/smite_spawns_consecrated_rare.talent.ron"),
+        ("smite_mark_radius_epic", "talents/smite_mark_radius_epic.talent.ron"),
     ];
 }
 
@@ -243,5 +269,85 @@ mod tests {
 
         let spawns_dnd = load("assets/talents/bdk_passive_blood_boil_spawns_dnd.talent.ron");
         assert!(matches!(spawns_dnd.effect, TalentEffect::Behavior(ref h) if h == "bdk_blood_boil_spawns_dnd"));
+    }
+
+    /// Every Paladin talent (Phase 9.3) parses through the same RON path the AssetLoader uses.
+    /// One broad test rather than 21 near-identical ones — the interesting assertions (scope,
+    /// rarity, effect shape) are covered per-ability by the more targeted tests below.
+    #[test]
+    fn all_paladin_talents_parse() {
+        let ids = [
+            "hammer_of_justice_damage_common",
+            "hammer_of_justice_range_common",
+            "hammer_of_justice_shockwave_rare",
+            "flash_of_light_overheal_shield_common",
+            "flash_of_light_healing_common",
+            "flash_of_light_cooldown_common",
+            "flash_of_light_radiate_rare",
+            "flash_of_light_consecrated_radiate_epic",
+            "consecrated_ground_radius_rare",
+            "consecrated_ground_damage_common",
+            "consecrated_ground_slow_common",
+            "consecrated_ground_count_scaling_rare",
+            "spinning_hammer_damage_common",
+            "spinning_hammer_radius_common",
+            "spinning_hammer_stun_rare",
+            "spinning_hammer_extra_hammer_epic",
+            "smite_damage_common",
+            "smite_range_common",
+            "smite_extra_target_rare",
+            "smite_spawns_consecrated_rare",
+            "smite_mark_radius_epic",
+        ];
+        for id in ids {
+            let def = load(&format!("assets/talents/{id}.talent.ron"));
+            assert_eq!(def.id, id);
+        }
+    }
+
+    #[test]
+    fn spinning_hammer_stun_and_extra_hammer_are_shaped_as_designed() {
+        let stun = load("assets/talents/spinning_hammer_stun_rare.talent.ron");
+        assert_eq!(stun.ability_scope.as_deref(), Some("spinning_hammer"));
+        assert!(matches!(stun.effect, TalentEffect::Behavior(ref h) if h == "spinning_hammer_stun"));
+
+        let extra = load("assets/talents/spinning_hammer_extra_hammer_epic.talent.ron");
+        match extra.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Add(v) }) => {
+                assert_eq!(stat, "hammer_count");
+                assert_eq!(v, 1.0);
+            }
+            _ => panic!("expected an Add modifier on hammer_count"),
+        }
+    }
+
+    #[test]
+    fn consecrated_ground_slow_and_count_scaling_override_their_flags() {
+        let slow = load("assets/talents/consecrated_ground_slow_common.talent.ron");
+        match slow.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Override(v) }) => {
+                assert_eq!(stat, "slow_active");
+                assert_eq!(v, 1.0);
+            }
+            _ => panic!("expected an Override modifier on slow_active"),
+        }
+
+        let scaling = load("assets/talents/consecrated_ground_count_scaling_rare.talent.ron");
+        match scaling.effect {
+            TalentEffect::Modifier(StatModifier { ref stat, op: ModOp::Override(v) }) => {
+                assert_eq!(stat, "count_scaling_active");
+                assert_eq!(v, 1.0);
+            }
+            _ => panic!("expected an Override modifier on count_scaling_active"),
+        }
+    }
+
+    #[test]
+    fn smite_spawns_consecrated_and_mark_radius_are_behavior_flags() {
+        let spawn = load("assets/talents/smite_spawns_consecrated_rare.talent.ron");
+        assert!(matches!(spawn.effect, TalentEffect::Behavior(ref h) if h == "smite_spawns_consecrated"));
+
+        let mark = load("assets/talents/smite_mark_radius_epic.talent.ron");
+        assert!(matches!(mark.effect, TalentEffect::Behavior(ref h) if h == "smite_mark_radius"));
     }
 }

@@ -18,6 +18,9 @@ pub const ATTACK_LIFETIME: f32 = 0.1;
 // (`damage_per_second` per tick), not per-frame — deterministic, no f32 drift. Per-zone radius,
 // duration, dps, and regen come from the ability RON (assets/abilities/ → ZoneSpec + params).
 pub const ZONE_TICK_INTERVAL: f32 = 1.0;
+/// Consecrated Ground's `consecrated_ground_count_scaling_rare` talent (Phase 9.3): +15% damage
+/// per additional enemy standing inside, per tick.
+pub const CONSECRATED_COUNT_SCALING_FRACTION: f32 = 0.15;
 
 // XP / leveling. Per-enemy-type XP rewards live in the enemy RON files (`xp_value`); the level
 // curve is global: XP to advance from `level` to the next = XP_FIRST_LEVEL + (level-1)*XP_LEVEL_STEP.

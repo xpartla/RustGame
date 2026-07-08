@@ -1240,6 +1240,136 @@ below.
     stale regen-#3 baseline until the remaining reproducibility source is found and a regen #4 done
     in a follow-up session. See `docs/architecture-plan.md` §8.5 for the tracked debt row.
 
+### Phase 9.3 — Paladin: the Arc's First New Hero (complete)
+The third sub-phase of the Phase-9 content-pass arc: a brand-new hero (Hammer of Justice, Flash of
+Light, Consecrated Ground promoted from its Phase-6D demonstrator, Spinning Hammer, Smite), three
+new ability behaviors (`hammer_cleave`, `orbiting`, `channel_while_moving`), the holy-mark
+grant/read path, and a real fix for the hero-aware band-pool gap the character-select flow had
+carried since Phase 7.5. **Runless-neutral, like the Mage in Phase 4**: the golden campaign is the
+BDK bot and never touches any Paladin content, so `campaign_matches_golden_baseline` divergence is
+unchanged from Phase 9.2's known, tracked, pre-existing state (§8.5) — not touched or investigated
+further this sub-phase, per the product owner's instruction.
+
+- **`paladin.hero.ron`** — `has_stance: false` (§6 Q4, no Q), `resource_model: None`, base_stats
+  (160 hp / 33 move speed — a reasonable internally-consistent default, not yet balance-tested
+  against real play, same caveat Phase 9.2 flagged for its own numbers). `level_1_abilities:
+  [hammer_of_justice, flash_of_light]`. Mechanics unlocks Consecrated Ground/Spinning
+  Hammer/Smite all "randomly at level 2/3/4" — one band of three, not the BDK's split 2-3/4-6
+  bands — so all three live in `band_2_3_pool`; `band_4_6_pool` is empty. `class_passive_pool` is
+  empty (Mechanics lists no Paladin-specific class passives, unlike the BDK).
+- **`hammer_cleave` (new behavior) — Hammer of Justice, L1 Basic.** Acquires ONE primary target
+  (nearest enemy within `range`/`half_angle` of the caster's aim — the same acquisition shape
+  `MeleeCone` uses), then hits every OTHER enemy within `cleave_range`/`cleave_half_angle` of the
+  caster-through-primary direction (a cone opening "behind" the primary). A new
+  `EffectTarget::SecondaryHits` (`AllHits` minus the primary) and `EffectSpec::DamageFraction { of,
+  fraction, tags, target }` (bakes to a plain `ResolvedEffect::Damage` — `amount = params.get(of) *
+  params.get(fraction)`) express "50% of the ALREADY-talent-scaled primary damage" declaratively,
+  so a "+damage%" talent on `damage` automatically scales the cleave too — no separate cleave-damage
+  talent needed. 2 numeric talents (damage/range) + `hammer_of_justice_shockwave_rare` (a holy-mark
+  consumer, below). **Deferred** (Mechanics, no clean-fitting primitive — see `Mechanics.md`):
+  "bounces up to 3 nearby targets" (a chain-bounce shape); "kills inside consecrated ground →
+  explosion" (needs per-ability kill attribution — the same `DamageEvent`-carries-no-provenance gap
+  Phase 9.2's bone shield simplification hit).
+- **`channel_while_moving` (new behavior) + `Channeling` component — Flash of Light, L1 Special.**
+  A cast resolves to `CastOutcome.channel: Option<ChannelSpawn { cast_time }>` instead of instant
+  hits; `execute_ready_abilities` branches on it, inserting a `Channeling` component (baked from
+  resolved params + `ActiveHooks` + zone presence AT CAST START — mirrors how a projectile bakes its
+  effects, so a talent picked up mid-channel doesn't retroactively alter an in-flight one) instead of
+  applying effects immediately. New `ability::systems::channel::tick_channels`
+  (`CombatSet::Damage`, chained after `execute_ready_abilities`) ticks `Channeling.remaining` and,
+  on completion: heals `heal_percent`% of max health; if `flash_of_light_overheal_shield_common` is
+  active, grants the pre-heal overhealed amount as an `Absorb` shield (computed from `Health.current`
+  BEFORE the heal lands, since `apply_heal` clamps to max and can't be un-clamped after the fact); if
+  `flash_of_light_radiate_rare` is active, deals `radiate_percent`% of the amount healed to enemies
+  within `radiate_radius` of the caster's CURRENT (not cast-time) position — "channeled while
+  moving" means completion can be well after the caster has moved; if
+  `flash_of_light_consecrated_radiate_epic` is active AND the caster was standing in
+  `consecrated_ground` when the channel STARTED, an extra flat explosion. "No interrupt" is the
+  phase-9 plan's own stated default — nothing cancels a channel once started, not even damage or
+  movement. **Deferred**: "Flash of Light empowers your next Hammer of Justice" (rare, unique) — a
+  one-shot cross-ability buff-consumption shape none of `Modifier`/Pre-hook/Post-hook fits cleanly
+  (Pre hooks can't consume a marker component — no `Commands` access; Post hooks are read-only by
+  design, §8.1(3)).
+- **`orbiting` (new behavior) + `AbilityContext.elapsed_secs` — Spinning Hammer, band ability.**
+  Mechanics' "always active, no cooldown" is modeled as a fast AutoCast maintenance cadence (0.25s)
+  rather than a literal continuous sweep — each cast samples the CURRENT position of `hammer_count`
+  hammers orbiting the caster (driven by `ctx.elapsed_secs`, a new `AbilityContext` field populated
+  from `Res<Time>`, so the behavior stays a stateless pure function like every other one) and hits
+  anything within `hit_radius` of a hammer at that instant — the same discrete-sampling
+  approximation `zone_tick_effects` already uses for "continuous" zone damage. Deterministic:
+  `elapsed_secs` is the sim's `ManualDuration` clock, so two identically-seeded runs compute the
+  identical hammer angle every frame. 2 numeric talents (damage/orbit-radius) +
+  `spinning_hammer_extra_hammer_epic` (`+1 hammer_count`, evenly re-spaced automatically) +
+  `spinning_hammer_stun_rare` (a targeted execute.rs special-case, same shape as Abomination Limb's
+  stun talent, Phase 9.2).
+- **The holy-mark read path** (`holy_mark` has existed inertly since Phase 3; the phase-9 plan named
+  this "where the marked-target read path is built"). A per-target conditional the generic
+  `EffectSpec`/Pre-hook pipeline can't express (every `Damage` effect applies one uniform amount to
+  its whole hit set) — implemented as two targeted execute.rs special-cases, each backed by a new
+  `is_marked(entity, &Query<&StatusEffectInstance>)` helper (a direct scan; mark counts are small,
+  and only these two call sites need it):
+  - Spinning Hammer: every marked hit gets a SECOND `damage`-sized Holy `DamageEvent` on top of the
+    base `AllHits` one — net double damage, per Mechanics.
+  - Hammer of Justice's `hammer_of_justice_shockwave_rare`: if the PRIMARY hit is marked, deals
+    `shockwave_damage` and a `ForcedImpulse::knockback` (the Phase-9.1 forced-movement primitive) to
+    every enemy within `shockwave_radius` of the CASTER (not the struck target — matches Mechanics'
+    "emit a shockwave from your character").
+- **Smite** (band ability, reuses `nearest_melee` as-is — `target_count: 1` = "the closest enemy," a
+  free reuse of the Heart-Strike-era behavior) — the holy-mark GRANT path: its `effects` list applies
+  `holy_mark` alongside its damage. 2 numeric talents (damage/range) + `smite_extra_target_rare`
+  (`+1 target_count`, the same primitive Heart Strike's own "+1 target" talent uses) +
+  `smite_spawns_consecrated_rare` (spawns a `consecrated_ground` zone at the SMITTEN TARGET's
+  position — a targeted special-case, same shape as `bdk_passive_blood_boil_spawns_dnd`) +
+  `smite_mark_radius_epic` (holy_mark radiates to every enemy within `mark_radius` of the primary
+  hit — another targeted special-case).
+- **Consecrated Ground promoted from Phase-6D demonstrator to the real band ability** — its mechanic
+  is unchanged; only `unlock_schedule`/talent_pool/hero-binding are new. Two new talents needed a
+  small `ZoneEffects` extension (`slow_status: Option<StatusEffectId>`,
+  `scales_with_occupants: bool`), both baked at zone-spawn from resolved-param flags
+  (`slow_active`/`count_scaling_active`, Override(1.0) by their talents) — the same
+  `follow_caster`-style escape hatch AMZ's epic talent uses (a talent can only rewrite a resolved
+  param, never the ability's own static RON `zone` spec). `zone_tick_effects` (`zone/systems/
+  tick.rs`) applies the new status each tick when `slow_status` is set (a new `consecrated_slow`
+  status — pure `move_speed_mult: 0.8`, no DoT of its own) and scales `damage_per_second` by
+  `CONSECRATED_COUNT_SCALING_FRACTION` (0.15) per additional occupant when `scales_with_occupants`
+  is set. Both fields default to inert (`None`/`false`) for D&D and AMZ, so this is byte-identical
+  for every pre-existing zone.
+- **The hero-aware band-pool fix.** `progression/systems/level_up.rs::init_level_flow` was **still
+  hardcoded** to the BDK's own band pools regardless of which hero the player had actually selected
+  — a Phase-2 stub the doc comment said Phase 4 would source from `HeroDef` "once the hero asset
+  pipeline is wired," never actually done. Invisible until now because the Mage (Phase 4) ships with
+  empty band pools (sidestepping the bug entirely) and the BDK is the default hero — Paladin is the
+  first hero whose OWN non-empty band pool actually needs to reach the real level-up flow. Fixed:
+  `init_level_flow` now reads the current player's `HeroIdentity` → `HeroDef.band_2_3_pool`/
+  `band_4_6_pool` when a player exists and its `HeroDef` has loaded (every real run-start/restart/
+  resume call site — by the time any of them calls this, `respawn_player` has already spawned the
+  player and set its `HeroIdentity` synchronously), falling back to the hardcoded BDK pools only for
+  the one call site that fires before any player exists (the very-first-boot `OnEnter(InRun)`
+  registration, whose own `run_if` guarantees no player is alive yet) — a fallback that is
+  byte-identical to reading the HeroDef anyway, since the default hero IS the BDK and its own
+  `blood_death_knight.hero.ron` declares these exact same pools. Selecting Paladin via
+  character-select and leveling up now correctly draws Consecrated Ground/Spinning Hammer/Smite,
+  not Blood Boil/Heart Strike/Abomination Limb/Purgatory/AMZ.
+- **`Mechanics.md`** Paladin section flipped to implemented, with inline deferral notes on the three
+  skipped talents (bounce, kill-explosion, next-hammer buff).
+- **Tests: 258 total, 257 passing** (the one pre-existing `campaign_matches_golden_baseline`
+  divergence is Phase 9.2's tracked, known state — unchanged frame/values, not a new regression;
+  `campaign_is_reproducible_within_a_build` stays green). New `tests/paladin.rs` (9 scenarios):
+  Hammer of Justice's primary-full/cleave-half split + a clean whiff; Flash of Light heals only on
+  channel completion, not before; the overheal→shield talent; Spinning Hammer's exact 2:1 marked-
+  vs-unmarked damage ratio (both enemies pinned to the identical orbit-path position so they're swept
+  the same number of times, isolating the multiplier from sweep-timing geometry); Smite applies
+  holy_mark; `smite_spawns_consecrated_rare` drops the zone under the target, not the caster;
+  `consecrated_ground_slow_common` applies the new status to occupants; and the headline hero-aware-
+  band-pool regression test — selecting Paladin via the real `StartRunRequest` path and leveling to
+  4 grants its own three band abilities and NONE of the BDK's. Plus new unit tests: `HeroDef`/all 4
+  new `AbilityDef` RON parses + all 21 new `TalentDef` RON parses, `Orbiting`'s rotation math (a
+  hammer only hits while it's actually near a target; two hammers land on independent, evenly-spaced
+  targets), `HammerCleave`'s primary/cleave-cone geometry + clean whiff, `ChannelWhileMoving`'s
+  no-instant-hits contract, `DamageFraction`'s bake math, `SecondaryHits`' primary-exclusion (incl.
+  the no-primary-means-empty edge case), and `consecrated_slow.status.ron`'s parse. Build
+  warning-free.
+
 ### Environment
 - Installed Rust 1.96.1 + Cargo via rustup in WSL.
 - Installed Bevy Linux system dependencies (`build-essential`, `libudev-dev`,

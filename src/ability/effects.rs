@@ -51,6 +51,13 @@ pub fn resolve_effects(effects: &[EffectSpec], params: &ResolvedParams) -> Vec<R
                 stacks: *stacks,
                 target: *target,
             },
+            EffectSpec::DamageFraction { of, fraction, tags, target } => ResolvedEffect::Damage {
+                amount: params.get(of) * params.get(fraction),
+                tags: tags.clone(),
+                target: *target,
+                crit_chance: params.get("crit_chance"),
+                crit_mult: params.get("crit_mult"),
+            },
         })
         .collect()
 }
@@ -121,6 +128,10 @@ fn resolve_targets(target: EffectTarget, hits: &[HitTarget], primary: Option<Hit
         EffectTarget::AllHits => hits.iter().map(|h| h.entity).collect(),
         EffectTarget::PrimaryHit => primary.iter().map(|h| h.entity).collect(),
         EffectTarget::Caster => vec![caster],
+        EffectTarget::SecondaryHits => match primary {
+            Some(p) => hits.iter().filter(|h| h.entity != p.entity).map(|h| h.entity).collect(),
+            None => Vec::new(),
+        },
     }
 }
 
@@ -135,6 +146,48 @@ mod tests {
         let mut rng = RunRng::from_seed(1);
         assert!(!roll_crit(&mut rng, 0.0));
         assert!(!roll_crit(&mut rng, -5.0));
+    }
+
+    #[test]
+    fn damage_fraction_bakes_to_the_fraction_of_the_already_resolved_stat() {
+        let params = ResolvedParams(
+            [("damage", 20.0), ("cleave_fraction", 0.5)]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        );
+        let effects = [EffectSpec::DamageFraction {
+            of: "damage".to_string(),
+            fraction: "cleave_fraction".to_string(),
+            tags: vec![DamageTag::Physical],
+            target: EffectTarget::SecondaryHits,
+        }];
+        let resolved = resolve_effects(&effects, &params);
+        match &resolved[0] {
+            ResolvedEffect::Damage { amount, target, .. } => {
+                assert!((amount - 10.0).abs() < 1e-6, "50% of 20.0");
+                assert_eq!(*target, EffectTarget::SecondaryHits);
+            }
+            other => panic!("expected a Damage effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secondary_hits_excludes_only_the_primary() {
+        let a = HitTarget { entity: bevy::prelude::Entity::from_raw(1), pos: bevy::math::Vec2::ZERO };
+        let b = HitTarget { entity: bevy::prelude::Entity::from_raw(2), pos: bevy::math::Vec2::ZERO };
+        let c = HitTarget { entity: bevy::prelude::Entity::from_raw(3), pos: bevy::math::Vec2::ZERO };
+        let hits = [a, b, c];
+        let secondary = resolve_targets(EffectTarget::SecondaryHits, &hits, Some(a), a.entity);
+        assert_eq!(secondary, vec![b.entity, c.entity]);
+    }
+
+    #[test]
+    fn secondary_hits_is_empty_with_no_primary() {
+        let a = HitTarget { entity: bevy::prelude::Entity::from_raw(1), pos: bevy::math::Vec2::ZERO };
+        let hits = [a];
+        let secondary = resolve_targets(EffectTarget::SecondaryHits, &hits, None, a.entity);
+        assert!(secondary.is_empty());
     }
 
     #[test]

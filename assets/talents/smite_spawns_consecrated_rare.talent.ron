@@ -1,0 +1,12 @@
+// "After smiting an enemy, create a consecrated ground under him, dealing X damage to every enemy
+// inside every second" (Mechanics, rare, unique). Installs the "smite_spawns_consecrated"
+// ActiveHooks flag — checked directly in execute.rs, spawning a consecrated_ground zone at the
+// smitten target's position (mirrors the BDK's "Blood Boil spawns D&D" special-case, Phase 9.2).
+(
+    id: "smite_spawns_consecrated_rare",
+    display_name: "Hallowed Ground",
+    ability_scope: Some("smite"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("smite_spawns_consecrated"),
+)

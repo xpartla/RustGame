@@ -1,0 +1,44 @@
+// WORKING NAME: "Flash of Light"
+// Class: Paladin
+// Slot: special attack (RMB, Special), channeled while moving (X second cooldown) (Unlocked at level 1)
+//
+// Behavior: channel_while_moving (Phase 9.3) — a "cast_time"-second channel; "no interrupt" is the
+// phase-9 plan's own default (nothing cancels it once started, not even taking damage or moving).
+// On completion (ability::systems::channel::tick_channels), heals the caster for "heal_percent"%
+// of max health, then resolves whichever talents are active (all baked at cast START from
+// ActiveHooks + zone presence, mirroring how a projectile bakes its effects):
+//   - flash_of_light_overheal_shield_common: any overheal becomes an Absorb shield.
+//   - flash_of_light_radiate_rare: "radiate_percent"% of the amount healed, dealt to enemies
+//     within "radiate_radius" of the caster (read at COMPLETION time, since the caster can have
+//     moved during the channel).
+//   - flash_of_light_consecrated_radiate_epic: only if the caster was standing in a
+//     "consecrated_ground" zone at cast start, an extra flat explosion around the caster.
+//
+// "Flash of Light empowers your next Hammer of Justice" (rare, unique) is deferred — a one-shot
+// cross-ability buff-consumption shape none of the existing Pre/Post/Modifier primitives cover
+// cleanly (see Mechanics.md).
+(
+    id: "flash_of_light",
+    display_name: "Flash of Light",
+    unlock_schedule: Level1,
+    behavior: "channel_while_moving",
+    hooks: [],
+    base_params: {
+        "cast_time": 1.2,
+        "heal_percent": 20.0,
+        "cooldown": 6.0,
+        // Radiate talent (rare) — inert (0) unless flash_of_light_radiate_rare is taken.
+        "radiate_percent": 30.0,
+        "radiate_radius": 70.0,
+        // Consecrated-ground radiate (epic, unique) — inert (0) unless the talent is taken AND the
+        // caster is standing in consecrated_ground when the channel STARTS.
+        "consecrated_radiate_damage": 15.0,
+    },
+    talent_pool: [
+        "flash_of_light_overheal_shield_common",
+        "flash_of_light_healing_common",
+        "flash_of_light_cooldown_common",
+        "flash_of_light_radiate_rare",
+        "flash_of_light_consecrated_radiate_epic",
+    ],
+)

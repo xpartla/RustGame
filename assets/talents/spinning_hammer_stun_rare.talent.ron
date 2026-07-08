@@ -1,0 +1,11 @@
+// "Spinning hammer also stuns enemies for X seconds" (Mechanics, rare, unique). Installs the
+// "spinning_hammer_stun" ActiveHooks flag — checked directly in execute.rs (applies the existing
+// "stun" status to every hit), like Abomination Limb's own stun talent (Phase 9.2).
+(
+    id: "spinning_hammer_stun_rare",
+    display_name: "Concussive Swing",
+    ability_scope: Some("spinning_hammer"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("spinning_hammer_stun"),
+)

@@ -1,0 +1,12 @@
+// "Increase the cast range by X" (Mechanics, common). Stack(3).
+(
+    id: "hammer_of_justice_range_common",
+    display_name: "Long Reach",
+    ability_scope: Some("hammer_of_justice"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "range",
+        op: Add(10.0),
+    )),
+)

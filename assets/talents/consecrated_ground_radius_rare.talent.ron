@@ -1,0 +1,12 @@
+// "Increase the size of the zone by X" (Mechanics, rare). Stack(2).
+(
+    id: "consecrated_ground_radius_rare",
+    display_name: "Wider Sanctuary",
+    ability_scope: Some("consecrated_ground"),
+    rarity: Rare,
+    uniqueness: Stack(2),
+    effect: Modifier((
+        stat: "zone_radius",
+        op: Add(15.0),
+    )),
+)

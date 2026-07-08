@@ -1,0 +1,13 @@
+// "Increase the damage by X%" (Mechanics, common). Stack(3); also scales the cleave via
+// DamageFraction's "of: damage" reference — no separate cleave talent needed.
+(
+    id: "hammer_of_justice_damage_common",
+    display_name: "Heavier Hammer",
+    ability_scope: Some("hammer_of_justice"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.15),
+    )),
+)

@@ -1,0 +1,12 @@
+// "If hammer of justice strikes a target affected by holy mark, emit a shockwave from your
+// character, dealing X damage and pushing enemies back" (Mechanics, rare, unique). Installs the
+// "hammer_of_justice_shockwave" ActiveHooks flag — checked directly, not through HookRegistry (a
+// holy-mark consumer + forced-move special-case, execute.rs).
+(
+    id: "hammer_of_justice_shockwave_rare",
+    display_name: "Righteous Shockwave",
+    ability_scope: Some("hammer_of_justice"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Behavior("hammer_of_justice_shockwave"),
+)

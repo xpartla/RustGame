@@ -1425,6 +1425,68 @@ whether this is a latent, pre-existing issue merely first exposed by 9.2's added
 something newly introduced; (3) once `campaign_is_reproducible_within_a_build` passes cleanly
 across many repeated runs, regenerate the baseline (regen #4) and close this row.
 
+### 8.14 Phase 9.3 delivered (2026-07-08)
+
+The third sub-phase of the Phase-9 content-pass arc: the Paladin, the arc's first brand-new hero
+(D2 — Paladin before Druid, to de-risk the shared engine work before Druid's heavier machinery).
+Runless-neutral: the golden campaign is the BDK bot and never references any Paladin content, so
+its `campaign_matches_golden_baseline` state is unchanged from Phase 9.2 (§8.13's tracked row) —
+not investigated further this sub-phase, per an explicit product-owner instruction. See the
+CHANGELOG "Phase 9.3" section for full detail; highlights:
+
+- **Three new ability behaviors**, each landing with its first (and so far only) consumer, per DP2:
+  `hammer_cleave` (Hammer of Justice — one full-damage primary + a cone-behind-primary cleave, via
+  a new `EffectTarget::SecondaryHits` + `EffectSpec::DamageFraction` so a damage talent
+  automatically scales the cleave too), `channel_while_moving` (Flash of Light — a new `Channeling`
+  component + `ability::systems::channel::tick_channels`, resolving the heal + its talent-gated
+  extras only once the channel's `cast_time` elapses; effects are baked at cast start, mirroring
+  how a projectile bakes its own), and `orbiting` (Spinning Hammer — a new
+  `AbilityContext.elapsed_secs` field drives a stateless, deterministic continuous-rotation
+  calculation, sampled via a fast AutoCast cadence rather than a literal physics sweep).
+- **The holy-mark read path is finally built** (the marker itself has existed inertly since Phase
+  3). A per-target conditional the generic effects pipeline can't express, so both consumers
+  (Spinning Hammer's double damage, Hammer of Justice's shockwave talent) are targeted execute.rs
+  special-cases backed by a new `is_marked` direct-query helper — the same shape as Phase 9.2's
+  `blood_boil_health_scaling`/`abomination_limb_stun`. Smite is the holy-mark GRANT path (reuses
+  `nearest_melee` as-is, zero new behavior code).
+- **A small, precedented `ZoneEffects` extension** (`slow_status`/`scales_with_occupants`, baked
+  from resolved-param flags — the same `follow_caster` escape hatch AMZ's epic talent uses) gives
+  Consecrated Ground (promoted from its Phase-6D demonstrator to the real band ability) two more
+  talents with no new subsystem — both fields default inert for D&D/AMZ, byte-identical there.
+- **A real, previously-undiscovered gap fixed: `init_level_flow` is now hero-aware.** It was still
+  hardcoded to the BDK's own band pools regardless of the selected hero — a Phase-2 stub Phase 4
+  was supposed to (but never did) source from `HeroDef`, invisible until now because the Mage
+  ships with empty band pools and the BDK is the default hero. Paladin is the first hero whose own
+  non-empty band pool actually has to reach the real level-up flow, surfacing the bug. Fixed by
+  reading the current player's `HeroIdentity` → `HeroDef` band pools when available, falling back
+  to the hardcoded BDK consts only for the one call site that fires before any player exists (a
+  fallback that is byte-identical to the real data anyway, since the default hero IS the BDK).
+- **Three Mechanics talents deliberately deferred, each documented at the point of implementation**,
+  the same discipline Phase 9.2 used for Blood Boil's on-death DoT transfer: Hammer of Justice's
+  bounce (a chain-bounce shape with no existing analog) and kill-inside-consecrated-ground explosion
+  (the same "no ability provenance on DamageEvent" gap bone shield hit); Flash of Light's
+  next-Hammer-of-Justice buff (a one-shot cross-ability buff-consumption shape none of
+  Modifier/Pre-hook/Post-hook cover — Pre hooks have no `Commands` access to consume a marker, Post
+  hooks are deliberately read-only).
+- **258 tests total, 257 passing** (was 229) — the one non-passing test is Phase 9.2's already-
+  tracked, unchanged `campaign_matches_golden_baseline` divergence; `campaign_is_reproducible_
+  within_a_build` stays green. New `tests/paladin.rs` (9 scenarios) plus unit tests for every new
+  RON file, the three new behaviors' pure targeting math, and the `DamageFraction`/`SecondaryHits`
+  bake logic. Build warning-free.
+
+§8.1 status after Phase 9.3: (3) the `orbiting`/`channel_while_moving` behaviors are now built (their
+own listed consumers — Spinning Hammer, Flash of Light — are live); holy-mark consumers (unlisted in
+§8.1 but flagged throughout Phase 3–7.5's status-system notes) are now built too. Unchanged/still
+open: Ice Barrier's real `Absorb` (Phase 9.5), the Charges *producers* (Mage/Druid, Phase 9.4/9.5),
+`leap_to_target` (Phase 9.4), binding the Movement-slot dash to a real hero (still no shipped hero
+claims it — Paladin didn't need it), Blood Boil's on-death DoT transfer (Phase 9.2's own deferral,
+untouched).
+
+§8.5 status after Phase 9.3: unchanged from §8.13 — the golden-campaign reproducibility flake is
+still the only open row (not investigated this sub-phase, by instruction); no new row opens (the
+hero-aware band-pool fix was a real bug, not a deliberately-deferred gap, and is now closed, not
+tracked).
+
 ---
 
 _End of architecture plan. Proceed to implementation only after the open questions in §6 are resolved._

@@ -1,0 +1,43 @@
+// WORKING NAME: "Hammer of Justice"
+// Class: Paladin
+// Slot: primary attack (LMB, Basic) (X second cooldown) (Unlocked at level 1)
+//
+// Behavior: hammer_cleave (Phase 9.3) — a large hit to ONE primary target (nearest enemy within
+// "range"/"half_angle" of the caster's aim), plus 50% of that damage to every other enemy in a
+// cone behind the primary (within "cleave_range"/"cleave_half_angle" of the caster-through-primary
+// direction). The "cleave_fraction" DamageFraction effect automatically inherits any talent that
+// scales "damage" — no separate cleave-damage talent needed.
+//
+// Two Mechanics talents are deferred (no engine primitive fits cleanly yet — see Mechanics.md):
+//   - "bounces up to 3 nearby targets, dealing 50% damage" (a chain-bounce mechanic).
+//   - "if it kills an enemy inside consecrated ground, create an explosion" (DamageEvent carries
+//     no ability provenance — the same gap Phase 9.2's bone shield simplification hit).
+(
+    id: "hammer_of_justice",
+    display_name: "Hammer of Justice",
+    unlock_schedule: Level1,
+    behavior: "hammer_cleave",
+    hooks: [],
+    base_params: {
+        "damage": 22.0,
+        "range": 55.0,
+        "half_angle": 0.5,
+        "cleave_range": 45.0,
+        "cleave_half_angle": 0.6,
+        "cleave_fraction": 0.5,
+        "cooldown": 1.4,
+        // Shockwave talent (rare, unique) — inert unless hammer_of_justice_shockwave_rare is taken.
+        "shockwave_radius": 90.0,
+        "shockwave_damage": 12.0,
+        "shockwave_knock_speed": 220.0,
+    },
+    talent_pool: [
+        "hammer_of_justice_damage_common",
+        "hammer_of_justice_range_common",
+        "hammer_of_justice_shockwave_rare",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: PrimaryHit),
+        DamageFraction(of: "damage", fraction: "cleave_fraction", tags: [Physical], target: SecondaryHits),
+    ],
+)

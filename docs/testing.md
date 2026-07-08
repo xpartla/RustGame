@@ -205,6 +205,37 @@ Every phase from Phase 3 onward should land with golden scenarios for its mechan
   unidentified. The baseline is deliberately **not** regenerated a fourth time until this is fully
   resolved — `campaign_matches_golden_baseline` currently fails against the stale regen-#3 baseline,
   a known, expected state, not a new unexplained regression.
+- Phase 9.3 (done): the Paladin, the arc's first brand-new hero (architecture-plan §8.14) — one new
+  file, `tests/paladin.rs` (9 scenarios): Hammer of Justice's primary-full/cleave-half split + a
+  clean whiff (no primary in arc); Flash of Light heals only once its `cast_time` channel completes,
+  not the instant it's cast; the overheal→shield talent (computed from pre-heal `Health.current`,
+  since `apply_heal` clamps to max and can't be un-clamped after the fact); Spinning Hammer's exact
+  2:1 marked-vs-unmarked damage ratio — **the pattern worth reusing**: pin both a marked and an
+  unmarked control entity to the IDENTICAL point on the orbiting hammer's path (a direct
+  `WorldPosition` write via `sim.world_mut()`, not `spawn_grunt`'s tile placement) so both are swept
+  the exact same number of times regardless of sweep-timing geometry, isolating the multiplier being
+  tested from "how many times did it get hit" noise; Smite applies holy_mark (the grant path) and
+  its `smite_spawns_consecrated_rare` talent drops the zone under the TARGET, not the caster;
+  `consecrated_ground_slow_common` applies the new `consecrated_slow` status to zone occupants; and
+  the headline `selecting_paladin_unlocks_its_own_band_kit_not_the_death_knights` — drives the REAL
+  `Sim::request_start_run("paladin", seed)` path (not the lighter `Sim::set_hero` test shortcut,
+  which deliberately skips re-applying `base_stats`/band pools) and levels to 4, asserting the
+  Paladin's own three band abilities land and NONE of the BDK's five do — the regression test for
+  the hero-aware `init_level_flow` fix (a real, previously-undiscovered bug — see the CHANGELOG
+  entry). One timing gotcha specific to auto-cast + status-application ordering, beyond Phase 9.2's
+  already-documented grant/whiff one: an `ApplyStatusEvent` sent via `sim.apply_status(...)` is only
+  QUEUED that frame — the `StatusEffectInstance` doesn't exist until `StatusSet::Tick` runs LATER
+  THAT SAME FRAME, which is AFTER `CombatSet::Damage` (where ability casts read marks/statuses). A
+  scenario that grants an ability and applies a status in the same setup block, then steps once,
+  can have that first cast see a NOT-YET-APPLIED status — apply the status and let it settle
+  (`sim.step`) BEFORE granting the ability whose first auto-cast needs to observe it, mirroring how
+  Phase 9.2's own grant-then-spawn-target ordering rule works for the opposite reason (a target that
+  doesn't exist yet vs. a status that hasn't landed yet — same underlying "which frame is this
+  actually visible on" trap). Plus unit tests (see architecture-plan §8.14) for every new ability/
+  talent RON parse, the three new behaviors' pure targeting math, and the `DamageFraction`/
+  `SecondaryHits` bake logic. Golden master **byte-identical** (the campaign is the BDK bot and
+  never references Paladin content) — `campaign_matches_golden_baseline` is Phase 9.2's own tracked,
+  unchanged divergence, not investigated further this sub-phase.
 
 Keep each scenario one mechanic; put cross-system drift detection in the campaign baseline.
 

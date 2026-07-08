@@ -103,6 +103,8 @@ impl DefAsset for StatusEffectDef {
         // Phase 4 — Mage stance-swap effects (self-applied on entering a stance).
         ("boots_of_fire", "status_effects/boots_of_fire.status.ron"),
         ("ice_barrier", "status_effects/ice_barrier.status.ron"),
+        // Phase 9.3 — Consecrated Ground's slow talent.
+        ("consecrated_slow", "status_effects/consecrated_slow.status.ron"),
     ];
 }
 
@@ -164,5 +166,14 @@ mod tests {
         assert_eq!(def.move_speed_mult, 1.0);
         assert!(def.removed_by_tags.is_empty());
         assert!(def.hooks.is_empty());
+    }
+
+    #[test]
+    fn consecrated_slow_is_a_pure_move_speed_debuff() {
+        let def = load("assets/status_effects/consecrated_slow.status.ron");
+        assert!(def.tick.is_none(), "the DoT is the zone's own damage_per_second, not this status");
+        assert_eq!(def.move_speed_mult, 0.8);
+        assert_eq!(def.damage_taken_mult, 1.0);
+        assert!(!def.immobilize);
     }
 }

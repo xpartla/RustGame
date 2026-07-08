@@ -1,12 +1,17 @@
 // WORKING NAME: "Consecrated Ground"
-// Class: Paladin — DEMONSTRATOR ONLY this phase (no Paladin hero yet, like the Phase-3
-// Fireblast/Frostbolt/Scratch demonstrators). Unbound; exercised by scenarios.
-// Unlock (design): randomly at level 2/3/4.
+// Class: Paladin — the real band-2/3/4 ability as of Phase 9.3 (was a Phase-6D demonstrator with
+// no hero attached; the demonstrator's mechanic is unchanged).
 //
 // Behavior: dropped_zone — drops a "consecrated_ground" zone under the caster. Per Mechanics it
 // deals X damage per second to enemies inside; here that is the generic occupant-tick DoT
 // (Phase 6D): damage_per_second to every OPPOSING-faction actor inside, Holy-tagged. The
 // Mechanics "drop as you move" trail is auto-cast on a short cooldown.
+//
+// "slow_active" / "count_scaling_active" (Phase 9.3): resolved-param flags the
+// consecrated_ground_slow_common / consecrated_ground_count_scaling_rare talents Override to 1.0
+// — the same escape hatch AMZ's "follow_caster" flag uses (a talent can't rewrite this RON's own
+// `zone` spec, only a resolved param). `spawn_dropped_zone` (ability/systems/execute.rs) reads
+// them into ZoneEffects; zone/systems/tick.rs::zone_tick_effects applies them.
 (
     id: "consecrated_ground",
     display_name: "Consecrated Ground",
@@ -20,10 +25,17 @@
         "cooldown": 3.0,
         // Holy DoT to enemies standing inside, per zone tick (1 Hz).
         "damage_per_second": 3.0,
+        "slow_active": 0.0,
+        "count_scaling_active": 0.0,
     },
     zone: Some((
         zone_type: "consecrated_ground",
         anchor: Fixed,
     )),
-    talent_pool: [],
+    talent_pool: [
+        "consecrated_ground_radius_rare",
+        "consecrated_ground_damage_common",
+        "consecrated_ground_slow_common",
+        "consecrated_ground_count_scaling_rare",
+    ],
 )

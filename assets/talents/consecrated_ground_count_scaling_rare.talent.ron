@@ -1,0 +1,14 @@
+// "Consecrated ground deals X% increased damage per enemy inside" (Mechanics, rare). Overrides the
+// "count_scaling_active" resolved-param flag; zone/systems/tick.rs::zone_tick_effects scales
+// damage_per_second by CONSECRATED_COUNT_SCALING_FRACTION per additional occupant each tick.
+(
+    id: "consecrated_ground_count_scaling_rare",
+    display_name: "Communal Wrath",
+    ability_scope: Some("consecrated_ground"),
+    rarity: Rare,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "count_scaling_active",
+        op: Override(1.0),
+    )),
+)

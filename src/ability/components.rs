@@ -83,6 +83,28 @@ pub struct MinionOwner(#[allow(dead_code)] pub Entity);
 #[derive(Component, Debug)]
 pub struct MinionLifetime(pub Timer);
 
+/// A multi-frame channel in progress on the caster (Phase 9.3 — Flash of Light; later Druid Heal /
+/// Mage Frost Impale reuse it). Inserted by `execute_ready_abilities` on a `channel_while_moving`
+/// cast (instead of applying effects instantly) and resolved by
+/// `ability::systems::channel::tick_channels` once `remaining` finishes. Everything the channel
+/// needs is baked in at cast time (mirrors how a projectile bakes its effects) — a talent picked
+/// up mid-channel doesn't retroactively alter an in-flight one.
+#[derive(Component, Debug)]
+pub struct Channeling {
+    /// Percent of the caster's max health to heal on completion.
+    pub heal_percent: f32,
+    /// "Overhealed health becomes a shield" (Flash of Light common, unique).
+    pub overheal_to_shield: bool,
+    /// "Deal X% of amount healed to enemies in a radius around you" (rare). 0 = talent not active.
+    pub radiate_percent: f32,
+    pub radiate_radius: f32,
+    /// "Casting inside consecrated ground makes you radiate, exploding for X damage" (epic,
+    /// unique) — pre-resolved at cast start from the talent flag AND zone presence, so completion
+    /// only needs to check `> 0.0`. 0 = inactive (talent not active OR wasn't in the zone at cast).
+    pub consecrated_radiate_damage: f32,
+    pub remaining: Timer,
+}
+
 /// Event emitted by hero/systems/input_slot.rs when the player presses an input slot.
 /// The ability execution system listens for this and fires the matching AbilityInstance.
 #[derive(Event, Debug)]

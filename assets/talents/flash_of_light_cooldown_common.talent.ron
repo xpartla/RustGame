@@ -1,0 +1,12 @@
+// "Reduce cooldown by X" (Mechanics, common). Stack(3).
+(
+    id: "flash_of_light_cooldown_common",
+    display_name: "Swift Blessing",
+    ability_scope: Some("flash_of_light"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "cooldown",
+        op: Add(-1.0),
+    )),
+)

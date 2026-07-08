@@ -1,0 +1,11 @@
+// "Overhealed health becomes a shield" (Mechanics, common, unique). Installs the
+// "flash_of_light_overheal_shield" ActiveHooks flag — read directly by
+// ability::systems::channel::tick_channels at channel completion.
+(
+    id: "flash_of_light_overheal_shield_common",
+    display_name: "Radiant Overflow",
+    ability_scope: Some("flash_of_light"),
+    rarity: Common,
+    uniqueness: Exclusive,
+    effect: Behavior("flash_of_light_overheal_shield"),
+)

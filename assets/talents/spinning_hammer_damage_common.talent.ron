@@ -1,0 +1,12 @@
+// "Increase the damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "spinning_hammer_damage_common",
+    display_name: "Heavy Hammerhead",
+    ability_scope: Some("spinning_hammer"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.2),
+    )),
+)

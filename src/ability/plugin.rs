@@ -14,11 +14,13 @@
 use bevy::prelude::*;
 use crate::ability::assets::{AbilityDef, AbilityId};
 use crate::ability::behavior::{
-    BehaviorRegistry, Blink, ContactMelee, DroppedZone, Grip, MeleeCone, NearestMelee, ProjectileBehavior, SelfNova, Summon,
+    BehaviorRegistry, Blink, ChannelWhileMoving, ContactMelee, DroppedZone, Grip, HammerCleave, MeleeCone,
+    NearestMelee, Orbiting, ProjectileBehavior, SelfNova, Summon,
 };
 use crate::ability::hooks::{BdkDndDamageBoost, BdkNoHealCapLeechBoost, BloodBoilDndRange, HeartStrikeExecuteBonus, HeartStrikeMissingHealth, HookRegistry};
 use crate::ability::components::{AbilityCooldown, AbilityInstance, CastVfxEvent, Level1Granted, TriggerAbilityEvent, UnlockAbilityEvent};
 use crate::ability::systems::bone_shield::bone_shield_on_kill;
+use crate::ability::systems::channel::tick_channels;
 use crate::ability::systems::execute::{auto_cast_abilities, execute_ready_abilities, tick_ability_cooldowns};
 use crate::ability::systems::purgatory::purgatory_cheat_death;
 use crate::ability::systems::summon::{minion_seek_and_face, update_minion_lifecycle};
@@ -45,8 +47,10 @@ impl Plugin for AbilityPlugin {
 
         // Built-in behaviors. melee_cone (Phase 1), projectile/self_nova (Phase 3), contact_melee
         // (Phase 5), dropped_zone (Phase 6), blink (Phase 9.1 — the Movement-slot dash), summon /
-        // nearest_melee (Phase 9.2 — Companion / Heart Strike). orbit/leap/channel register in
-        // their own phases; an ability whose behavior is unregistered stays inert.
+        // nearest_melee (Phase 9.2 — Companion / Heart Strike), orbiting / hammer_cleave /
+        // channel_while_moving (Phase 9.3 — Paladin's Spinning Hammer / Hammer of Justice / Flash
+        // of Light). leap_to_target registers in its own later phase; an ability whose behavior is
+        // unregistered stays inert.
         let mut behaviors = BehaviorRegistry::default();
         behaviors.register("melee_cone", MeleeCone);
         behaviors.register("projectile", ProjectileBehavior);
@@ -57,6 +61,9 @@ impl Plugin for AbilityPlugin {
         behaviors.register("summon", Summon);
         behaviors.register("nearest_melee", NearestMelee);
         behaviors.register("grip", Grip);
+        behaviors.register("orbiting", Orbiting);
+        behaviors.register("hammer_cleave", HammerCleave);
+        behaviors.register("channel_while_moving", ChannelWhileMoving);
         app.insert_resource(behaviors);
 
         // Code-driven ability hooks (Phase 6). Talent-gated hooks (in an ability's `hooks` list)
@@ -101,7 +108,7 @@ impl Plugin for AbilityPlugin {
         );
         app.add_systems(
             Update,
-            (tick_ability_cooldowns, auto_cast_abilities, execute_ready_abilities)
+            (tick_ability_cooldowns, auto_cast_abilities, execute_ready_abilities, tick_channels)
                 .chain()
                 .in_set(CombatSet::Damage)
                 .run_if(in_state(GameState::InRun)),

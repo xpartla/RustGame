@@ -1,0 +1,13 @@
+// "Spawn an additional hammer orbiting your character" (Mechanics, epic). Adds +1 to
+// "hammer_count" — the Orbiting behavior evenly spaces however many hammers that resolves to.
+(
+    id: "spinning_hammer_extra_hammer_epic",
+    display_name: "Twin Hammers",
+    ability_scope: Some("spinning_hammer"),
+    rarity: Epic,
+    uniqueness: Exclusive,
+    effect: Modifier((
+        stat: "hammer_count",
+        op: Add(1.0),
+    )),
+)

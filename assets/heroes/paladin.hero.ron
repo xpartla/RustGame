@@ -1,0 +1,39 @@
+// WORKING NAME: "Paladin" — Phase 9.3, the arc's first brand-new hero.
+// Internal id is stable; display_name can change freely.
+//
+// Stance: none. has_stance = false (architecture-plan §6 Q4 — DK and Paladin have no Q).
+// Resource model: None — Paladin has no secondary resource bar (Mechanics doesn't give it one).
+//
+// Level-up schedule (Mechanics: Consecrated Ground / Spinning Hammer / Smite are each "unlocked
+// randomly at level 2/3/4" — three draws across one band, not two separate 2-3/4-6 bands like the
+// BDK):
+//   Level 1:      hammer_of_justice, flash_of_light (always granted)
+//   Level 2,3,4: one each of consecrated_ground, spinning_hammer, smite (from band_2_3_pool,
+//                without replacement) — band_4_6_pool is intentionally empty.
+//
+// See ability RON files in assets/abilities/ for each ability's behavior and talent pool.
+(
+    id: "paladin",
+    display_name: "Paladin",
+    base_stats: (
+        max_health: 160.0,
+        move_speed: 33.0,
+    ),
+    resource_model: None,
+    has_stance: false,
+    stance_a: None,
+    stance_b: None,
+    level_1_abilities: ["hammer_of_justice", "flash_of_light"],
+    band_2_3_pool: ["consecrated_ground", "spinning_hammer", "smite"],
+    band_4_6_pool: [],
+    class_passive_pool: [],
+    stance_slots: [
+        (
+            stance: "default",
+            basic: Some("hammer_of_justice"),
+            special: Some("flash_of_light"),
+            movement: None,
+            swap_effect: None,
+        ),
+    ],
+)

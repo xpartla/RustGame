@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use crate::ability::assets::{AbilityDef, AbilityLibrary, Activation, HookPhase, ZoneAnchorKind, ZoneSpec};
 use crate::ability::behavior::{AbilityContext, BehaviorRegistry, ResolvedParams, Target, VfxShape};
 use crate::ability::components::{
-    AbilityCooldown, AbilityInstance, CastVfxEvent, CastVfxKind, Minion, MinionLifetime, MinionOwner,
+    AbilityCooldown, AbilityInstance, CastVfxEvent, CastVfxKind, Channeling, Minion, MinionLifetime, MinionOwner,
     TriggerAbilityEvent,
 };
 use crate::ability::effects::{apply_resolved_effects, resolve_effects};
@@ -31,10 +31,10 @@ use crate::core::components::{
     AbilitiesSuppressed, Facing, Faction, ForcedImpulse, GridPosition, Health, Hurtbox, MoveSpeed, Velocity,
     WorldPosition,
 };
-use crate::core::events::{DamageEvent, HealEvent};
+use crate::core::events::{DamageEvent, DamageTag, HealEvent};
 use crate::enemy::components::AiBehavior;
 use crate::projectile::components::{ArcHitbox, Lifetime, Projectile, ProjectileMotion, ProjectilePayload};
-use crate::status::components::ApplyStatusEvent;
+use crate::status::components::{ApplyStatusEvent, StatusEffectInstance};
 use crate::run::rng::RunRng;
 use crate::run::state::RoomModifiers;
 use crate::talent::assets::{StatModifier, TalentDef, TalentLibrary};
@@ -92,13 +92,19 @@ pub fn execute_ready_abilities(
     mut heal_events: EventWriter<HealEvent>,
     mut status_events: EventWriter<ApplyStatusEvent>,
     mut cast_vfx: EventWriter<CastVfxEvent>,
-    // Grouped into one tuple SystemParam to stay under Bevy's 16-param-per-system limit.
-    (registry, hook_registry, zone_presence, room_mods, mut rng): (
+    // Grouped into one tuple SystemParam to stay under Bevy's 16-param-per-system limit. `time`
+    // (Phase 9.3) feeds `AbilityContext.elapsed_secs` for `Orbiting`'s continuous rotation; `marks`
+    // is the holy-mark read path (Spinning Hammer's double damage, Hammer of Justice's shockwave
+    // talent) — both targeted execute.rs special-cases, like `blood_boil`'s below, since a per-
+    // target conditional doesn't fit the generic Pre/Post hook or effects pipeline.
+    (registry, hook_registry, zone_presence, room_mods, mut rng, time, marks): (
         Res<BehaviorRegistry>,
         Res<HookRegistry>,
         Res<PlayerZonePresence>,
         Res<RoomModifiers>,
         ResMut<RunRng>,
+        Res<Time>,
+        Query<&StatusEffectInstance>,
     ),
     library: Res<AbilityLibrary>,
     defs: Res<Assets<AbilityDef>>,
@@ -231,6 +237,7 @@ pub fn execute_ready_abilities(
                 // Non-zero for needs-aim casts (gated above); zero is fine for self-centred shapes.
                 facing: owner_facing.0.normalize_or_zero(),
                 targets,
+                elapsed_secs: time.elapsed_secs(),
             };
             let outcome = behavior.resolve(&ctx, &params);
             // Whiff gate (Phase 5): behaviors like contact_melee don't spend their cooldown when
@@ -242,6 +249,43 @@ pub fn execute_ready_abilities(
             {
                 break;
             }
+
+            // Channel (Phase 9.3 — Flash of Light): defer every effect to channel completion
+            // instead of applying instantly. The talent-gated extras (overheal→shield / radiate /
+            // the consecrated-ground epic) are baked from ActiveHooks + zone presence AT CAST
+            // START, mirroring how a projectile bakes its effects at cast time — a talent picked up
+            // mid-channel doesn't retroactively alter an in-flight channel (the projectile
+            // precedent). `tick_channels` (ability/systems/channel.rs) resolves it later.
+            if let Some(channel_spawn) = outcome.channel {
+                let has_hook = |id: &str| active_hooks.map(|h| h.contains(id)).unwrap_or(false);
+                let consecrated_radiate_damage = if has_hook("flash_of_light_consecrated_radiate")
+                    && zone_presence.is_inside("consecrated_ground")
+                {
+                    params.get("consecrated_radiate_damage")
+                } else {
+                    0.0
+                };
+                commands.entity(trigger.owner).insert(Channeling {
+                    heal_percent: params.get("heal_percent"),
+                    overheal_to_shield: has_hook("flash_of_light_overheal_shield"),
+                    radiate_percent: if has_hook("flash_of_light_radiate") { params.get("radiate_percent") } else { 0.0 },
+                    radiate_radius: params.get("radiate_radius"),
+                    consecrated_radiate_damage,
+                    remaining: Timer::from_seconds(channel_spawn.cast_time, TimerMode::Once),
+                });
+                cast_vfx.write(CastVfxEvent {
+                    caster: trigger.owner,
+                    ability_id: instance.def_id.clone(),
+                    origin: outcome.origin,
+                    kind: CastVfxKind::Other,
+                });
+                cooldown.elapsed = 0.0;
+                let resolved_cd = params.get("cooldown");
+                let attack_speed = params.get("attack_speed");
+                cooldown.duration = resolved_cd / (1.0 + attack_speed).max(0.05);
+                break;
+            }
+
             let resolved = resolve_effects(&def.effects, &params);
             // Instant hits (cone/nova). Empty for a pure projectile cast (delivery is deferred).
             // Crit rolls (Phase 9.1) draw from RunRng, never thread_rng — only when a target
@@ -428,6 +472,103 @@ pub fn execute_ready_abilities(
                 }
             }
 
+            // Spinning Hammer (Phase 9.3): the holy-mark consumer — deals double damage to marked
+            // targets. A per-target conditional the generic effects pipeline can't express (every
+            // Damage effect applies one uniform amount to its whole hit set), so this tops up an
+            // extra `damage` on top of the base AllHits damage already applied above, only for
+            // marked hits — same shape as Blood Boil's special-cases. The stun-on-hit talent rides
+            // along here too.
+            if instance.def_id == "spinning_hammer" {
+                let stun_active = active_hooks.map(|h| h.contains("spinning_hammer_stun")).unwrap_or(false);
+                let damage = params.get("damage");
+                for hit in &outcome.hits {
+                    if is_marked(hit.entity, &marks) {
+                        damage_events.write(DamageEvent {
+                            target: hit.entity,
+                            amount: damage,
+                            source: trigger.owner,
+                            tags: vec![DamageTag::Holy],
+                        });
+                    }
+                    if stun_active {
+                        status_events.write(ApplyStatusEvent {
+                            target: hit.entity,
+                            source: trigger.owner,
+                            effect_id: "stun".to_string(),
+                            stacks: 1,
+                        });
+                    }
+                }
+            }
+
+            // Hammer of Justice (Phase 9.3): "if it strikes a target affected by holy mark, emit a
+            // shockwave from your character, dealing X damage and pushing enemies back"
+            // (`hammer_of_justice_shockwave_rare`) — a holy-mark consumer + the Phase-9.1 forced-
+            // movement primitive (knockback), centred on the CASTER (not the struck target).
+            if instance.def_id == "hammer_of_justice" {
+                if active_hooks.map(|h| h.contains("hammer_of_justice_shockwave")).unwrap_or(false) {
+                    if let Some(primary) = outcome.primary {
+                        if is_marked(primary.entity, &marks) {
+                            let radius = params.get("shockwave_radius");
+                            let damage = params.get("shockwave_damage");
+                            let knock_speed = params.get("shockwave_knock_speed");
+                            for t in targets {
+                                if t.pos.distance(outcome.origin) <= radius {
+                                    damage_events.write(DamageEvent {
+                                        target: t.entity,
+                                        amount: damage,
+                                        source: trigger.owner,
+                                        tags: vec![DamageTag::Holy],
+                                    });
+                                    commands.entity(t.entity).insert(ForcedImpulse::knockback(
+                                        (t.pos - outcome.origin).normalize_or_zero(),
+                                        knock_speed,
+                                        0.3,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Smite (Phase 9.3): "after smiting, create consecrated ground under the target"
+            // (`smite_spawns_consecrated_rare`) + "holy mark affects all enemies in a radius around
+            // the target" (`smite_mark_radius_epic`) — both targeted special-cases keyed off this
+            // cast's own primary hit, mirroring Blood Boil's spawn-on-cast special-case.
+            if instance.def_id == "smite" {
+                if let (Some(active), Some(primary)) = (active_hooks, outcome.primary) {
+                    if active.contains("smite_spawns_consecrated") {
+                        spawn_dropped_zone(
+                            &mut commands,
+                            &ZoneSpec { zone_type: "consecrated_ground".to_string(), anchor: ZoneAnchorKind::Fixed, blocks_projectiles: false },
+                            &ResolvedParams(HashMap::from([
+                                ("zone_radius".to_string(), 50.0),
+                                ("zone_duration".to_string(), 4.0),
+                                ("damage_per_second".to_string(), 3.0),
+                                ("regen_percent_per_second".to_string(), 0.0),
+                            ])),
+                            primary.pos,
+                            trigger.owner,
+                            *owner_faction,
+                        );
+                    }
+                    if active.contains("smite_mark_radius") {
+                        let radius = params.get("mark_radius");
+                        for t in targets {
+                            if t.pos.distance(primary.pos) <= radius {
+                                status_events.write(ApplyStatusEvent {
+                                    target: t.entity,
+                                    source: trigger.owner,
+                                    effect_id: "holy_mark".to_string(),
+                                    stacks: 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
             cooldown.elapsed = 0.0;
             // Attack speed (Phase 9.1, §8.1(4)): effective_cd = resolved_cd / (1 + attack_speed).
             // attack_speed defaults to 0.0 (talent/modifier.rs's universal baseline) when no talent
@@ -443,6 +584,14 @@ pub fn execute_ready_abilities(
             break; // one instance per trigger
         }
     }
+}
+
+/// Whether `entity` currently carries the "holy_mark" status (Phase 9.3's holy-mark read path —
+/// Spinning Hammer's double damage, Hammer of Justice's shockwave talent). A direct query scan
+/// rather than a cached per-frame resource: mark counts are small (a handful of enemies at most)
+/// and this is only called from the two ability-specific special-cases above.
+fn is_marked(entity: Entity, marks: &Query<&StatusEffectInstance>) -> bool {
+    marks.iter().any(|i| i.target == entity && i.def_id == "holy_mark")
 }
 
 /// Builds a `PersistentZone` entity for a `dropped_zone` cast, from the ability's `zone` spec +
@@ -484,13 +633,20 @@ fn spawn_dropped_zone(
     ));
     // Occupant tick effects (Phase 6D) — attached only when the ability defines any (Consecrated
     // Ground DoT, D&D regen). `regen_percent_per_second` is a percent of the owner's max health.
+    // "slow_active"/"count_scaling_active" (Phase 9.3 — Consecrated Ground's talents): the same
+    // resolved-param-flag escape hatch as "follow_caster" above — a talent can't rewrite the
+    // ability's own static RON, only a param, so these default to 0.0 (absent) for every other
+    // zone ability and cost nothing.
     let damage_per_second = params.get("damage_per_second");
     let regen_fraction = params.get("regen_percent_per_second") / 100.0;
     if damage_per_second > 0.0 || regen_fraction > 0.0 {
+        let slow_status = (params.get("slow_active") > 0.5).then(|| "consecrated_slow".to_string());
         zone.insert(ZoneEffects {
             damage_per_second,
             regen_fraction,
             tick: Timer::from_seconds(ZONE_TICK_INTERVAL, TimerMode::Repeating),
+            slow_status,
+            scales_with_occupants: params.get("count_scaling_active") > 0.5,
         });
     }
     // AMZ (Phase 6E): destroys opposing-faction projectiles that enter it.

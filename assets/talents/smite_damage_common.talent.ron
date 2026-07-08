@@ -1,0 +1,12 @@
+// "Increase damage by X%" (Mechanics, common). Stack(3).
+(
+    id: "smite_damage_common",
+    display_name: "Holy Fire",
+    ability_scope: Some("smite"),
+    rarity: Common,
+    uniqueness: Stack(3),
+    effect: Modifier((
+        stat: "damage",
+        op: MultiplyAdd(0.15),
+    )),
+)

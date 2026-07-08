@@ -1,0 +1,37 @@
+// WORKING NAME: "Smite"
+// Class: Paladin
+// Slot: passive (X second cooldown) (Unlocked randomly at level 2/3/4)
+//
+// Behavior: nearest_melee (Phase 9.2, reused as-is) with target_count 1 — "smite the closest
+// enemy." Applies holy_mark alongside the damage: this is the Paladin's holy-mark GRANT path
+// (Spinning Hammer / Hammer of Justice are the READ path — see their own ability RON doc
+// comments). "Strikes an additional target" is just target_count + 1 (the same primitive Heart
+// Strike's "hit +1 more enemies" talent already uses). The zone-spawn and mark-radius talents are
+// targeted execute.rs special-cases keyed on this cast's own primary hit.
+(
+    id: "smite",
+    display_name: "Smite",
+    unlock_schedule: Band(2, 4),
+    activation: AutoCast,
+    behavior: "nearest_melee",
+    hooks: [],
+    base_params: {
+        "damage": 10.0,
+        "range": 220.0,
+        "target_count": 1.0,
+        "cooldown": 2.5,
+        // Mark-radius talent (epic) — inert (0) unless smite_mark_radius_epic is taken.
+        "mark_radius": 60.0,
+    },
+    talent_pool: [
+        "smite_damage_common",
+        "smite_range_common",
+        "smite_extra_target_rare",
+        "smite_spawns_consecrated_rare",
+        "smite_mark_radius_epic",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Holy], target: AllHits),
+        ApplyStatus(status: "holy_mark", stacks: 1, target: AllHits),
+    ],
+)

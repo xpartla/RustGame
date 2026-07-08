@@ -1,0 +1,36 @@
+// WORKING NAME: "Spinning Hammer"
+// Class: Paladin
+// Slot: passive, always active, no cooldown per Mechanics (Unlocked randomly at level 2/3/4)
+//
+// Behavior: orbiting (Phase 9.3) — modeled as a fast AutoCast "maintenance" cadence (cooldown
+// below) rather than a literal continuous sweep: each cast samples the CURRENT position of
+// "hammer_count" hammers orbiting the caster (driven by AbilityContext.elapsed_secs, so it's
+// deterministic and needs no persistent per-instance state) and hits anything within "hit_radius"
+// of a hammer at that instant — the same discrete-sampling approximation the zone tick system
+// already uses for "continuous" zone damage. Holy-mark double damage is a targeted execute.rs
+// special-case (a per-target conditional the generic effects pipeline can't express).
+(
+    id: "spinning_hammer",
+    display_name: "Spinning Hammer",
+    unlock_schedule: Band(2, 4),
+    activation: AutoCast,
+    behavior: "orbiting",
+    hooks: [],
+    base_params: {
+        "damage": 4.0,
+        "orbit_radius": 45.0,
+        "hit_radius": 18.0,
+        "angular_speed": 3.0,
+        "hammer_count": 1.0,
+        "cooldown": 0.25,
+    },
+    talent_pool: [
+        "spinning_hammer_damage_common",
+        "spinning_hammer_radius_common",
+        "spinning_hammer_stun_rare",
+        "spinning_hammer_extra_hammer_epic",
+    ],
+    effects: [
+        Damage(amount: "damage", tags: [Physical], target: AllHits),
+    ],
+)

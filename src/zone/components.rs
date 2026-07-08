@@ -44,6 +44,12 @@ pub struct ZoneEffects {
     /// Fixed-cadence tick timer (ZONE_TICK_INTERVAL, repeating). Discrete ticks keep it
     /// deterministic (no per-frame f32 accumulation).
     pub tick: Timer,
+    /// A status effect (by id) applied to every damaged occupant each tick (Phase 9.3 — Consecrated
+    /// Ground's `consecrated_ground_slow_common` talent). `None` for every other zone.
+    pub slow_status: Option<crate::status::assets::StatusEffectId>,
+    /// "Deals X% increased damage per enemy inside" (Phase 9.3 — Consecrated Ground's
+    /// `consecrated_ground_count_scaling_rare` talent). `false` for every other zone.
+    pub scales_with_occupants: bool,
 }
 
 /// Marker: this zone destroys opposing-faction projectiles that enter it (AMZ, Phase 6E). Present

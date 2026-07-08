@@ -10,7 +10,7 @@ unrelated web project.)
 | Document | Role |
 |---|---|
 | `Mechanics.md` | Game design: classes, ability kits, talents, acts/maps, user flow |
-| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered |
+| `docs/architecture-plan.md` | Architecture + migration phases 0–9; **§8 amendments**; **§8.5 tech-debt register (one open row: the golden-campaign reproducibility flake, Phase 9.2)**; §8.6 Phase 4 delivered; §8.7 Phase 5 delivered; §8.8 Phase 6 delivered; §8.9 Phase 7 delivered; §8.10 Phase 7.5 delivered; §8.11 Phase 8 delivered; §8.12 Phase 9.1 delivered; §8.13 Phase 9.2 delivered; §8.14 Phase 9.3 delivered |
 | `docs/phase3-plan.md` | Phase 3 plan + as-built notes (template for future phase plans) |
 | `docs/phase4-plan.md` | Phase 4 plan + as-built notes (hero/stance system + Mage, focused vertical slice) |
 | `docs/phase5-plan.md` | Phase 5 plan + as-built notes (enemy abilities + AI + faction-aware engine) |
@@ -18,7 +18,7 @@ unrelated web project.)
 | `docs/phase7-plan.md` | Phase 7 plan + as-built notes (act graph + room / encounter system) |
 | `docs/phase7.5-ui-plan.md` | Phase 7.5 plan + as-built notes (UI layer: HUD, menus, game-over/pause, map view, merchant, VFX bus) |
 | `docs/phase8-plan.md` | Phase 8 plan + as-built notes (persistence + meta: RunRng → ChaCha8, RunState/MetaState serde, save/resume, scoreboard, Log-In) |
-| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats) |
+| `docs/phase9-plan.md` | Phase 9 arc plan (sub-phases 9.1–9.7) + as-built notes per sub-phase; 9.1 done §13 (shields/absorbs, forced movement, charges, crit/attack-speed, movement-slot dash); 9.2 done §14 (BDK closeout: Companion/Heart Strike/Abomination Limb/Purgatory/Bone Shield + full talent trees + base_stats); 9.3 done §15 (Paladin: Hammer of Justice/Flash of Light/Consecrated Ground promoted/Spinning Hammer/Smite + the holy-mark read/grant path + the hero-aware band-pool fix) |
 | `CHANGELOG.md` | **The behavior contract** (see below) |
 | `docs/testing.md` | Headless harness, golden scenarios/baseline, regeneration procedure |
 
@@ -50,8 +50,8 @@ unrelated web project.)
 
 The maintained register is **`docs/architecture-plan.md` §8.5** (Phase-4 outcomes in §8.6, Phase-5
 in §8.7, Phase-6 in §8.8, Phase-7 in §8.9, Phase-7.5 in §8.10, Phase-8 in §8.11, Phase-9.1 in §8.12,
-Phase-9.2 in §8.13) — **§8.5 itself is now empty; every row has been resolved.** Highlights a future
-session must not "rediscover":
+Phase-9.2 in §8.13, Phase-9.3 in §8.14) — **one open row: the golden-campaign reproducibility flake
+(Phase 9.2), unchanged by Phase 9.3.** Highlights a future session must not "rediscover":
 
 - ~~Library triplication → generic `DefLibrary<T>`~~ **DONE (Phase 4)** — `core/def_library.rs`;
   add new def types via `register_def_library::<T>()` (`EnemyDef` joined the same way in Phase 5).
@@ -128,6 +128,20 @@ session must not "rediscover":
   baseline is deliberately **not** regenerated this session, so `campaign_matches_golden_baseline`
   is a known, expected failure until this is resolved and a regen #4 lands. See architecture-plan.md
   §8.5 for the investigation's next-steps notes.
+- ~~`init_level_flow` hardcoded to the Death Knight's own band pools regardless of the selected
+  hero~~ **DONE (Phase 9.3, §8.14)** — a real, previously-undiscovered bug (not a deliberately
+  deferred gap), invisible since Phase 4 because the Mage ships with empty band pools and the Death
+  Knight is the default hero. `init_level_flow` now reads the current player's `HeroIdentity` →
+  `HeroDef` band pools when one exists, falling back to the hardcoded consts only for the one
+  boot-time call site that fires before any player exists (byte-identical there, since the default
+  hero's own RON declares the identical pools). Paladin (the first hero with a real non-empty band
+  pool since the Mage) is what surfaced it.
+- ~~Paladin content (`orbiting`/`channel_while_moving`/`hammer_cleave` behaviors; the holy-mark
+  read/grant path)~~ **DONE (Phase 9.3, §8.14)** — the arc's first brand-new hero. Deferred with
+  triggers (documented in `Mechanics.md`'s Paladin section): Hammer of Justice's bounce and
+  kill-inside-consecrated-ground explosion (the latter hits the same no-ability-provenance gap as
+  Phase 9.2's bone shield); Flash of Light's next-Hammer-of-Justice buff (a one-shot cross-ability
+  buff-consumption shape no existing primitive covers).
 
 §8.5 is checked and updated at the end of every phase. When a future phase's work creates a new
 deliberate gap, add it here and to §8.5 in the same change. When resolving the reproducibility row

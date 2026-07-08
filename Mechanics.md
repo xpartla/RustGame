@@ -293,41 +293,75 @@ Fire form \- DoTs, spreading damage, big AoE
 
 Melee, healing, area damage zones, strong single target
 
+_Phase 9.3 (implemented): the full kit below is live as its own hero (`paladin.hero.ron`).
+`has_stance: false` (no Q), `resource_model: None`, base_stats 160 hp / 33 move speed (a reasonable
+default, not yet a dedicated balance pass — the same caveat Phase 9.2 flagged for its own numbers).
+Consecrated Ground / Spinning Hammer / Smite are unlocked from one shared `band_2_3_pool` of three
+(levels 2/3/4, drawn without replacement) rather than the Death Knight's split 2-3/4-6 bands._
+
 * Hammer of Justice \- primary attack (X second cooldown) (Unlocked at level 1\)  
   * Deal a large amount of damage to a single target, and 50% of the damage to all targets in a cone behind the primary target  
+    * _Phase 9.3 (implemented): a new `hammer_cleave` behavior — acquires ONE primary (nearest enemy in range/arc, the `melee_cone` acquisition shape), then hits every other enemy in a cone behind the primary via a new `EffectTarget::SecondaryHits` + `EffectSpec::DamageFraction` (50% of the primary's own, already-talent-scaled damage — a damage talent automatically scales the cleave too)._  
     * (common) Increase the damage by X%  
+      * _Phase 9.3 (implemented): `hammer_of_justice_damage_common`, Stack(3)._  
     * (common) Increase the cast range by X  
+      * _Phase 9.3 (implemented): `hammer_of_justice_range_common`, Stack(3)._  
     * (rare, unique) Hammer of justice bounces up to 3 nearby targets, dealing 50% damage  
+      * _Deferred (Phase 9.3): a chain-bounce targeting shape with no existing behavior to build on. No talent RON references it, so it stays invisible to the offer generator._  
     * (epic, unique) If hammer of justice kills an enemy inside consecrated ground, create an explosion at the impact location dealing X damage to all enemies in a range around the target  
+      * _Deferred (Phase 9.3): needs per-kill ability attribution — `DamageEvent` carries no ability provenance, the same gap Phase 9.2's bone shield simplification hit. No talent RON references it._  
     * (rare, unique) If hammer of justice strikes a target affected by holy mark, emit a shockwave from your character, dealing X damage and pushing enemies back  
+      * _Phase 9.3 (implemented): `hammer_of_justice_shockwave_rare` — a holy-mark-read + forced-movement (Phase 9.1 knockback) targeted execute.rs special-case, centred on the caster per the text ("from your character")._  
 * Flash of light \- special attack (channeled while moving) (X second cooldown) (Unlocked at level 1\)  
   * Cast down a holy ray of light upon yourself, healing you for X% max health  
+    * _Phase 9.3 (implemented): a new `channel_while_moving` behavior + `Channeling` component — the heal (and every talent below) resolves once the `cast_time` channel completes, not instantly. "No interrupt" (this doc's own default, phase9-plan.md §4): nothing cancels the channel once started, not even damage or movement._  
     * (common, unique) Overhealed health becomes a shield  
+      * _Phase 9.3 (implemented): `flash_of_light_overheal_shield_common` — the pre-heal overheal amount becomes an `Absorb` (Phase 9.1)._  
     * (common) Increase healing by X%  
+      * _Phase 9.3 (implemented): `flash_of_light_healing_common`, Stack(3)._  
     * (common) Reduce cooldown by X   
+      * _Phase 9.3 (implemented): `flash_of_light_cooldown_common`, Stack(3)._  
     * (rare) Deal X% of amount healed to enemies in a radius around you  
+      * _Phase 9.3 (implemented): `flash_of_light_radiate_rare` — read at channel COMPLETION (the caster's current position, since a channel can complete well after it started moving)._  
     * (epic, unique) Casting flash of light inside consecrated ground makes you radiate holy energy, exploding in a small radius around you, dealing X damage to nearby enemies  
+      * _Phase 9.3 (implemented): `flash_of_light_consecrated_radiate_epic` — the zone check happens at cast START (`PlayerZonePresence`), baked into the channel; the explosion itself fires at completion._  
     * (rare, unique) Flash of light makes your next hammer of justice deal X% increased damage  
+      * _Deferred (Phase 9.3): a one-shot cross-ability buff-consumption shape none of Modifier/Pre-hook/Post-hook cover cleanly (Pre hooks can't consume a marker — no `Commands` access; Post hooks are deliberately read-only, §8.1(3)). No talent RON references it._  
 * Consecrated ground \- passive (passive, no cooldown) (Unlocked randomly at level 2/3/4)  
   * Drop zones of consecrated ground under your feet as you move, dealing X damage per second to enemies inside  
-    * _Phase 6 (implemented as a demonstrator — no Paladin hero yet): drops a "consecrated_ground" zone dealing a Holy DoT to enemies inside (the generic zone occupant-tick, faction-gated). The slow / per-enemy-scaling talents are deferred to the Paladin content pass._  
+    * _Phase 6 (implemented as a demonstrator); Phase 9.3 (implemented): promoted to the real Paladin band ability — the mechanic itself is unchanged._  
     * (rare) Increase the size of the zone by X  
+      * _Phase 9.3 (implemented): `consecrated_ground_radius_rare`, Stack(2)._  
     * (common) Increase the damage by X%  
+      * _Phase 9.3 (implemented): `consecrated_ground_damage_common`, Stack(3)._  
     * (common) Consecrated ground also slows enemies inside by X%  
+      * _Phase 9.3 (implemented): `consecrated_ground_slow_common` — a new `ZoneEffects.slow_status` (a fixed `consecrated_slow` status, `move_speed_mult: 0.8`) applied each zone tick._  
     * (rare) Consecrated ground deals X% increased damage per enemy inside  
+      * _Phase 9.3 (implemented): `consecrated_ground_count_scaling_rare` — `zone_tick_effects` scales `damage_per_second` by `CONSECRATED_COUNT_SCALING_FRACTION` (15%) per additional occupant that tick._  
 * Spinning hammer \- passive (always active, no cooldown) (Unlocked randomly at level 2/3/4)  
   * Spawn a hammer spinning around your character at all times, dealing X damage, if target is affected by holy mark, deal double damage  
+    * _Phase 9.3 (implemented): a new `orbiting` behavior — modeled as a fast (0.25s) AutoCast maintenance cadence sampling the hammer's current position (driven by a new `AbilityContext.elapsed_secs`) rather than a literal continuous-collision sweep, the same discrete-sampling approximation the zone-tick system already uses. The holy-mark double damage is the holy-mark READ path — a targeted execute.rs special-case (a per-target conditional the generic effects pipeline can't express)._  
     * (rare, unique) Spinning hammer also stuns enemies for X seconds  
+      * _Phase 9.3 (implemented): `spinning_hammer_stun_rare` — a targeted execute.rs special-case, same shape as Abomination Limb's stun talent (Phase 9.2)._  
     * (epic) Spawn an additional hammer orbiting your character  
+      * _Phase 9.3 (implemented): `spinning_hammer_extra_hammer_epic`, `+1 hammer_count` — however many hammers that resolves to are evenly re-spaced automatically._  
     * (common) increase the damage by X%  
+      * _Phase 9.3 (implemented): `spinning_hammer_damage_common`, Stack(3)._  
     * (common) Increase the radius by X  
+      * _Phase 9.3 (implemented): `spinning_hammer_radius_common` (the orbit radius), Stack(3)._  
 * Smite \- passive (X second cooldown) (Unlocked randomly at level 2/3/4)  
   * Smite the closest enemy dealing X damage, applying a holy mark to the target  
+    * _Phase 9.3 (implemented): reuses `nearest_melee` (`target_count: 1`) as-is — no new behavior. The holy-mark GRANT path (its `effects` list applies `holy_mark` alongside the damage)._  
     * (common) increase the damage by X%  
+      * _Phase 9.3 (implemented): `smite_damage_common`, Stack(3)._  
     * (common) Increase the range by X  
+      * _Phase 9.3 (implemented): `smite_range_common`, Stack(3)._  
     * (rare, unique) After smiting an enemy, create a consecrated ground under him, dealing X damage to every enemy inside every second  
+      * _Phase 9.3 (implemented): `smite_spawns_consecrated_rare` — a targeted execute.rs special-case (spawns at the smitten TARGET's position), same shape as `bdk_passive_blood_boil_spawns_dnd`._  
     * (epic) Holy mark affects all enemies in a radius around the target  
-    * (rare) Smite strikes an additional target
+      * _Phase 9.3 (implemented): `smite_mark_radius_epic`, Exclusive — a targeted execute.rs special-case._  
+    * (rare) Smite strikes an additional target  
+      * _Phase 9.3 (implemented): `smite_extra_target_rare`, `+1 target_count` — the same primitive Heart Strike's own "+1 target" talent uses (Phase 9.2)._
 
 # General Passive talents
 
